@@ -1,0 +1,20 @@
+{
+  "id": "panel-mujxxppu-j4",
+  "panel": "panel-mujxxppu-j4",
+  "name": "派单队列",
+  "kind": "tickets",
+  "title": "派单队列",
+  "look": {
+    "accent": "#e0954b",
+    "density": "compact",
+    "showChat": false
+  },
+  "spec": {
+    "body": "messages",
+    "systemPrompt": "",
+    "actions": [],
+    "fields": []
+  },
+  "note": "派单队列：全公司欠着的活一览——谁派给谁、走到哪、交没交",
+  "at": 1790581216854
+}

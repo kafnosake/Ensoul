@@ -1,0 +1,102 @@
+/* plugins/star-chart/panel.css */
+.star-chart-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+  color: var(--text, #d0d0d2);
+}
+
+/* 浮窗模式下增加微晶背底 */
+.star-chart-container.is-floating {
+  background: var(--bg-soft, var(--bg, #1e1e20));
+  backdrop-filter: blur(12px);
+}
+
+/* 全屏画布 —— 零外部多余 UI，纯净图谱展示 */
+.sc-canvas-fullscreen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.sc-canvas-fullscreen:active {
+  cursor: grabbing;
+}
+
+/* 悬浮微气泡 */
+.sc-cosmic-tooltip {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  background: var(--bg-soft, var(--card, rgba(30, 30, 35, 0.88)));
+  border: 1px solid var(--line-soft, var(--line, rgba(255, 255, 255, 0.12)));
+  border-radius: 8px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 280px;
+  z-index: 50;
+  animation: sc-tip-fade 0.15s ease-out;
+}
+
+@keyframes sc-tip-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sc-tip-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text, #ffffff);
+}
+
+.sc-tip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dim, #888);
+}
+
+.sc-tip-dot.working {
+  background: var(--busy, #5b8cff);
+  box-shadow: 0 0 6px var(--busy, #5b8cff);
+}
+
+.sc-tip-dot.waiting {
+  background: #f59e0b;
+}
+
+.sc-tip-status {
+  font-size: 11px;
+  color: var(--dim, #999);
+}
+
+.sc-tip-task {
+  font-size: 11px;
+  color: var(--text, #d0d0d2);
+  line-height: 1.4;
+  word-break: break-all;
+  border-top: 1px solid var(--line-soft, rgba(255, 255, 255, 0.08));
+  padding-top: 4px;
+  margin-top: 2px;
+}

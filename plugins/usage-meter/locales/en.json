@@ -1,0 +1,11 @@
+{
+  "在输入框那一排显示这个面板的用量与花费，悬停看命中 / 未命中 / 输出的分项账": "Show token usage & cost in input bar; hover for breakdown",
+  "命中 {p}%": "Hit {p}%",
+  "{a} 轮 · {b} 轮已计费": "{a} turns · {b} billed",
+  "命中输入    {n}    {sym}{c}": "Hit in:     {n}    {sym}{c}",
+  "未命中输入  {n}    {sym}{c}": "Miss in:    {n}    {sym}{c}",
+  "输出        {n}    {sym}{c}": "Output:     {n}    {sym}{c}",
+  "实际总价    {sym}{c}": "Total cost: {sym}{c}",
+  "单价 {a} / {b} / {c} 元每百万（命中 / 未命中 / 输出）": "Price: {sym}{a}/{b}/{c} per 1M (Hit/Miss/Out)",
+  "另有 {n} 轮是旧版本留下的记录：没记缓存命中、也没算过钱": "Another {n} legacy turns: no cache hit or cost recorded"
+}

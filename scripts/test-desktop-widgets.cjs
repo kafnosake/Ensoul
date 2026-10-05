@@ -1,0 +1,73 @@
+// node scripts/test-desktop-widgets.cjs — isolated Windows desktop host; no real workspace writes or LLM calls.
+if (!process.versions.electron) {
+  const path = require('node:path');
+  const { spawn } = require('node:child_process');
+  if (process.platform !== 'win32') throw new Error('This native desktop test requires Windows.');
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const child = spawn(path.join(__dirname, '../.electron/win32-x64/electron.exe'), [__filename], { env, windowsHide: true, stdio: 'inherit' });
+  child.on('error', error => { console.error(error); process.exitCode = 1; });
+  child.on('exit', code => { process.exitCode = code ?? 1; });
+} else {
+  const {app,BrowserWindow,ipcMain,screen}=require('electron');
+  const fs=require('fs'),os=require('os'),path=require('path'),assert=require('node:assert/strict');
+  app.setPath('userData',fs.mkdtempSync(path.join(os.tmpdir(),'ensoul-desktop-qa-')));
+  global.t=s=>s;
+  const root=path.resolve(__dirname,'..');
+  const host=require(path.join(root,'plugins/widget-dock/desk-host.js'));
+  const delay=ms=>new Promise(r=>setTimeout(r,ms));
+  let win, moves=[], requests=0, cursor={x:100,y:100};
+  app.whenReady().then(async()=>{
+    screen.getCursorScreenPoint=()=>cursor;
+    const p={id:'desktop-probe',title:'DO_NOT_SHOW_TITLE',kind:'chat',spec:{body:'messages',text:'',systemPrompt:'',actions:[{id:'secret',label:'DO_NOT_SHOW_ACTION',prompt:'never'}],fields:[]},look:{accent:'#000000',density:'normal',showChat:true},chat:[{role:'assistant',content:'DO_NOT_SHOW_REASONING'}],widget:{card:true,onTop:false,x:60,y:60,width:360,height:324}};
+    const snapshot={workspace:root,panels:{[p.id]:p},widgets:[{panelId:p.id,box:p.widget}],windows:[],closed:[]};
+    ipcMain.handle('ws:state',()=>snapshot);
+    ipcMain.handle('ext:list',()=>({plugins:[]}));
+    ipcMain.handle('ui:lang:get',()=> 'zh');
+    ipcMain.handle('panel:body',()=>p);
+    const creation={drafts:{[p.id]:{componentHeight:260,submitted:false}}};
+    ipcMain.handle('fs:read',()=>JSON.stringify(creation));
+    ipcMain.handle('ext:sectionAction',async(_e,plugin,section,action,id)=>{assert.equal(plugin,'widget-dock');assert.equal(section,'desktop');assert.equal(id,p.id);assert.equal(decodeURIComponent(action.slice('generate:'.length)),'做一个时钟');requests++;creation.drafts[p.id].submitted=true;win.setBounds({height:260});await delay(160);p.kind='table';p.spec.text='12:34,25';win.webContents.send('ws:state',snapshot);return {ok:true,view:null};});
+    require(path.join(root,'plugins/widget-dock/drag.js'))({widgetPanels:()=>snapshot.widgets,moveWidgetPanel:(id,patch)=>{assert.equal(id,p.id);moves.push(patch);Object.assign(p.widget,patch);win.webContents.send('ws:state',snapshot);return true;},log:message=>console.error(message)});
+    win=new BrowserWindow({x:60,y:60,width:360,height:324,frame:false,transparent:true,show:false,skipTaskbar:true,webPreferences:{preload:path.join(root,'dist/preload/index.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});
+    win.webContents.on('console-message',(_e,level,message)=>{if(level===3)console.log('RENDER_ERROR '+message.slice(0,250));});
+    await win.loadFile(path.join(root,'dist/renderer/index.html'),{query:{mode:'widget',panel:p.id}});
+    win.showInactive();await delay(650);
+    const mount=host.mount(win);assert(mount.ok,mount.error);await delay(350);
+    assert(host.stillMounted(win));
+    const draft=await win.webContents.executeJavaScript('({text:document.body.innerText,inputs:document.querySelectorAll(".desktop-create textarea").length})');assert.equal(draft.inputs,1,'draft needs one request input');assert(!draft.text.includes('DO_NOT_SHOW'),'chat and title must stay hidden');
+    let img=await win.webContents.capturePage();const draftPreview=path.join(root,'.ensoul/tmp/desktop-create-preview.png');fs.mkdirSync(path.dirname(draftPreview),{recursive:true});fs.writeFileSync(draftPreview,img.toPNG());const size=img.getSize(),pixels=img.toBitmap();const alpha=(x,y)=>pixels[(y*size.width+x)*4+3];
+    const alphaCenter=alpha(Math.floor(size.width/2),Math.floor(size.height/2)),alphaCorner=alpha(0,0);
+    assert(alphaCenter>160&&alphaCenter<230,`center alpha ${alphaCenter} must be translucent`);assert.equal(alphaCorner,0,'outside corner must be fully transparent');
+    const koffi=require(path.join(root,'node_modules/koffi'));const nativeRect=koffi.load('user32.dll').func('bool GetWindowRect(uintptr_t h, _Out_ RECT *r)');const rect=()=>{const r={};nativeRect(Number(win.getNativeWindowHandle().readBigUInt64LE()),r);return r;};const beforeNative=rect(),beforeImage=(await win.webContents.capturePage()).getSize();
+    const before=win.getBounds();Object.assign(p.widget,before);
+    // Real Chromium input drives pointer capture, then the native move handler.
+    win.webContents.sendInputEvent({type:'mouseMove',x:40,y:12});
+    win.webContents.sendInputEvent({type:'mouseDown',globalX:100,globalY:100,x:40,y:12,button:'left',clickCount:1});
+    await delay(40);cursor={x:160,y:130};
+    win.webContents.sendInputEvent({type:'mouseMove',globalX:160,globalY:130,x:100,y:42,button:'left'});
+    await delay(180);
+    const after=win.getBounds();const afterNative=rect(),afterImage=(await win.webContents.capturePage()).getSize();assert.equal(moves.length,0,'no workspace commit during drag');
+    win.webContents.sendInputEvent({type:'mouseUp',globalX:160,globalY:130,x:40,y:12,button:'left',clickCount:1});await delay(100);
+    assert.equal(afterNative.right-afterNative.left,beforeNative.right-beforeNative.left,'native width must stay fixed');
+    assert.equal(afterNative.bottom-afterNative.top,beforeNative.bottom-beforeNative.top,'native height must stay fixed');
+    assert.deepEqual(afterImage,beforeImage,'renderer pixel dimensions must stay fixed');
+    const startPixel=screen.dipToScreenPoint({x:before.x,y:before.y}),goalPixel=screen.dipToScreenPoint({x:before.x+60,y:before.y+30});
+    assert(Math.abs(afterNative.left-beforeNative.left-(goalPixel.x-startPixel.x))<=1,'horizontal drag may round at most one physical pixel');
+    assert(Math.abs(afterNative.top-beforeNative.top-(goalPixel.y-startPixel.y))<=1,'vertical drag may round at most one physical pixel');
+    assert.equal(moves.length,1,'drag must commit only once on release');
+    console.log(JSON.stringify({alphaCenter,alphaCorner,dragPixels:{x:afterNative.left-beforeNative.left,y:afterNative.top-beforeNative.top},scale:screen.getDisplayNearestPoint({x:before.x,y:before.y}).scaleFactor,rendererSizeUnchanged:true,commits:moves.length}));
+    await win.webContents.executeJavaScript("document.querySelector('.desktop-create textarea').focus()");await win.webContents.insertText('做一个时钟');await delay(40);win.webContents.sendInputEvent({type:'keyDown',keyCode:'Return'});win.webContents.sendInputEvent({type:'keyDown',keyCode:'Return'});win.webContents.sendInputEvent({type:'keyUp',keyCode:'Return'});await delay(350);assert.equal(requests,1,'double Enter must dispatch exactly once');assert.equal(await win.webContents.executeJavaScript("document.querySelectorAll('.desktop-create').length"),0,'composer must disappear after submission');
+    const content=await win.webContents.executeJavaScript(`(()=>{document.documentElement.dataset.theme='light';document.documentElement.style.setProperty('--text','#000');const el=document.querySelector('.desktop-content');const td=el.querySelector('td');const b=document.createElement('button');b.textContent='Test';b.id='interaction-test';b.onclick=()=>b.dataset.clicked='yes';el.append(b);const r=b.getBoundingClientRect();return {text:document.body.innerText,color:getComputedStyle(td).color,chats:document.querySelectorAll('.chat-dock,.panel-actions,.desktop-draft').length,button:{x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}}})()`);
+    assert(content.text.includes('12:34'));assert(!content.text.includes('DO_NOT_SHOW'));assert.equal(content.chats,0);assert.equal(content.color,'rgb(243, 245, 248)');
+    const count=moves.length,point=content.button;
+    win.webContents.sendInputEvent({type:'mouseDown',...point,button:'left',clickCount:1});win.webContents.sendInputEvent({type:'mouseUp',...point,button:'left',clickCount:1});await delay(100);
+    assert.equal(moves.length,count,'button must not drag');assert.equal(await win.webContents.executeJavaScript("document.querySelector('#interaction-test').dataset.clicked"),'yes');
+    await win.webContents.executeJavaScript("document.querySelector('#interaction-test').remove()");
+    win.webContents.sendInputEvent({type:'mouseLeave',x:0,y:0});await delay(180);
+    img=await win.webContents.capturePage();const out=path.join(root,'.ensoul/tmp/desktop-glass-preview.png');fs.mkdirSync(path.dirname(out),{recursive:true});fs.writeFileSync(out,img.toPNG());
+    console.log(JSON.stringify({PASS:'one-shot composer, one dispatch, alpha, clean corners, native drag with one final commit, light-theme contrast, chat isolation, interactive button',preview:out}));
+    host.unmount(win);win.destroy();app.quit();
+  }).catch(e=>{console.error(e);if(win&&!win.isDestroyed()){host.unmount(win);win.destroy();}app.exit(1)});
+  setTimeout(()=>app.exit(2),15000).unref();
+}

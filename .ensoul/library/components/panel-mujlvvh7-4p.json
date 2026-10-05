@@ -1,0 +1,20 @@
+{
+  "id": "panel-mujlvvh7-4p",
+  "panel": "panel-mujlvvh7-4p",
+  "name": "实时计费",
+  "kind": "billing",
+  "title": "实时计费",
+  "look": {
+    "accent": "#4fb286",
+    "density": "normal",
+    "showChat": false
+  },
+  "spec": {
+    "body": "messages",
+    "systemPrompt": "",
+    "actions": [],
+    "fields": []
+  },
+  "note": "实时计费：按天按模型汇总全软件的模型调用花费",
+  "at": 1790512579611
+}

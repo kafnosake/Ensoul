@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https: http:; img-src 'self' data: blob: file:; frame-src 'self' file: https: http:;" />
+    <title>Ensoul</title>
+    <link rel="icon" type="image/svg+xml" href="./assets/brand/svg/app-icon-light.svg" />
+    <script>
+      // 样式是 <link>，比模块先到：主题得在第一次绘制前贴上去，不然白天模式会闪一下黑夜。
+      // 这里只管"第一次绘制"这件事，用的是 ui/theme.ts 那套存法（key 与派生规则跟它一致）；
+      // 真正的真源还在 theme.ts，模块一加载就把这几样重算一遍。
+      (function () {
+        var d = document.documentElement;
+        function sys() {
+          return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        }
+        var mode;
+        try {
+          var t = localStorage.getItem('ensoul.theme');
+          mode = t === 'light' || t === 'system' ? t : 'dark';
+        } catch (e) {
+          mode = 'dark';
+        }
+        var resolved = mode === 'system' ? sys() : mode;
+        d.dataset.theme = resolved;
+        d.dataset.themeMode = mode;
+
+        // 语言：同样要在第一帧前贴对 —— 它决定 html lang（断行、无障碍、:lang() 选择器）
+        try {
+          d.lang = localStorage.getItem('ensoul.lang') === 'en' ? 'en' : 'zh-CN';
+        } catch (e) {}
+
+        // 强调色：跟 theme.ts 的 applyAccent 同一套派生（选中了才铺，没选就用主题自带那支）
+        function hex2rgb(h) {
+          var m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec((h || '').trim());
+          if (!m) return null;
+          var s = m[1];
+          if (s.length === 3) s = s[0] + s[0] + s[1] + s[1] + s[2] + s[2];
+          return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16)];
+        }
+        function mix(rgb, t) {
+          var to = t >= 0 ? 255 : 0,
+            k = Math.abs(t);
+          return (
+            '#' +
+            rgb
+              .map(function (c) {
+                var v = Math.max(0, Math.min(255, Math.round(c + (to - c) * k)));
+                return v.toString(16).padStart(2, '0');
+              })
+              .join('')
+          );
+        }
+        try {
+          // 透明度（千分比，缺省就是 1）—— 跟 applyAccent 同一套算法
+          var dark = resolved === 'dark';
+          var rawA = Number(localStorage.getItem('ensoul.accent.alpha'));
+          var a = rawA > 0 ? Math.min(1, Math.max(0.2, rawA / 1000)) : 1;
+          var picked = hex2rgb(localStorage.getItem('ensoul.accent'));
+          // 没自己选色，就回落到主题自带那支（跟 base.css 里两套主题对得上）
+          var rgb = picked || hex2rgb(dark ? '#5b8cff' : '#3a6fe8');
+          if (rgb && (picked || a < 1)) {
+            var hex = '#' + rgb.map(function (c) { return c.toString(16).padStart(2, '0'); }).join('');
+            var push = (1 - a) * 0.4;
+            d.style.setProperty('--accent', a >= 1 ? hex : 'rgba(' + rgb.join(', ') + ', ' + a + ')');
+            d.style.setProperty('--accent-rgb', rgb.join(', '));
+            d.style.setProperty('--accent-hi', a >= 1 ? mix(rgb, dark ? 0.16 : 0.1) : 'rgba(' + hex2rgb(mix(rgb, dark ? 0.16 : 0.1)).join(', ') + ', ' + a + ')');
+            d.style.setProperty('--accent-fg', mix(rgb, dark ? 0.45 + push : -0.22 - push));
+            d.style.setProperty('--accent-soft', 'rgba(' + rgb.join(', ') + ', ' + ((dark ? 0.14 : 0.13) * a).toFixed(3) + ')');
+          }
+          // 效果开关：动效/毛玻璃，同样在第一帧前定下来
+          var mo = localStorage.getItem('ensoul.fx.motion');
+          d.dataset.fxMotion =
+            mo === 'on' || mo === 'off' ? mo : window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'off' : 'on';
+          d.dataset.fxGlass = localStorage.getItem('ensoul.fx.glass') === 'off' ? 'off' : 'on';
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/renderer/main.tsx"></script>
+  </body>
+</html>

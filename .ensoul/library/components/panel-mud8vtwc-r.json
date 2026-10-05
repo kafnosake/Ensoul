@@ -1,0 +1,20 @@
+{
+  "id": "panel-mud8vtwc-r",
+  "panel": "panel-mud8vtwc-r",
+  "name": "文件路径",
+  "kind": "files",
+  "title": "文件路径",
+  "look": {
+    "accent": "#5b8cff",
+    "density": "normal",
+    "showChat": true
+  },
+  "spec": {
+    "body": "messages",
+    "systemPrompt": "",
+    "actions": [],
+    "fields": []
+  },
+  "note": "文件面板：按目录浏览工作区文件，点开看正文，配读写工具定位路径",
+  "at": 1790313892626
+}

@@ -1,0 +1,20 @@
+{
+  "id": "panel-muesqypy-1",
+  "panel": "panel-muesqypy-1",
+  "name": "番茄钟",
+  "kind": "pomodoro",
+  "title": "番茄钟",
+  "look": {
+    "accent": "#5b8cff",
+    "density": "compact",
+    "showChat": false
+  },
+  "spec": {
+    "body": "messages",
+    "systemPrompt": "",
+    "actions": [],
+    "fields": []
+  },
+  "note": "番茄钟：工作与休息交替倒计时，到点提醒",
+  "at": 1790313925725
+}

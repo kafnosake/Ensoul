@@ -1,0 +1,961 @@
+/* skills.css —— 技能与插件、回复下面那一条
+   原 styles.css 第 2245-2481 行，按块原样搬过来的。 */
+
+/* ---------------------------------------------------------------- 技能与插件 */
+
+.ext-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 2px;
+}
+
+/* 一条就是一张小卡片：底色比卡片本身亮一点，指过去提一下边 */
+.ext-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  transition: border-color var(--ease), background var(--ease);
+}
+
+.ext-row:hover {
+  border-color: var(--line-hi);
+  background: var(--card);
+}
+
+.ext-row.is-off {
+  opacity: 0.55;
+}
+
+.ext-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  min-width: 96px;
+}
+
+/*
+ * 夹在名字和动作按钮中间那一格。
+ *
+ * min-width 是**有意的**：英文按钮比中文长一截（「在调度中心中查看」→「View in the
+ * dispatch center」），不留保底宽度的话 flex 会把它压到零宽，于是「美术组 · 经理」
+ * 就被 anywhere 断成一字一行。宁可偶尔折成两行，也不要竖排。
+ */
+.ext-desc {
+  flex: 1 1 auto;
+  /* 保底宽度：英文按钮比中文长一截，不留这个会被压成一字一行（见下） */
+  min-width: 7em;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--dim);
+  overflow-wrap: break-word;
+}
+
+.ext-size {
+  font-size: 11px;
+  color: var(--faint);
+  font-family: var(--font-code);
+}
+
+/* 这条技能/插件是从哪来的（工作区、插件、软件自带……） */
+.ext-src {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: var(--faint);
+  background: var(--tint-b);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+/* 技能根清单：哪几个地方在供给技能，各自有没有 */
+.ext-roots {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 2px 0 4px;
+  font-size: 11.5px;
+}
+
+.ext-root {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 1px 2px;
+  color: var(--dim);
+}
+
+.ext-root-dot {
+  flex: 0 0 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.ext-root-dot.is-on {
+  background: var(--ok);
+}
+
+.ext-root-src {
+  flex: 0 0 92px;
+  color: var(--dim);
+}
+
+.ext-root .set-v {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 行里的按钮平时安静待着，指过去才显形 —— 一列卡片上挂满按钮太吵 */
+.ext-row button {
+  flex: none;
+  font-size: 11.5px;
+  padding: 3px 9px;
+  color: var(--dim);
+  background: transparent;
+  border-color: transparent;
+}
+
+.ext-row button:hover {
+  color: var(--text);
+  background: var(--card-2);
+  border-color: var(--line);
+}
+
+/* 组件那一行：名字是按钮、后面跟三四个按钮，比技能那两页挤，所以单独收一收 */
+.cmp-row {
+  gap: 7px;
+  padding: 5px 9px;
+}
+
+/* 说明和日期都不折行 —— 折一次这行就高三倍，一屏放不下几条 */
+.cmp-row .ext-desc,
+.cmp-row .ext-size {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmp-row .ext-desc {
+  flex: 0 1 auto;
+}
+
+/* 名字占固定一格：改名的输入框和平时显示的一样宽，点进去不会跳 */
+.cmp-row .ext-name {
+  flex: 0 0 128px;
+  min-width: 0;
+}
+
+.cmp-row .ext-size {
+  flex: 0 0 auto;
+}
+
+
+/* 技能一条：头部一行，点开是它自己的详情（详情就落在这条下面，不另开窗口） */
+.ext-skill {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  overflow: hidden;
+  transition: border-color var(--ease), background var(--ease);
+}
+
+.ext-skill:hover {
+  border-color: var(--line-hi);
+}
+
+.ext-skill.is-off {
+  opacity: 0.55;
+}
+
+.ext-skill.is-open {
+  background: var(--card);
+}
+
+.ext-skill-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  cursor: pointer;
+}
+
+.ext-skill-head:hover {
+  background: var(--tint-a);
+}
+
+.ext-skill.is-open .plg-caret {
+  transform: rotate(90deg);
+}
+
+.ext-skill-head button {
+  flex: none;
+  font-size: 11.5px;
+  padding: 3px 9px;
+  color: var(--dim);
+  background: transparent;
+  border-color: transparent;
+}
+
+.ext-skill-head button:hover {
+  color: var(--text);
+  background: var(--card-2);
+  border-color: var(--line);
+}
+
+.ext-skill-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+/* 说明全文：折叠态那一行是切短的，这里一个字母都不省 */
+.ext-skill-desc {
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--dim);
+  overflow-wrap: anywhere;
+}
+
+.ext-skill-path {
+  font-size: 10.5px;
+  color: var(--faint);
+  word-break: break-all;
+}
+
+.ext-skill-pre {
+  margin: 0;
+  padding: 10px;
+  max-height: 320px;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  background: var(--bg-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+/* 插件里的工具：一条一个，点开看它自己是干什么的 —— 不再挤成一行 join */
+.plg-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.plg-tools-title {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.plg-tool {
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+.plg-tool.is-open {
+  background: var(--card);
+}
+
+.plg-tool-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  cursor: pointer;
+}
+
+.plg-tool-head:hover {
+  background: var(--tint-a);
+}
+
+.plg-tool.is-open .plg-caret {
+  transform: rotate(90deg);
+}
+
+.plg-tool-name {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: var(--accent-fg);
+}
+
+.plg-tool-desc {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 展开后的说明：一个字都不省（折叠态那一行才是切短的） */
+.plg-tool-body {
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- 插件行（可展开） */
+
+.plg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 2px;
+}
+
+.plg-row {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  overflow: hidden;
+  transition: border-color var(--ease), background var(--ease);
+}
+
+.plg-row:hover {
+  border-color: var(--line-hi);
+}
+
+.plg-row.is-off {
+  opacity: 0.55;
+}
+
+.plg-row.is-open {
+  background: var(--card);
+}
+
+/* 整行都是开关：点哪儿都展开 —— 只有右边那个按钮不是 */
+.plg-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  cursor: pointer;
+}
+
+.plg-head:hover {
+  background: var(--tint-a);
+}
+
+.plg-head button {
+  flex: none;
+  font-size: 11.5px;
+  padding: 3px 9px;
+  color: var(--dim);
+  background: transparent;
+  border-color: transparent;
+}
+
+.plg-head button:hover {
+  color: var(--text);
+  background: var(--card-2);
+  border-color: var(--line);
+}
+
+.plg-caret {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--faint);
+  transition: transform 0.12s ease;
+}
+
+.plg-row.is-open .plg-caret {
+  transform: rotate(90deg);
+}
+
+.plg-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  min-width: 96px;
+}
+
+.plg-desc {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--dim);
+  overflow-wrap: anywhere;
+}
+
+/* 「3 项可调」—— 有这个徽标就说明展开里有东西可以改 */
+.plg-badge {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: var(--faint);
+  background: var(--tint-b);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.plg-badge.is-dirty {
+  color: var(--accent-fg);
+  background: var(--accent-soft);
+}
+
+.plg-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 12px 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.plg-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 11px;
+  color: var(--faint);
+  word-break: break-all;
+}
+
+.plg-none {
+  font-size: 11.5px;
+  color: var(--faint);
+  line-height: 1.7;
+}
+
+/* 一条参数：左边名字（带一句说明），中间控件，右边范围与"恢复默认" */
+.plg-param {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 0;
+}
+
+.plg-param-label {
+  flex: 0 0 176px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.plg-param.is-dirty .plg-param-label {
+  color: var(--accent-fg);
+}
+
+.plg-param-hint {
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.plg-param-input {
+  flex: 0 1 240px;
+  display: flex;
+  align-items: center;
+}
+
+.plg-param-input input[type='text'],
+.plg-param-input input[type='number'],
+.plg-param-input select,
+.plg-param-input textarea {
+  width: 100%;
+  font-size: 11.5px;
+  padding: 4px 8px;
+  color: var(--text);
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+  transition: border-color var(--ease), box-shadow var(--ease);
+}
+
+.plg-param-input input[type='text']:focus,
+.plg-param-input input[type='number']:focus,
+.plg-param-input select:focus,
+.plg-param-input textarea:focus {
+  border-color: var(--focus-line);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.12);
+}
+
+.plg-param-input input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.plg-param-tail {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.plg-param-range {
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.plg-param-tail button.plg-reset {
+  font-size: 10.5px;
+  padding: 2px 7px;
+  color: var(--dim);
+  background: transparent;
+  border-color: transparent;
+}
+
+.plg-param-tail button.plg-reset:hover {
+  color: var(--text);
+  background: var(--card-2);
+  border-color: var(--line);
+}
+
+.ext-blank {
+  font-size: 11.5px;
+  color: var(--faint);
+  line-height: 1.7;
+  padding: 8px 2px;
+}
+
+.msg-body .md-p {
+  /* 8px：段落之间要能看出"换段了"。助手的长回复常常十来段，
+     段距跟行距一样大的时候，整块就是一个灰糊糊的长条。 */
+  margin: 8px 0;
+}
+
+.msg-body .md-h {
+  margin: 12px 0 6px;
+  font-size: 14px;
+}
+
+.msg-body .md-ul {
+  margin: 6px 0;
+}
+
+/* 会话区窄：宽表格让它自己横向滚，不许把气泡撑出面板 */
+.msg-body .md-table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.msg-body .md-table th {
+  white-space: normal;
+}
+
+.msg.is-streaming .msg-body::after {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  margin-left: 3px;
+  vertical-align: -2px;
+  background: var(--accent);
+  animation: blink 1s steps(2, start) infinite;
+}
+
+/* 回复下面那一条：文件改动 / 操作 / 用量 / 用时 / 时间 */
+.msg-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.foot-files {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.foot-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent-fg);
+}
+
+.foot-more {
+  color: var(--faint);
+}
+
+.foot-bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.foot-bar button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  justify-content: center;
+  background: transparent;
+  border-color: transparent;
+  color: var(--faint);
+  border-radius: 7px;
+}
+
+.foot-bar button:hover {
+  background: var(--card);
+  color: var(--text);
+}
+
+.foot-bar button.is-on {
+  color: var(--ok);
+}
+
+.foot-bar button.is-bad {
+  color: #f08b86;
+}
+
+.foot-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 10px;
+  white-space: nowrap;
+}
+
+.foot-time {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+/* ============================================================================
+   「更多」扩展集市平铺页面（完全无 emoji，采用纯原生面板排版体系）
+   ============================================================================ */
+
+.more-panel-section {
+  margin-top: 18px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.more-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.more-section-desc {
+  font-size: 12px;
+  color: var(--dim);
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.more-input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.more-input-field {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: var(--text);
+  outline: none;
+}
+
+.more-input-field:focus {
+  border-color: var(--accent);
+}
+
+.more-action-btn {
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 0 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.more-action-btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.more-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.more-feedback-msg {
+  font-size: 12px;
+  color: var(--accent);
+  margin-top: 8px;
+}
+
+/* ============================================================================
+   「更多」页面精简版卡片与胶囊开关布局
+   ============================================================================ */
+
+.more-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.more-card-item {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.more-card-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.more-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.more-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.more-card-tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--panel-2);
+  color: var(--dim);
+  border: 1px solid var(--line);
+  line-height: 1.3;
+}
+
+.more-card-size {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.more-card-desc {
+  font-size: 12px;
+  color: var(--dim);
+  line-height: 1.4;
+}
+
+/* ============================================================================
+   「更多」运行环境与依赖项卡片样式
+   ============================================================================ */
+
+.env-status-badge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 500;
+}
+
+.env-status-badge.ready {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.env-status-badge.missing {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.env-pkgs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.env-pkg-item {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.env-pkg-name {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.env-pkg-tag {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.env-pkg-tag.ok {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.env-pkg-tag.no {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.env-log-terminal {
+  background: #0d1117;
+  color: #c9d1d9;
+  font-family: var(--font-code, monospace);
+  font-size: 11px;
+  border-radius: 6px;
+  padding: 10px;
+  max-height: 160px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-top: 10px;
+  border: 1px solid #30363d;
+}
+/* ============================================================================
+   镜像源选择与 Python 多版本管理卡片样式
+   ============================================================================ */
+
+.mirror-selector-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mirror-select-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mirror-info-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--dim);
+  background: var(--panel);
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+}
+
+.py-version-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  transition: border-color 0.15s ease;
+}
+
+.py-version-card.active {
+  border-color: var(--accent);
+  background: rgba(91, 140, 255, 0.04);
+}
+
+.py-version-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.py-version-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.py-version-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.py-version-path {
+  font-size: 11px;
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.py-version-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.py-scan-cand-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+

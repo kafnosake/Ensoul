@@ -1,0 +1,274 @@
+.edge-root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card, #1e1e24);
+  color: var(--fg, #e0e0e0);
+  font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  user-select: none;
+}
+
+/* 顶部 Edge 导航工具栏 —— 纯单行紧凑 */
+.edge-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-hover, rgba(255, 255, 255, 0.02));
+  border-bottom: 1px solid var(--line-soft, rgba(255, 255, 255, 0.07));
+}
+
+.edge-nav,
+.edge-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* 极简扁平细线图标按钮 */
+.edge-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-sub, #94a3b8);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  padding: 0;
+}
+
+.edge-btn:hover:not(:disabled) {
+  background: rgba(127, 127, 127, 0.12);
+  color: var(--fg, #ffffff);
+}
+
+.edge-btn.is-active {
+  background: rgba(0, 120, 212, 0.18);
+  color: #0078d4;
+}
+
+.edge-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+/* 经典 Edge 药丸胶囊地址栏 */
+.edge-pill {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--line-soft, rgba(255, 255, 255, 0.1));
+  border-radius: 9999px; /* 经典 Edge 药丸圆弧 */
+  transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+}
+
+.edge-pill:focus-within {
+  background: rgba(0, 0, 0, 0.4);
+  border-color: #0078d4;
+  box-shadow: 0 0 0 1px #0078d4;
+}
+
+.edge-security {
+  display: flex;
+  align-items: center;
+  cursor: default;
+}
+
+.edge-security.is-secure {
+  color: #107c41;
+}
+
+.edge-security.is-warn {
+  color: #d83b01;
+}
+
+.edge-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg, #f1f5f9);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 0;
+  outline: none;
+}
+
+.edge-input::placeholder {
+  color: var(--fg-sub, #64748b);
+}
+
+/* 细微平滑加载进度条 */
+.edge-progress {
+  height: 2px;
+  background: #0078d4;
+  animation: edge-pulse 1.2s ease-in-out infinite;
+  box-shadow: 0 0 6px rgba(0, 120, 212, 0.5);
+}
+
+@keyframes edge-pulse {
+  0% { transform: scaleX(0.05); transform-origin: left; }
+  50% { transform: scaleX(0.7); transform-origin: left; }
+  100% { transform: scaleX(1); transform-origin: right; opacity: 0; }
+}
+
+/* 浏览器主体舞台 */
+.edge-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.edge-viewport {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.edge-web {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: inline-flex;
+  background: #ffffff;
+}
+
+/* 空白页 */
+.edge-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-sub, #94a3b8);
+}
+
+.edge-empty-title {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--fg, #e2e8f0);
+  margin-bottom: 6px;
+}
+
+.edge-empty-tip {
+  font-size: 13px;
+}
+
+/* 错误遮罩与自愈 */
+.edge-err-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card, #1e1e24);
+  padding: 24px;
+  z-index: 10;
+}
+
+.edge-err-box {
+  max-width: 440px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.edge-err-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(216, 59, 1, 0.12);
+  color: #d83b01;
+  margin-bottom: 14px;
+}
+
+.edge-err-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--fg, #f8fafc);
+}
+
+.edge-err-desc {
+  font-size: 13px;
+  color: var(--fg-sub, #94a3b8);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.edge-err-url {
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--fg-sub, #64748b);
+  word-break: break-all;
+  margin-bottom: 20px;
+}
+
+.edge-err-ops {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.edge-pill-btn {
+  border: 1px solid var(--line-soft, rgba(255, 255, 255, 0.15));
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--fg, #e2e8f0);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.edge-pill-btn:hover {
+  background: rgba(127, 127, 127, 0.12);
+}
+
+.edge-pill-btn.primary {
+  background: #0078d4;
+  border-color: #0078d4;
+  color: #ffffff;
+}
+
+.edge-pill-btn.primary:hover {
+  opacity: 0.9;
+}
+
+/* 缩放比例微标 —— 仅在非 100% 时低调显示在地址栏右侧 */
+.edge-zoom-indicator {
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--fg-sub, #94a3b8);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: all 0.12s ease;
+}
+
+.edge-zoom-indicator:hover {
+  background: #0078d4;
+  color: #ffffff;
+}

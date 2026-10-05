@@ -1,0 +1,401 @@
+/* 派单队列面板的皮 —— 只管好看，不管逻辑（逻辑在 plugins/tickets/index.js，数据在 dispatch 的收件箱里） */
+
+.tk {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  color: var(--text, #dfe5ee);
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ 顶栏 */
+
+.tk-top {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1080px;
+  margin-inline: auto;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line, #2a3342);
+}
+
+.tk-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.tk-stats {
+  font-size: 11.5px;
+  color: var(--faint, #7f8b9e);
+}
+
+.tk-spacer {
+  flex: 1;
+}
+
+/* 滚动层写成 auto —— 核心的适配层认它是弹性内容，拉小就滚，不整块缩
+
+   宽屏下的排法：主列（等交付）+ 右栏（交付 / 撤单的历史），整块限宽 1080 居中。
+   单列铺满时一条票据会横跨一千五百像素，任务正文被拉成一行长条，扫不动 ——
+   收窄压住行长，右边那一栏把宽度接住，不留一大片空。 */
+.tk-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 8px 14px 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+  gap: 0 20px;
+  align-content: start;
+  width: 100%;
+  max-width: 1080px;
+  margin-inline: auto;
+}
+
+.tk-main,
+.tk-side {
+  min-width: 0;
+}
+
+/* 窗口窄下来（面板跟着窄）就退回单列，别硬挤出两栏 */
+@media (max-width: 1200px) {
+  .tk-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ------------------------------------------------------------------ 分组 */
+
+.tk-group {
+  margin: 10px 4px 6px;
+  font-size: 11.5px;
+  letter-spacing: 0.4px;
+  color: var(--faint, #7f8b9e);
+}
+
+.tk-group:first-child {
+  margin-top: 2px;
+}
+
+/* ------------------------------------------------------------------ 一条 */
+
+.tk-row {
+  border: 1px solid var(--line, #2a3342);
+  border-radius: 8px;
+  padding: 7px 10px;
+  margin-bottom: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+}
+
+.tk-row.is-waiting {
+  border-color: rgba(224, 149, 75, 0.45);
+}
+
+.tk-row.is-done {
+  border-color: rgba(91, 140, 255, 0.4);
+  background: rgba(91, 140, 255, 0.03);
+}
+
+.tk-row.is-accepted {
+  border-color: rgba(143, 214, 168, 0.4);
+  background: rgba(143, 214, 168, 0.02);
+  opacity: 0.8;
+}
+
+/* 撤了的单：划一道，一眼看出它出局了，但记录还留着 */
+.tk-row.is-dead {
+  opacity: 0.5;
+  border-style: dashed;
+}
+
+.tk-row.is-dead .tk-task {
+  text-decoration: line-through;
+}
+
+.tk-row:hover {
+  border-color: var(--accent, #e0954b);
+}
+
+.tk-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tk-token {
+  flex: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line, #2a3342);
+  color: var(--faint, #7f8b9e);
+}
+
+.tk-row.is-waiting .tk-token {
+  border-color: rgba(224, 149, 75, 0.6);
+  color: #e0954b;
+}
+
+.tk-route {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tk-arrow {
+  color: var(--faint, #7f8b9e);
+  margin: 0 4px;
+}
+
+.tk-time {
+  margin-left: auto;
+  flex: none;
+  font-size: 11.5px;
+  color: var(--faint, #7f8b9e);
+}
+
+/* 撤单 / 恢复 —— 行里的按钮，别让它把整行的"展开"点掉（onClick 里已经 stopPropagation） */
+.tk-btn {
+  flex: none;
+  font-size: 11.5px;
+  line-height: 1;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line, #2a3342);
+  background: transparent;
+  color: var(--faint, #7f8b9e);
+  cursor: pointer;
+}
+
+.tk-btn:hover {
+  border-color: #e0674f;
+  color: #e0674f;
+}
+
+.tk-btn-accept {
+  color: #8fd6a8;
+  border-color: rgba(143, 214, 168, 0.4);
+}
+
+.tk-btn-accept:hover {
+  border-color: #8fd6a8;
+  color: #8fd6a8;
+  background: rgba(143, 214, 168, 0.1);
+}
+
+.tk-btn-reject {
+  color: #e0954b;
+  border-color: rgba(224, 149, 75, 0.4);
+}
+
+.tk-btn-reject:hover {
+  border-color: #e0674f;
+  color: #e0674f;
+  background: rgba(224, 103, 79, 0.1);
+}
+
+.tk-reject-tag {
+  display: inline-block;
+  font-size: 11px;
+  color: #e0674f;
+  background: rgba(224, 103, 79, 0.12);
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-left: 6px;
+}
+
+.tk-reject-form {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.tk-reject-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--line, #2a3342);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--text, #dfe5ee);
+  outline: none;
+}
+
+.tk-reject-input:focus {
+  border-color: var(--accent, #e0954b);
+}
+
+.tk-task {
+  margin-top: 5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tk-row.is-open .tk-task {
+  display: block;
+  -webkit-line-clamp: unset;
+}
+
+.tk-files {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--faint, #7f8b9e);
+  word-break: break-all;
+}
+
+.tk-note {
+  color: #8fd6a8;
+}
+
+/* 文件路径：默认只报个数，点开才列 —— 20 条长路径直接摊开就是一屏碎字 */
+.tk-more {
+  cursor: pointer;
+  border-bottom: 1px dotted var(--faint, #7f8b9e);
+}
+
+.tk-more:hover {
+  color: var(--accent, #e0954b);
+  border-bottom-color: var(--accent, #e0954b);
+}
+
+.tk-paths {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  list-style: none;
+  max-height: 190px;
+  overflow-y: auto;
+  border-left: 2px solid var(--line, #2a3342);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+
+.tk-paths li {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tk-follow {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: #e0954b;
+}
+
+.tk-blank {
+  padding: 18px 12px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--faint, #7f8b9e);
+}
+
+/* ------------------------------------------------------------------ 验收打分表单与评分徽章 */
+
+.tk-score-tag {
+  display: inline-block;
+  font-size: 11px;
+  color: #ffd166;
+  background: rgba(255, 209, 102, 0.12);
+  border: 1px solid rgba(255, 209, 102, 0.35);
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-left: 6px;
+  font-weight: 500;
+}
+
+.tk-accept-form {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(143, 214, 168, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tk-form-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #8fd6a8;
+}
+
+.tk-form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tk-form-label {
+  flex: 0 0 72px;
+  font-size: 11.5px;
+  color: var(--faint, #7f8b9e);
+}
+
+.tk-score-options {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tk-score-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--line, #2a3342);
+  background: transparent;
+  color: var(--faint, #7f8b9e);
+  cursor: pointer;
+}
+
+.tk-score-btn:hover {
+  border-color: #ffd166;
+  color: #ffd166;
+}
+
+.tk-score-btn.is-active {
+  border-color: #ffd166;
+  background: rgba(255, 209, 102, 0.15);
+  color: #ffd166;
+  font-weight: 600;
+}
+
+.tk-form-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--line, #2a3342);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--text, #dfe5ee);
+  outline: none;
+}
+
+.tk-form-input:focus {
+  border-color: #8fd6a8;
+}
+
+.tk-form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}

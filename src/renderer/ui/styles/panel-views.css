@@ -1,0 +1,207 @@
+/* panel-views.css —— 表格 / 表单 / 网页 / 文件树
+   原 styles.css 第 1392-1511 行，按块原样搬过来的。 */
+
+/* ---------------------------------------------------------------- 表格 / 表单 / 网页 */
+
+.body-form {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.body-form label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--dim);
+}
+
+.body-form input {
+  width: 260px;
+}
+
+.body-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12.5px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.body-table td {
+  border-bottom: 1px solid var(--line-soft);
+  border-right: 1px solid var(--line-soft);
+  padding: 7px 13px;
+}
+
+.body-table tr:last-child td {
+  border-bottom: none;
+}
+
+.body-table td:last-child {
+  border-right: none;
+}
+
+.body-web {
+  flex: 1;
+  min-height: 240px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: #fff;
+}
+
+/* ---------------------------------------------------------------- 文件树
+   照主流编辑器的做法：固定缩进步进 + 单色描边图标，层级只靠缩进和字色明暗。
+   不画引导竖线、不给扩展名上色、不加粗、不显示文件大小（大小在 title 里）。
+   这里的克制是刻意的：它得和表格、表单、对话区看起来像同一个软件。 */
+
+.file-tree {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ft-head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 1px 2px 8px;
+}
+
+.ft-rootline {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ft-roottag {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.ft-root {
+  min-width: 0;
+  font-size: 10.5px;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ft-filter {
+  width: 100%;
+  height: 26px;
+  font-size: 11.5px;
+  padding: 0 9px;
+  border-radius: var(--r-sm);
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+
+/* 焦点样式跟 base.css 里的输入框保持一致 */
+.ft-filter:focus {
+  outline: none;
+  border-color: var(--focus-line);
+  background: var(--bg);
+}
+
+.ft-filter::placeholder {
+  color: var(--faint);
+}
+
+.ft-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 0 10px;
+}
+
+.ft-empty {
+  color: var(--faint);
+  font-size: 11.5px;
+  padding: 8px 10px;
+}
+
+.ft-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding-right: 8px;
+  margin: 0 3px;
+  border-radius: 5px;
+  color: var(--text-2);
+  cursor: default;
+  white-space: nowrap;
+  transition: background var(--ease), color var(--ease);
+}
+
+.ft-row:hover {
+  background: var(--tint-b);
+}
+
+.ft-row.is-dir {
+  color: var(--text);
+}
+
+/* 选中的是整行，不加侧边条 */
+.ft-row.is-on {
+  background: var(--tint-c);
+  color: var(--text);
+}
+
+.ft-caret {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--faint);
+  transition: transform var(--ease);
+}
+
+.ft-caret.is-open {
+  transform: rotate(90deg);
+}
+
+/* 文件行在箭头位置留个空位，图标才能整列对齐 */
+.ft-spacer {
+  flex: none;
+  width: 12px;
+}
+
+.ft-ic {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--dim);
+}
+
+.ft-row.is-dir .ft-ic {
+  color: var(--text-2);
+}
+
+.ft-row.is-on .ft-ic {
+  color: var(--text);
+}
+
+.ft-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 过滤结果的扁平表：行首标上级目录，压得比文件名暗 */
+.ft-up {
+  flex: none;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10.5px;
+  color: var(--faint);
+}

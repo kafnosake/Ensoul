@@ -1,0 +1,645 @@
+/* ============================================================================
+   实时计费面板
+   读的是插件写下的 `.ensoul/state/billing.json`（明细 + 分支）和
+   `.ensoul/state/billing.live.json`（跑动中那一轮）。
+
+   排布从"一句话就能答上来"的顺序往下走：**这一笔多少钱**（两个大数）→
+   **从哪个点起算**（分支条）→ **钱花在哪个模型上**（按天 × 模型的表）。
+   那种"一排小字什么都想说"的界面对账本是没用的。
+
+   滚动：这一块**自己不管滚动条** —— 宿主那一层 `.panel-scroll` 就是干这个的
+   （核心的自适应层看见"滚得动"的层就当弹性内容，一根手指都不碰，见 FitBox.tsx）。
+   所以尺寸一律按自然尺寸写，别乘倍率、也别自己写测量。
+   ========================================================================== */
+
+.bill {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  /* 窄栏自适应的依据：量的是**这块面板**多宽，不是窗口多宽 ——
+     面板并排 / 塞进侧边栏时窗口很宽，media query 会判成"宽屏"，那就等于没判。 */
+  container-type: inline-size;
+}
+
+/* ---------------------------------------------------------------- 顶部那一行 */
+
+.bill-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.bill-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.bill-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 正在跑：一颗会呼吸的点。一眼就知道"这个数字还在涨" */
+.bill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: bill-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes bill-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.bill-btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel, transparent);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.bill-btn:hover {
+  border-color: var(--line-hi);
+  background: var(--line-soft);
+}
+
+.bill-btn.is-primary {
+  margin-left: auto;
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.bill-btn.is-primary:hover {
+  background: var(--accent);
+  color: var(--panel, #fff);
+}
+
+/* ---------------------------------------------------------------- 两个大数 */
+
+.bill-cards {
+  display: flex;
+  gap: 10px;
+  flex: none;
+}
+
+.bill-card {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 分支那一张用 accent 描边：它是"你正在看的那一笔" */
+.bill-card.is-branch {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* 还没打分支时右边那张是"空位"，退到背景里，别跟左边那个数抢注意力 */
+.bill-card.is-hint {
+  border-style: dashed;
+}
+
+.bill-card-k {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.bill-card-v {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.bill-card-v.is-dim {
+  color: var(--faint);
+}
+
+.bill-card.is-branch .bill-card-v {
+  color: var(--accent);
+}
+
+.bill-card-s {
+  font-size: 11px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.bill-free {
+  color: var(--warn);
+}
+
+/* ---------------------------------------------------------------- 分支条 */
+
+.bill-branches {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--line-soft);
+}
+
+.bill-branches-k {
+  font-size: 11px;
+  color: var(--dim);
+  margin-right: 2px;
+}
+
+.bill-chip-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel, transparent);
+  overflow: hidden;
+}
+
+.bill-chip-wrap.is-on {
+  border-color: var(--accent);
+}
+
+.bill-chip {
+  font: inherit;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel, transparent);
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.bill-chip-wrap .bill-chip {
+  border: none;
+  border-radius: 0;
+}
+
+.bill-chip:hover {
+  color: var(--text);
+  background: var(--line-soft);
+}
+
+.bill-chip.is-on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* 删掉一个小叉：平时很淡，指上去才红 —— 它挨着选中按钮，不能点错 */
+.bill-x {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 3px 7px;
+  border: none;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+}
+
+.bill-x:hover {
+  color: var(--danger, #e5534b);
+  background: var(--line-soft);
+}
+
+.bill-hint {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* ============================================================================
+   按模型：一个模型两根横柱
+   ============================================================================
+
+   上面那根是**用量**（缓存命中 / 未命中输入 / 输出，三截 token），
+   下面那根是**价格**（同样三截，各自按单价折算成元）。
+   同一个颜色在两根柱里意思是同一件事 —— 对得上，才读得出"钱花在哪"。
+
+   长度按**这一段里最大的那个模型归一**（它满格 = 100%），别的按比值缩。
+   所以横着比的是"谁是大头"；绝对值写在柱头，两组数字都能对。
+
+   为什么横着放：模型名是长字符串（deepseek-v4-flash 这种），竖排要么转 90° 读、
+   要么缩写成看不懂的东西 —— 横条左边有整整一栏可以正着写全名。 */
+
+.bill-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: none;
+}
+
+.bill-sec-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bill-sec-h h4 {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dim);
+}
+
+.bill-sec-h h4 b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 口径开关（用量 / 价格 / 都看）与时间范围开关：同一种小按钮，各管一件事 */
+.bill-seg {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* 时间范围靠右站：它管的是"哪一段"，跟左边那两个管"看什么"的不是一回事 */
+.bill-seg.is-right {
+  margin-left: auto;
+}
+
+.bill-seg-b {
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  border: none;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.bill-seg-b:hover {
+  color: var(--text);
+  background: var(--line-soft);
+}
+
+.bill-seg-b.is-on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/*
+ * 禁用的档位（目前只有「分支」：一个分支都没打的时候它跟「全部」是同一个意思）。
+ * 灰掉 + 一条斜杠光标，让人一眼看出"这个现在不成立"，而不是点了没反应。
+ */
+.bill-seg-b:disabled {
+  color: var(--faint);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bill-seg-b:disabled:hover {
+  background: transparent;
+  color: var(--faint);
+}
+
+/* 图例：三截颜色分别是什么。柱子就照这个图上色 */
+.bill-key {
+  display: flex;
+  align-items: center;
+  gap: 4px 12px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.bill-key-i {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.bill-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
+/*
+ * 一个模型**一行**，不是一张张卡片并排。
+ *
+ * 一行一个的理由：两根柱子是横向的，比的就是长短 —— 排成两列网格时，
+ * 左右两列的柱子起点不一样，"谁更长"就得先在脑子里换算一遍。
+ * 一行一个 + 左侧固定一栏名字，所有柱子从同一条竖线起跑，竖着扫下来就能比。
+ */
+.mb-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 7px;
+}
+
+/* 斑马纹：一行一行扫下来时，眼睛不会串行 */
+.mb:nth-child(even) {
+  background: var(--line-soft);
+}
+
+/*
+ * 左侧那一栏：模型名 + 轮次。**定宽**（不是 flex:1）——
+ * 定宽才让右边所有柱子从同一条竖线上起跑，这是整块的版式基准。
+ * 名字太长就省略号收住，完整名在悬停的 title 里。
+ */
+.mb-side {
+  flex: none;
+  width: 190px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.mb-name {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mb-sub {
+  font-size: 10.5px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 右边：两根柱上下摞，占满剩下的宽 */
+.mb-bars {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* 一根横柱：标签 + 轨道 + 柱头数值 */
+.mb-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mb-k {
+  flex: none;
+  width: 24px;
+  font-size: 10px;
+  color: var(--faint);
+  text-align: right;
+}
+
+/* 柱头那个绝对值：定宽 + 等宽数字，所有行的数字才对得齐一列 */
+.mb-val {
+  flex: none;
+  width: 76px;
+  font-size: 11px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/*
+ * 轨道：满格就是 100% 宽。**必须占满剩下的宽**（flex:1）——
+ * 柱子的长度是百分比，父层得有确切宽度才算得出来。
+ * 淡底槽就是刻度：有它才看得出"这根离满格还差多少"。
+ */
+.mb-track {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 11px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+/* 柱子本体：三截横着摞，各按自己那份 flexGrow 分宽 */
+.mb-fill {
+  height: 100%;
+  display: flex;
+  border-radius: 3px;
+  overflow: hidden;
+  /* 满格那一根正好顶到头，其余按比值 —— 所以不能再加最小宽度，
+     加了就把"很小但非零"和"确实为零"画成一样长了 */
+  transition: width 0.25s ease;
+}
+
+.mb-fill i {
+  display: block;
+  height: 100%;
+  min-width: 0;
+}
+
+/* 一分钱没花 / 一个 token 都没有：在轨道最左边点一小截，
+   别让整条轨道空着 —— 空着看着像"这一行没渲染出来" */
+.mb-nil {
+  display: block;
+  width: 3px;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--line-hi);
+}
+
+.bill-empty {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--faint);
+  padding: 14px 2px;
+}
+
+/* ---------------------------------------------------------------- 明细表
+   跟上面同一份数据，摊平成一行一个模型。列跟着口径开关走：
+   只看用量时没有"花费"那一列，只看价格时没有那四列 token。 */
+
+.bill-tbl-wrap {
+  overflow-x: auto;
+}
+
+.bill-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.bill-tbl th {
+  padding: 5px 10px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--faint);
+  text-align: left;
+  border-bottom: 1px solid var(--line-soft);
+  white-space: nowrap;
+}
+
+.bill-tbl td {
+  padding: 5px 10px;
+  color: var(--dim);
+  border-bottom: 1px solid var(--line-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.bill-tbl tr:hover td {
+  background: var(--line-soft);
+}
+
+/* 合计那一行：上面一条实线跟数据分开，别让它混进模型列表里 */
+.bill-tbl tfoot td {
+  border-top: 1px solid var(--line);
+  border-bottom: none;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.bill-tbl .is-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.bill-model {
+  color: var(--text);
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 11.5px;
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bill-cost {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- 窄栏（侧边栏 / 并排挤瘦了）
+   用 container query：量的是**这块面板自己**的宽度，不是窗口宽度 ——
+   面板并排或塞进侧边栏时窗口很宽，media query 会判成"宽屏"，那就等于没判。
+
+   窄栏要保住的是"哪个模型、多少钱"：两根柱子必须在（它们就是这一块的正文），
+   砍的是**次要的细节** —— 标题里的字、表格的列、内边距。 */
+
+@container (max-width: 380px) {
+  /* 注意：这一块里**不能写 .bill 自己的样式** —— 容器在自己身上，自己不是自己的
+     容器后代，那条规则永远不匹配。要塞就塞进一个内层元素。 */
+
+  /* 两个大数上下摞：挤在一行里会各自窄到看不清那个数 */
+  .bill-cards {
+    flex-direction: column;
+  }
+
+  .bill-card-v {
+    font-size: 19px;
+  }
+
+  /* 名字栏收窄：侧边栏里 190px 会把柱子挤没。柱子才是正文，砍的是名字那一栏的宽 */
+  .mb-side {
+    width: 108px;
+  }
+
+  /* 柱头的数字也收窄一点，优先把宽留给柱子 */
+  .mb-val {
+    width: 62px;
+    font-size: 10.5px;
+  }
+
+  /* 开关一行放不下就换行，别把它们压成一条线 */
+  .bill-sec-h {
+    flex-wrap: wrap;
+  }
+
+  .bill-seg.is-right {
+    margin-left: 0;
+  }
+
+  /* 表格在这个宽度下留着也读不清：三列 token 砍掉，
+     它们的量在上面那根用量柱里都有 —— 这里要的是"哪个模型贵" */
+  .bill-tbl th:nth-child(4),
+  .bill-tbl td:nth-child(4),
+  .bill-tbl th:nth-child(5),
+  .bill-tbl td:nth-child(5),
+  .bill-tbl th:nth-child(6),
+  .bill-tbl td:nth-child(6) {
+    display: none;
+  }
+
+  .bill-tbl th,
+  .bill-tbl td {
+    padding: 5px 6px;
+  }
+
+  /* 顶上那一行的按钮别跟标题抢：放它独占一行 */
+  .bill-head {
+    flex-wrap: wrap;
+  }
+
+  .bill-btn.is-primary {
+    margin-left: 0;
+  }
+}
+
+
+/* ---------------------------------------------------------------- 脚注 */
+
+.bill-foot {
+  flex: none;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--faint);
+}
+
+.bill-warn {
+  color: var(--warn);
+}
+
+.bill-err {
+  font-size: 12px;
+  color: var(--danger, #e5534b);
+}

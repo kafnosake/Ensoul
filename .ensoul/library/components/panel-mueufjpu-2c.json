@@ -1,0 +1,20 @@
+{
+  "id": "panel-mueufjpu-2c",
+  "panel": "panel-mueufjpu-2c",
+  "name": "浏览器",
+  "kind": "browser",
+  "title": "浏览器",
+  "look": {
+    "accent": "#5b8cff",
+    "density": "normal",
+    "showChat": true
+  },
+  "spec": {
+    "body": "messages",
+    "systemPrompt": "",
+    "actions": [],
+    "fields": []
+  },
+  "note": "内置浏览器：真 Chromium 内核开网页，查文档、验收页面",
+  "at": 1790313897392
+}

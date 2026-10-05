@@ -1,0 +1,410 @@
+/* float.css —— 拖动浮窗的落点提示、悬浮面板（便签）、解除悬浮
+   原 styles.css 第 2057-2244 行，按块原样搬过来的。 */
+
+/*
+ * 浮窗**没有**自己的标题栏 —— 顶上那一条就是标签栏（浏览器那样）。
+ *
+ * 那条 header 只干两件事（拖窗口、放窗口按钮），却占掉一整行。现在：
+ *   · 拖窗口   → 拖标签栏的空白处（FloatingShell 的 onStripPointerDown → barDown）
+ *   · 窗口按钮 → 浮在这一条的右端（.floating-tools）
+ *
+ * 下面这行别删：-webkit-app-region: drag 的区域上 Windows 会接管鼠标，
+ * pointer 事件根本不派发给渲染层 —— 浮窗那套自己实现的拖动（跟手、落点提示、
+ * 松手判定）一个信号都收不到，会整条失效。浮窗必须整体 no-drag。
+ */
+.floating-shell {
+  -webkit-app-region: no-drag;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+/*
+ * 浮窗四周不留边，去掉 tabs-group 多余的圆角和阴影卡片边框：
+ * 浮窗本身由系统原生窗口裁切圆角（Windows 11 DWM 原生圆角与阴影），
+ * 内部 tabstrip 与 panel 直通窗口边缘，不再露出任何外层底盖。
+ */
+.floating-shell .workspace {
+  padding: 0;
+  background: var(--panel);
+}
+
+.floating-shell .tabs-group {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--panel);
+}
+
+/*
+ * 浮窗右端的窗口按钮：浮在标签栏那一条上，和浏览器同一个位置。
+ *
+ * 这一层**自己不吃鼠标**（pointer-events: none），只有按钮吃 —— 它压在标签栏的
+ * 右端那一段上；整层都吃鼠标的话，那一段空白就不再是窗口的把手了。
+ * 下面那条 > * 只把按钮捡回来。
+ */
+.floating-tools {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 20; /* 标签滚过来不许盖住按钮 */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px; /* 正好是标签栏那一条的高度 */
+  padding: 0 6px 0 10px;
+  background: var(--grad-dock); /* 同一条底，看着就是标签栏的右端 */
+  pointer-events: none;
+}
+
+.floating-tools > * {
+  pointer-events: auto;
+}
+
+/*
+ * 左端的小把手 —— 浮窗挪窗口全靠它（没有标题栏了）。
+ * 它压在标签栏最左边那一小段上：体积小到不碍事，但永远抓得住 ——
+ * 标签多到把整条占满时，标签栏的空白处就没了，只剩这个。
+ */
+.float-grip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 15px;
+  height: 34px;
+  z-index: 21; /* 压在标签栏上面（是把手，不是装饰） */
+  cursor: move;
+}
+
+.float-grip::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 11px;
+  width: 5px;
+  height: 12px;
+  background-image: radial-gradient(circle, var(--fill-dim) 1px, transparent 1.4px);
+  background-size: 5px 6px;
+}
+
+.floating-tools .win-buttons {
+  margin-left: 0;
+}
+
+.floating-tools .win-buttons button {
+  height: 26px;
+  min-width: 30px;
+  padding: 0 6px;
+}
+
+/*
+ * 标签栏给按钮让出位置：整条留一段右内边距，标签排到这儿就换下一行（这里不换行，
+ * 于是多出来的标签收进溢出）—— 总之不会滑到按钮底下被盖住。
+ */
+.floating-shell .tabstrip {
+  padding-left: 18px; /* 给左端那个把手让位 */
+  padding-right: 152px; /* 给右端那排窗口按钮让位（它们不吃鼠标，那一段仍是把手） */
+  cursor: move; /* 这一条的空白处 = 窗口的把手，光标得说出来 */
+}
+
+.win-flag {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+/* ---------------------------------------------------------------- 拖动浮窗时的落点提示 */
+
+.zone-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+  animation: fade-in 90ms ease-out;
+}
+
+.zone-box {
+  position: absolute;
+  /* left/top/width/height 由 ZoneHint 当场写 inline，别在这儿再给一份 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 和拖面板那套同一副面孔：毛玻璃盖住"即将被占的那块地" */
+  background: rgba(var(--accent-rgb), 0.1);
+  backdrop-filter: blur(18px) saturate(1.3);
+  border: 1px solid rgba(var(--accent-rgb), 0.5);
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.zone-label {
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--accent);
+  background: var(--pop-dim);
+  border-radius: 999px;
+}
+
+/*
+ * 框的位置不再由 CSS 按「哪一区」摆 —— 它由 ZoneHint 按落点当场算出来
+ * （inline 的 left/top/width/height）。
+ *
+ * 原来这里按 is-left / is-center 这类名字摆百分比，等于把「落点长什么样」
+ * 又抄了一份在 CSS 里：主进程那套判定一改，这些框就和真正会发生的事对不上，
+ * 界面开始撒谎。现在只有一处判定（dock/drag.ts 的 probeAt），框跟着它走。
+ */
+
+/* ---------------------------------------------------------------- 悬浮面板（便签） */
+
+/* 便签相对**所属那块区域**定位，所以那块区域得是定位上下文 */
+.tabs-group {
+  position: relative;
+}
+
+/*
+ * 浮起来的**挂件**只剩内容。
+ *
+ * panel.css 给 .panel-surface 的那层底（--panel）是给停靠面板的。挂件压在别的面板
+ * 上面，那层不透明的底跟着飘上去，"容器透明、只有表盘 / 形象是实心的"这条契约就断了。
+ *
+ * 但**不能按"浮起来了"一刀切**：会话、文件、编辑器浮起来也照样要那块实心的底，
+ * 它们里面是要读的正文。所以只对**自己声明了 floatBare 的类型**免掉（见 registry.tsx
+ * 的 PanelTypeDef.floatBare，由 FloatPanel 按 panel.kind 打上 bare-float）。
+ */
+.float-panel.bare-float .panel-surface {
+  background: transparent;
+}
+
+/*
+ * 透明处**不吃鼠标** —— bare-float 的另一半，和上面那条免底是同一件事。
+ *
+ * 壳是个矩形，可挂件看起来只有中间那块实心的东西（一块表盘、一只鲸鱼娘）。
+ * 矩形里透明的地方要是照样挡着鼠标，压在底下的面板就点不到了 ——
+ * 而它明明"看得见、摸不着"，这块挂件就成了透明的盖子。
+ *
+ * pointer-events 是**继承**的：壳一关，里面全部跟着关。所以分两层：
+ *   · 壳、面板壳（那两层都是透明的）→ none，事件漏给底下的面板
+ *   · 实心件 → 由**各自的皮**把鼠标要回去（.pomo-ring、.wp-fig 那些，见各自
+ *     panel.css）。核心猜不出挂件的形状：圆表盘和一只鲸鱼娘，只有皮自己知道
+ *
+ * 下面这些操纵件必须留着可命中。锁定时在内容上长按右键解锁，透明区域继续穿透：
+ *   · 锁定按钮：只在解锁后显示
+ *   · 拖动带 / 改大小把手：解锁后要能抓得到，它们本来就在壳的边上
+ *   · 对话区（.chatdock）：挂件开着会话时它可不是"只剩一块实心件"——
+ *     消息要能选中、输入框要能打字。对话区是核心的东西，插件不认识它，所以由这儿列
+ */
+.float-panel.bare-float {
+  pointer-events: none;
+}
+
+.float-panel.bare-float .float-lock,
+.float-panel.bare-float .float-bar,
+.float-panel.bare-float .float-unlock,
+.float-panel.bare-float .float-resize,
+.float-panel.bare-float .chatdock {
+  pointer-events: auto;
+}
+
+/*
+ * 控件的显形改由**它们自己**的 hover 触发。
+ *
+ * 原来一律走 `.float-panel:hover`（见下面那几条）：壳能吃到鼠标，鼠标进到矩形里就算
+ * 悬停。可 bare-float 的壳是 pointer-events:none —— 它压根不是命中目标，这条链可能
+ * 根本不成立，于是锁和拖动带永远显不出来，用户只看到一块动不了的东西。
+ * 它们自己已经是命中目标了（上面那条 auto），那就自己说自己显形，不靠壳。
+ */
+.float-panel.bare-float .float-lock:hover,
+.float-panel.bare-float .float-bar:hover,
+.float-panel.bare-float .float-unlock:hover {
+  opacity: 1;
+}
+
+.float-panel {
+  position: absolute;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  /* 不设 min-width/min-height：最小尺寸由组件决定，CSS 再写一份会跟它的夹取打架 */
+  overflow: hidden;
+  /* 只显示渲染层：窗口本身不画底、不描边 */
+  background: transparent;
+  border-radius: 12px;
+  transition: box-shadow 120ms ease-out;
+}
+
+/*
+ * 悬停高亮 —— **只在解开锁的时候**。
+ *
+ * 锁着时鼠标移上来什么边框都不画：那圈 1px 强调色 + 投影把挂件的矩形范围描了出来，
+ * 而"锁"的全部意义就是让用户**无感地看**——它就该像桌面歌词那样，只剩内容本身，
+ * 看不出这里还框着一块地方。所以关掉这一条不是省事，是锁的一半。
+ */
+.float-panel:not(.is-locked):hover {
+  box-shadow: 0 0 0 1px var(--accent), 0 18px 48px rgba(0, 0, 0, 0.5);
+}
+
+/*
+ * 拖动带：**只有解开锁才渲染**（见 FloatPanel）。悬停时显形，告诉使用者"这里可以拖"。
+ * 它顶上那排按钮占了右边一条，所以右边留白给它们让开。
+ */
+.float-bar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 22px;
+  padding: 0 86px 0 9px;
+  cursor: move;
+  opacity: 0;
+  background: linear-gradient(180deg, var(--pop-a), var(--pop-b));
+  backdrop-filter: var(--glass-blur);
+  transition: opacity 120ms ease-out;
+}
+
+.float-panel:hover .float-bar {
+  opacity: 1;
+}
+
+.float-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.float-dot.st-working {
+  animation: dot-breathe 1.4s ease-in-out infinite;
+}
+
+.float-title {
+  flex: 1;
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 解锁后的锁定入口，和解除悬浮按钮并排。 */
+.float-lock {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 18px;
+  padding: 0;
+  color: var(--text);
+  background: var(--pop-a);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease-out;
+}
+
+.float-panel:hover .float-lock {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.float-lock:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.float-unlock-progress {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  color: #f3f5f8;
+  background: rgba(18, 22, 28, 0.92);
+  pointer-events: none;
+}
+
+.float-unlock-progress > svg:first-child {
+  position: absolute;
+  inset: 0;
+  width: 40px;
+  height: 40px;
+  transform: rotate(-90deg);
+  fill: none;
+  stroke-width: 2.5px;
+}
+
+.float-unlock-progress > svg:last-child {
+  width: 14px;
+  height: 14px;
+}
+
+.float-unlock-track {
+  stroke: rgba(255, 255, 255, 0.22);
+}
+
+.float-unlock-fill {
+  stroke: #f3f5f8;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+/* 解除悬浮的出口：解锁之后才渲染，而且平时不接收点击，免得挡住内容 */
+.float-unlock {
+  position: absolute;
+  top: 3px;
+  right: 34px;
+  z-index: 3;
+  height: 18px;
+  padding: 0 8px;
+  font-size: 10.5px;
+  color: var(--text);
+  background: var(--pop-a);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease-out;
+}
+
+.float-panel:hover .float-unlock {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.float-unlock:hover {
+  border-color: var(--accent);
+}
+
+.float-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.float-body > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.float-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, var(--line) 50%);
+  border-bottom-right-radius: 11px;
+}

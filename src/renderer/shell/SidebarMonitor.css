@@ -1,0 +1,976 @@
+/* 全局侧边监视台样式 (与收纳区 ComponentBar 同级) */
+
+.sidebar-monitor-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-soft);
+  border-right: 1px solid var(--line-soft);
+  box-sizing: border-box;
+  user-select: none;
+  position: relative;
+  z-index: 10;
+  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.sidebar-monitor-root.is-collapsed {
+  width: 48px;
+}
+
+.sidebar-monitor-root.is-expanded {
+  width: 236px;
+}
+
+/* 顶部微型控制栏 */
+.sbm-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 0 8px 0 13px;
+  height: 38px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--line-soft);
+  position: relative;
+}
+
+/* 折叠态与展开态按钮左边距完全锁定为 13px (13 + 22 + 13 = 48)，零横向漂移，绝不从右滑入 */
+.sidebar-monitor-root.is-collapsed .sbm-head {
+  justify-content: flex-start;
+  padding: 0 0 0 13px;
+}
+
+.sbm-head-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sbm-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sbm-toggle-btn:hover {
+  background: var(--tint-c);
+  color: var(--text);
+}
+
+.sbm-toggle-btn.is-active {
+  background: var(--tint-b);
+  color: var(--accent);
+}
+
+.sbm-toggle-btn svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.sbm-hide-btn {
+  margin-left: 2px;
+}
+
+.sbm-busy-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 1px 7px 1px 5px;
+  border-radius: 9px;
+  background: var(--busy-soft);
+  color: var(--busy-fg);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.sbm-busy-tag i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--busy-hi);
+  animation: sbm-pulse 1.4s ease-in-out infinite;
+}
+
+/* 快照读不出来（文件太大或坏了）—— 不明说的话，侧栏空着像是"员工全没了" */
+.sbm-warn {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: rgba(248, 113, 113, 0.16);
+  color: #f87171;
+  font-weight: 600;
+  flex-shrink: 0;
+  cursor: help;
+}
+
+/* 全部已读：只在真有未读时冒出来 */
+.sbm-readall-btn {
+  flex-shrink: 0;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: var(--danger-soft, rgba(229, 100, 95, 0.16));
+  color: var(--danger);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sbm-readall-btn:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+@keyframes sbm-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+/* 顶栏内嵌展开的搜索条 —— 覆盖在顶栏中间，绝不挤压列表纵向高度！ */
+.sbm-head-search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  position: relative;
+  height: 26px;
+}
+
+.sbm-head-search input {
+  width: 100%;
+  height: 100%;
+  background: var(--tint-b);
+  border: 1px solid var(--focus-line);
+  border-radius: 6px;
+  padding: 0 42px 0 7px;
+  font-size: 11px;
+  color: var(--text);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.sbm-head-search input::placeholder {
+  color: var(--faint);
+}
+
+.sbm-head-search-clear,
+.sbm-head-search-close {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%) !important;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.sbm-head-search-clear {
+  right: 20px;
+}
+
+.sbm-head-search-close {
+  right: 2px;
+}
+
+.sbm-head-search-clear:hover,
+.sbm-head-search-close:hover {
+  background: var(--tint-c);
+  color: var(--text);
+}
+
+/* 垂直头像滚动列表 */
+.sbm-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 6px 0 10px;
+  gap: 2px;
+  /* 隐藏滚动条，但保留滚动能力（列表靠滚轮/触摸板翻） */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sbm-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* 监视台被彻底隐藏时，左边缘留一个可点的小把手 —— 否则找不回来 */
+.sbm-reveal {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%) !important;
+  z-index: 40;
+  width: 14px;
+  height: 56px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  background: var(--pop-a, var(--card));
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  color: var(--dim);
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: width 0.15s, color 0.15s, background 0.15s;
+  user-select: none;
+}
+
+.sbm-reveal:active {
+  transform: translateY(-50%) !important;
+}
+
+.sbm-reveal:hover {
+  width: 18px;
+  color: var(--text);
+  background: var(--card-2);
+}
+
+.sbm-list::-webkit-scrollbar-thumb {
+  background: var(--scroll);
+  border-radius: 3px;
+}
+
+.sbm-list::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-hi);
+}
+
+.sbm-empty {
+  font-size: 11px;
+  color: var(--faint);
+  padding: 18px 0;
+}
+
+/* 单个单位项：锁定高度为 48px，坚决保持 flex-start 靠左排布 */
+.sbm-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  cursor: pointer;
+  height: 48px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  /* 恒定基准：卡片外边距 6px，卡片内 padding-left 7px 与上下 7px 留白完全对称，杜绝偏左 */
+  margin-left: 6px;
+  padding-left: 7px;
+  transition: width 0.12s cubic-bezier(0.16, 1, 0.3, 1), background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* 展开态：普通会话卡片 */
+.sidebar-monitor-root.is-expanded .sbm-item {
+  width: calc(100% - 12px);
+  margin-left: 6px;
+  margin-right: 6px;
+  padding-left: 7px;
+  padding-right: 6px;
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.sidebar-monitor-root.is-expanded .sbm-item:hover {
+  background: var(--card-2, var(--card));
+  border-color: var(--line);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+/* 展开态：后台正在运转工作的面板 —— 融入清透蓝绿色/青色微感底衬 */
+.sidebar-monitor-root.is-expanded .sbm-item.is-active:not(.is-in-review) {
+  background: color-mix(in srgb, #06b6d4 7%, var(--card));
+  border-color: color-mix(in srgb, #06b6d4 30%, var(--line-soft));
+  box-shadow: 0 1px 4px rgba(6, 182, 212, 0.1);
+}
+
+/* 展开态：正在被打开/检阅的面板 —— 右端刚好延长出容纳竖条的一小截 (多出 6px)，完整圆角微突 */
+.sidebar-monitor-root.is-expanded .sbm-item.is-in-review {
+  width: calc(100% - 6px);
+  margin-left: 6px;
+  margin-right: 0;
+  padding-left: 7px;
+  /* 右侧多留出 6px 呼吸位，使得文字/时间容器严格与普通卡片保持同一条竖直对齐线 */
+  padding-right: 12px;
+  background: #eaf1fe !important;
+  border: 1px solid #b8d2fc !important;
+  border-radius: 8px !important;
+  z-index: 2;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 1px 5px rgba(58, 111, 232, 0.15) !important;
+}
+
+[data-theme="dark"] .sidebar-monitor-root.is-expanded .sbm-item.is-in-review {
+  background: rgba(58, 111, 232, 0.22) !important;
+  border: 1px solid rgba(91, 140, 255, 0.45) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 1px 6px rgba(0, 0, 0, 0.25) !important;
+}
+
+.sidebar-monitor-root.is-expanded .sbm-item.is-in-review .sbm-name {
+  color: var(--accent) !important;
+  font-weight: 700;
+}
+
+/* 右边缘指示竖条（小胶囊状，只在展开态立在多长出来这截的核心位置） */
+.sidebar-monitor-root.is-expanded .sbm-item.is-in-review::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  border-radius: 99px;
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(58, 111, 232, 0.45);
+  opacity: 1;
+  transition: opacity 0.16s ease 0.05s;
+}
+
+/* ══════════════════════════════════════════════════
+   折叠成头像栏模式：
+   1. 锁定 48px 等高，靠左 padding-left 7px，在 48px 侧栏里完美居中，零跳动零漂移！
+   2. 边框显式保持 transparent（避免 transition 从 currentColor 突兀闪烁深色）！
+   3. 彻底移除竖条，严禁在头像上插小针！
+   4. 彻底移除 38x38 紧绷方框与突兀边框，保持纯净高级感！
+   ══════════════════════════════════════════════════ */
+.sidebar-monitor-root.is-collapsed .sbm-item {
+  width: 100% !important;
+  height: 48px !important;
+  margin: 0 !important;
+  padding: 0 7px !important; /* 7px padding + 34px avatar + 7px padding = 48px 完美居中！ */
+  justify-content: flex-start !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+  border-radius: 8px;
+}
+
+/* 折叠态绝不显示竖条 */
+.sidebar-monitor-root.is-collapsed .sbm-item::after {
+  display: none !important;
+  opacity: 0 !important;
+}
+
+/* 折叠态已打开/工作中会话绝不显示勒死头像的 38x38 小方框与刺眼边框 */
+.sidebar-monitor-root.is-collapsed .sbm-item.is-in-review,
+.sidebar-monitor-root.is-collapsed .sbm-item.is-active {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+  width: 100% !important;
+  height: 48px !important;
+  margin: 0 !important;
+  padding: 0 7px !important;
+}
+
+.sidebar-monitor-root.is-collapsed .sbm-item:hover {
+  background: var(--tint-b) !important;
+}
+
+.sidebar-monitor-root.is-collapsed .sbm-badge {
+  top: -2px;
+  right: -4px;
+  min-width: 14px;
+  height: 14px;
+  font-size: 9px;
+  line-height: 14px;
+}
+
+.sbm-avatar-box {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 !important; /* 坚决不用 margin: 0 auto，防止收缩时居中漂移从右滑入 */
+}
+
+/* 旋转光流 (工作中) —— P2 统一为蓝绿色/青色 (Cyan)，带纯白发光描边 */
+.sbm-avatar-box.is-working::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    rgba(6, 182, 212, 0.1) 30%,
+    rgba(6, 182, 212, 0.75) 60%,
+    #22d3ee 85%,
+    #ffffff 100%
+  );
+  animation: sbm-spin 1.4s linear infinite;
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.6px), #fff calc(100% - 1.8px));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.6px), #fff calc(100% - 1.8px));
+  /* 仅针对绘制出的流光弧段附加白色发光描边与青色光晕（非全环） */
+  filter:
+    drop-shadow(0 0 1.2px rgba(255, 255, 255, 0.95))
+    drop-shadow(0 0 3.5px rgba(6, 182, 212, 0.85));
+  pointer-events: none;
+}
+
+@keyframes sbm-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.sbm-avatar-circle {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: #fff;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.sbm-avatar-circle img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 状态微点 —— 一个单位只有一个点，画哪个由 dotOf() 排优先级决定：
+   P1/P3 明黄 等你点头/回话 · P2 蓝绿色/青色 正在输出 · P4 红色 上一轮失败 ·
+   P6 荧光绿色 成果可交付 · 灰 空闲 · 淡 未开班 */
+.sbm-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-soft);
+  box-sizing: content-box;
+}
+
+/* P2: 蓝绿色/青色 (Cyan) */
+.sbm-dot.working { background: #06b6d4; box-shadow: 0 0 6px rgba(6, 182, 212, 0.6); }
+
+/* P1 & P3: 明黄色 */
+.sbm-dot.ask,
+.sbm-dot.confirm { background: #eab308; box-shadow: 0 0 6px rgba(234, 179, 8, 0.6); }
+
+/* P4: 鲜红 */
+.sbm-dot.error { background: #ef4444; box-shadow: 0 0 6px rgba(239, 68, 68, 0.6); }
+.sbm-dot.unread { background: #ef4444; box-shadow: 0 0 6px rgba(239, 68, 68, 0.6); }
+
+/* P6: 荧光绿色 */
+.sbm-dot.deliverable { background: #22c55e; box-shadow: 0 0 6px rgba(34, 197, 94, 0.6); }
+
+/* 静态待处理工单（天蓝色无光流微点） */
+.sbm-dot.waiting { background: #38bdf8; box-shadow: 0 0 4px rgba(56, 189, 248, 0.5); }
+
+/* 空闲与未开班 */
+.sbm-dot.idle { background: var(--fill-dim); }
+.sbm-dot.offline { background: var(--faint); }
+
+/* ⭐ 收藏星标：压在头像左上角（可爱胖圆角黄星 + 细黑描边），往头像内部适度收拢 */
+.sbm-avatar-star {
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fde047;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* 未读数：压在头像右上角（醒目红底白字） */
+.sbm-badge {
+  position: absolute;
+  top: -3px;
+  right: -5px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  box-sizing: border-box;
+  box-shadow: 0 0 0 2px var(--bg-soft);
+}
+
+.sbm-item.is-unread .sbm-name,
+.sbm-item.is-ask .sbm-name,
+.sbm-item.is-error .sbm-name,
+.sbm-item.is-confirm .sbm-name {
+  font-weight: 600;
+}
+
+/* 展开态附带的文字信息 */
+.sbm-expanded-info {
+  margin-left: 9px;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: opacity 0.15s ease, margin-left 0.15s ease;
+}
+
+.sidebar-monitor-root.is-collapsed .sbm-expanded-info {
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  min-width: 0;
+  margin-left: 0;
+}
+
+.sbm-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sbm-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 置顶按钮：默认藏着，悬浮或已置顶时出现 */
+.sbm-pin-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  font-size: 10px;
+  line-height: 1;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+}
+
+.sbm-item:hover .sbm-pin-btn,
+.sbm-pin-btn.is-on {
+  opacity: 1;
+}
+
+.sbm-pin-btn:hover {
+  background: var(--tint-c);
+  color: var(--text);
+}
+
+.sbm-pin-btn.is-on {
+  color: var(--accent);
+}
+
+/* 监视台行可拖：按住拖进布局里挪动/打开（同收纳区入口的手感） */
+.sbm-item.is-grabbable {
+  cursor: grab;
+  user-select: none;
+}
+
+.sbm-item.is-grabbable:active {
+  cursor: grabbing;
+}
+
+/* 正在被拖的那一条：半透明跟手态 */
+.sbm-item.is-dragging {
+  opacity: 0.5;
+}
+
+/* 置顶项：左侧一道标记条，一眼看出它不属于时间流 */
+.sbm-item.is-pinned::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 60%;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.sbm-time {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.sbm-snippet {
+  font-size: 11px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ══════════════════════════════════════════════════
+   挂在全局 document.body 上的悬浮卡片 (Portal)
+   ══════════════════════════════════════════════════ */
+
+.sbm-popover {
+  position: fixed;
+  width: 310px;
+  max-height: 480px;
+  background: var(--pop-a);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  font-size: 12px;
+  z-index: 99999;
+  overflow: hidden;
+  box-sizing: border-box;
+  animation: sbm-fade-in 0.15s ease-out;
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes sbm-fade-in {
+  from { opacity: 0; transform: translateX(-5px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.sbm-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  background: var(--tint-a);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.sbm-pop-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sbm-pop-name-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin-left: -4px;
+  transition: background 0.15s;
+  min-width: 0;
+  max-width: 140px;
+}
+
+.sbm-pop-name-wrap:hover {
+  background: var(--tint-c);
+}
+
+.sbm-pop-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sbm-pop-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--dim);
+  opacity: 0.6;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.sbm-pop-name-wrap:hover .sbm-pop-edit-btn,
+.sbm-pop-edit-btn:hover {
+  opacity: 1;
+  color: var(--text);
+}
+
+.sbm-pop-name-input {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 2px 6px;
+  outline: none;
+  width: 130px;
+  box-sizing: border-box;
+}
+
+.sbm-pop-star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: color 0.15s, transform 0.15s, background 0.15s;
+}
+
+.sbm-pop-star:hover {
+  color: var(--text);
+  background: var(--tint-c);
+  transform: scale(1.1);
+}
+
+.sbm-pop-star.is-on {
+  color: var(--dim);
+}
+
+.sbm-pop-dept {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--tint-c);
+  color: var(--dim);
+  flex-shrink: 0;
+}
+
+.sbm-pop-jump {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent-fg);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.sbm-pop-jump:hover {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.sbm-pop-body {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  max-height: 280px;
+}
+
+.sbm-pop-image-wrap {
+  width: 100%;
+  max-height: 140px;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  background: var(--tint-b);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sbm-pop-image {
+  width: 100%;
+  max-height: 140px;
+  object-fit: cover;
+  display: block;
+}
+
+.sbm-section-title {
+  font-size: 10px;
+  color: var(--faint);
+  text-transform: uppercase;
+}
+
+.sbm-section-content {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+  background: var(--tint-a);
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  word-break: break-word;
+}
+
+/* 状态行 & 摘要块 —— 类名走变量，浅色模式也跟着换 */
+.sbm-pop-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.sbm-pop-status b {
+  font-weight: 500;
+}
+
+.sbm-pop-block {
+  background: var(--tint-a);
+  border: 1px solid var(--line-soft);
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+}
+
+.sbm-pop-block.is-active {
+  border-left: 2px solid var(--accent);
+}
+
+.sbm-pop-block-label {
+  font-size: 10px;
+  color: var(--faint);
+  margin-bottom: 2px;
+}
+
+.sbm-pop-block-text {
+  font-size: 11px;
+  color: var(--text);
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.sbm-pop-empty {
+  font-size: 11px;
+  color: var(--faint);
+  padding: 4px 0;
+  text-align: center;
+}
+
+/* 底部极简快速输入框 */
+.sbm-pop-input {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line-soft);
+  background: var(--tint-a);
+  gap: 6px;
+}
+
+.sbm-pop-input input {
+  flex: 1;
+  background: var(--tint-b);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--text);
+  outline: none;
+}
+
+.sbm-pop-input input:focus {
+  border-color: var(--focus-line);
+}
+
+.sbm-send-btn {
+  background: var(--accent);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-size: 11px;
+  color: #fff;
+  cursor: pointer;
+}
+
+.sbm-send-btn:hover {
+  background: var(--accent-hi);
+  border-color: transparent;
+}
+
+.sbm-send-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 便签拖拽放置目标高亮 */
+.sbm-item.is-drag-target {
+  background: rgba(234, 179, 8, 0.22) !important;
+  outline: 2px dashed #eab308 !important;
+  outline-offset: -2px;
+  transform: scale(1.05);
+  box-shadow: 0 0 12px rgba(234, 179, 8, 0.4);
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 10;
+}

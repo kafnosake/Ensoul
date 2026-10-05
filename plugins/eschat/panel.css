@@ -1,0 +1,1361 @@
+/*
+ * eschat 的皮。类名一律 wx- 开头 —— 几块面板的样式共处一个文档，
+ * 撞名就会串味（插件 CSS 建制的顺序在核心之后，插件之间谁盖谁说清）。
+ *
+ * ── 桌面即时通讯工作台（深色主题）──────────────────────
+ *
+ * 标准经典三栏布局：
+ *
+ *    56px   最左那条导航栏（头像 + 图标，选中的那个是绿的）
+ *   250px   会话列表（顶上搜索一格 + 右边的「+」）
+ *    剩余   会话本身（顶栏是名字 + 一排图标，底下是输入区）
+ *
+ * 配色：
+ *
+ *   #1c1c1c  导航栏      #262626  会话列表     #191919  会话区
+ *   #2c2c2c  对方气泡 / 输入框      #3eb575  自己气泡、选中行、发送
+ *   #a8a8a8  正文        #7a7a7a  次要        #5f5f5f  时间
+ *   #fa5151  未读红      #000000  分隔线
+ *
+ * 视觉特征规范：头像**圆形**、选中行**整条高亮底色**、气泡带尖角、
+ * 消息之间居中时间条（隔 5 分钟才出，由 panel.tsx 判断）、右下角一个方块「发送」。
+ *
+ * ── 一条必须写在这儿的事：**文字要能选中** ─────────────────────────────
+ *
+ * 核心的 base.css 在 `body` 上写了 `user-select: none`（整个软件的壳都是"拖得动"的
+ * 意思），插件面板默认继承下来 —— 于是 eschat 里一个字都选不中。第 40 行那几条
+ * 把它摘回来：**正文可选，按钮/头像/列表行不可选**（那些是可拖的，选中只会碍事）。
+ *
+ * 尺寸按"铺满容器"写。根上的 data-fit="off" 是让核心的自适应层别来缩放它
+ * （见 panel.tsx 里的说明）。
+ */
+
+.wx {
+  position: relative;
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: #191919;
+  color: #d6d6d6;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* 能选的是"字"，不是"控件"：按钮、头像、列表行、顶栏一律不可选 */
+.wx button,
+.wx-rail,
+.wx-side,
+.wx-head,
+.wx-tools,
+.wx-ava,
+.wx-badge,
+.wx-item,
+.wx-search,
+.wx-pin {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 行内标记：`==重点==` 高亮、`**粗体**` 加粗。
+   核心会话区有同一套（<mark class="hl">，见 src/renderer/ui/markdown.tsx），
+   但那是核心画的界，插件面板够不着 —— 不自己来一份，标记就原样露出来像乱码。 */
+.wx-hl {
+  padding: 0 3px;
+  border-radius: 2px;
+  background: rgba(224, 163, 95, 0.18);
+  color: #e8b070;
+}
+
+.wx-msg.me .wx-hl,
+.wx-rmsg.me .wx-hl {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+.wx-bub strong,
+.wx-rmsg p strong,
+.wx-rec strong {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* 右键菜单：贴着鼠标出，所以是 fixed（不会被会话列表那个滚动容器裁掉）。
+   深色皮上的一个小方块，键盘 Esc / 点别处 / 一滚就收。 */
+.wx-menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 148px;
+  padding: 4px;
+  border: 1px solid #333333;
+  border-radius: 6px;
+  background: #2b2b2b;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.wx-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #d6d6d6;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.wx-menu button:hover {
+  background: #3a3a3a;
+  color: #ffffff;
+}
+
+/* 细滚动条：极简深色滚动条，避免侵占内容空间 */
+.wx *::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.wx *::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: #3a3a3a;
+}
+
+.wx *::-webkit-scrollbar-thumb:hover {
+  background: #4a4a4a;
+}
+
+.wx *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ── 最左那条导航栏 ───────────────────────────────────────────── */
+
+.wx-rail {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 56px;
+  padding: 26px 0 14px;
+  background: #1c1c1c;
+}
+
+/* 顶上那个自己的头像 */
+.wx-rail-ava {
+  width: 36px;
+  height: 36px;
+  margin-bottom: 16px;
+  border-radius: 6px;
+  background: #4a5058;
+  color: #fff;
+  font-size: 15px;
+  line-height: 36px;
+  text-align: center;
+  overflow: hidden;
+}
+
+.wx-rail-ava img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 一个图标键：无图标时回退为深灰方块占位 */
+.wx-rail-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #8a8a8a;
+  cursor: pointer;
+}
+
+.wx-rail-btn:hover {
+  background: #2c2c2c;
+  color: #d6d6d6;
+}
+
+/* 选中的那一屏：导航栏现在是两个键（会话 / 通讯录），
+   当前活跃屏使用主题高亮色标记 */
+.wx-rail-btn.on {
+  color: #3eb575;
+}
+
+.wx-rail-btn.dim {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.wx-rail-btn.dim:hover {
+  background: transparent;
+  color: #8a8a8a;
+}
+
+/* 未读总数：挂在"聊天"那个图标右上角 */
+.wx-rail-btn .wx-total {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #fa5151;
+  color: #fff;
+  font-size: 10px;
+  font-style: normal;
+  line-height: 15px;
+  text-align: center;
+}
+
+.wx-rail-pad {
+  flex: 1;
+}
+
+/* ── 中间：会话列表 ───────────────────────────────────────────── */
+
+.wx-side {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  width: 250px;
+  min-height: 0;
+  background: #262626;
+}
+
+/* 搜索那一格：采用"深色圆角块 + 右侧操作入口"的组合形态 */
+.wx-search {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 14px 12px;
+}
+
+.wx-searchbox {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.wx-searchbox svg {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  transform: translateY(-50%);
+  color: #6b6b6b;
+  pointer-events: none;
+}
+
+.wx-searchbox input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px 5px 27px;
+  border: 0;
+  border-radius: 4px;
+  background: #1a1a1a;
+  color: #d6d6d6;
+  font: inherit;
+  font-size: 13px;
+}
+
+.wx-searchbox input::placeholder {
+  color: #6b6b6b;
+}
+
+.wx-searchbox input:focus {
+  outline: none;
+  background: #141414;
+}
+
+/* 操作按钮「+」：快捷叫一名员工到岗 */
+.wx-add {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #9a9a9a;
+  cursor: pointer;
+}
+
+.wx-add:hover {
+  background: #333333;
+  color: #e6e6e6;
+}
+
+.wx-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.wx-hint,
+.wx-empty,
+.wx-loading,
+.wx-more {
+  margin: 0;
+  color: #7a7a7a;
+  font-size: 13px;
+}
+
+.wx-hint {
+  padding: 18px 14px;
+  line-height: 1.7;
+}
+
+/* 快照读不出来（太大/坏了）—— 留在名单顶上，提示"这是上一次那份，人没丢" */
+.wx-warn {
+  margin: 0;
+  padding: 12px 14px;
+  color: #f0a9a9;
+  background: rgba(248, 113, 113, 0.1);
+  border-bottom: 1px solid rgba(248, 113, 113, 0.24);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 部门分组头：一眼看出员工编制归属 */
+.wx-group {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 10px 14px 4px;
+}
+
+.wx-group b {
+  color: #7a7a7a;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.wx-group i {
+  color: #5a5a5a;
+  font-size: 11px;
+  font-style: normal;
+}
+
+/* 通讯录那一屏的第二行是**状态字**（不是最后一句）：按在不在上色，
+   一眼扫下来就知道谁在岗。类名 wx-st 只在这儿用，别的 .wx-line2 不受影响 */
+.wx-line2.wx-st-busy {
+  color: #3eb575;
+}
+
+.wx-line2.wx-st-ask {
+  color: #e0a35f;
+}
+
+.wx-line2.wx-st-off,
+.wx-line2.wx-st-closed,
+.wx-line2.wx-st-stow {
+  color: #5f5f5f;
+}
+
+/* 搜索命中：第二行换成"命中的那一句"，关键词单独上色 —— 一行 90 字，
+   不标出来读者得自己找它在哪 */
+.wx-hit {
+  color: #e0a35f;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.wx-item.on .wx-hit {
+  color: #d6f0e0;
+}
+
+/* "共 N 条"：还有别的命中，省得以为就这一句 */
+.wx-hitn {
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #7a7a7a;
+  font-size: 10px;
+  font-style: normal;
+}
+
+/* 一行会话：60px 高度，选中状态为整条高亮色 */
+.wx-item.is-top {
+  background: rgba(255, 255, 255, 0.028);
+}
+
+.wx-item.is-top.on {
+  background: #3eb575;
+}
+
+/* 名字后面那枚小图钉：说明"他排前面是我钉的"，不是"刚说过话" */
+.wx-pinmark {
+  flex: none;
+  display: flex;
+  align-items: center;
+  color: #6b6b6b;
+}
+
+.wx-item.on .wx-pinmark {
+  color: #d6f0e0;
+}
+.wx-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wx-item:hover {
+  background: #2e2e2e;
+}
+
+.wx-item.on,
+.wx-item.on:hover {
+  background: #2f9f63;
+}
+
+.wx-item.on .wx-line2,
+.wx-item.on .wx-role,
+.wx-item.on time,
+.wx-item.on .wx-mute {
+  color: #d6f0e2;
+}
+
+/* 还没开班的人：压暗，点一下就是给他开班 */
+.wx-item.away .wx-ava,
+.wx-item.away .wx-line2 {
+  opacity: 0.55;
+}
+
+/* 头像：列表联系人使用圆形头像（导航栏顶部为圆角方形） */
+.wx-ava {
+  position: relative;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 38px;
+  text-align: center;
+  overflow: visible;
+}
+
+.wx-ava.sm {
+  width: 34px;
+  height: 34px;
+  font-size: 14px;
+  line-height: 34px;
+}
+
+.wx-ava img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+/* 头像右下角那个状态点（wx-mark），四种颜色各说一件事 */
+.wx-mark {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid #262626;
+  border-radius: 50%;
+  background: #6b6b6b;
+}
+
+.wx-item.on .wx-mark {
+  border-color: #2f9f63;
+}
+
+.mm-idle {
+  background: #3eb575;
+}
+
+.mm-busy {
+  background: #f0a020;
+}
+
+.mm-ask {
+  background: #fa5151;
+}
+
+.mm-stow,
+.mm-closed,
+.mm-off {
+  background: #5a5a5a;
+}
+
+.wx-mid {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.wx-line1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.wx-line1 b {
+  color: #e6e6e6;
+  font-weight: 500;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.wx-item.on .wx-line1 b {
+  color: #ffffff;
+}
+
+.wx-line1 time {
+  margin-left: auto;
+  color: #6b6b6b;
+  font-size: 11px;
+}
+
+/* 免打扰静音标识（尚未到岗状态角标） */
+.wx-mute {
+  flex: none;
+  color: #6b6b6b;
+}
+
+.wx-line2 {
+  color: #7a7a7a;
+  font-size: 12.5px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wx-cmd-verb {
+  color: #b577ff;
+  font-weight: 600;
+}
+
+.wx-tool-verb {
+  color: #5b95ff;
+  font-weight: 600;
+}
+
+/* 经理 / 角色这种标记，做小 */
+.wx-role {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: rgba(224, 163, 95, 0.18);
+  color: #e0a35f;
+  font-size: 10px;
+  font-style: normal;
+  line-height: 15px;
+}
+
+/* 未读红点：带计数的红点徽标，定位在行右侧 */
+.wx-badge {
+  flex: none;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #fa5151;
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* ── 右：会话本身 ─────────────────────────────────────────────── */
+
+.wx-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #191919;
+}
+
+/* 顶栏：名字在左，状态 + 一排图标在右 */
+.wx-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 56px;
+  padding: 0 18px;
+  border-bottom: 1px solid #000000;
+}
+
+.wx-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.wx-title b {
+  color: #e6e6e6;
+  font-size: 15px;
+  font-weight: 500;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 状态字：在后台 / 正在工作 / 睡在哪儿，一句话说清 */
+.wx-state {
+  flex: none;
+  color: #7a7a7a;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.st-busy {
+  color: #f0a020;
+}
+
+.st-ask {
+  color: #fa5151;
+}
+
+.st-idle {
+  color: #3eb575;
+}
+
+.wx-acts {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.wx-act {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #9a9a9a;
+  cursor: pointer;
+}
+
+.wx-act:hover {
+  background: #2c2c2c;
+  color: #e6e6e6;
+}
+
+/* 「摆到布局 / 收回后台」：一个细边小键，挨着那排图标 */
+.wx-pin {
+  padding: 3px 9px;
+  margin-right: 4px;
+  border: 1px solid #333333;
+  border-radius: 3px;
+  background: transparent;
+  color: #9a9a9a;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.wx-pin:hover {
+  border-color: #4a4a4a;
+  color: #e6e6e6;
+}
+
+/* 消息流 */
+.wx-flow {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 18px 22px 8px;
+}
+
+/* 居中时间条：极简灰字无边线排布 */
+.wx-time {
+  margin: 14px 0;
+  color: #5f5f5f;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* 派单回执：他**没在这块面板里**干的那一轮的交代（派单器写进角色卡的）。
+   做成一条浅色系统条 —— 它是背景，不是这次会话本身。 */
+.wx-recs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.wx-rec {
+  padding: 9px 12px;
+  border-radius: 5px;
+  background: #222222;
+  color: #9a9a9a;
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+/* 折叠头：一行放下"派单回执 + 时间"，点一下展开 */
+.wx-rec > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.wx-rec > summary::-webkit-details-marker {
+  display: none;
+}
+
+.wx-rec[open] > summary {
+  margin-bottom: 6px;
+}
+
+.wx-rec time {
+  margin-left: auto;
+  color: #5f5f5f;
+  font-size: 11px;
+}
+
+.wx-rec p {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 6px;
+  color: #b8b8b8;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wx-rec p:last-child {
+  margin-bottom: 0;
+}
+
+.wx-rec-task {
+  opacity: 0.85;
+}
+
+/* 「派给他的」/「他回的」这两个小标签：回执一坨字最难懂的地方就是"谁说的" */
+.wx-rec p em {
+  flex: none;
+  width: 46px;
+  color: #6b6b6b;
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.9;
+}
+
+.wx-rec-tag {
+  padding: 1px 6px;
+  border-radius: 2px;
+  background: rgba(224, 163, 95, 0.16);
+  color: #e0a35f;
+  font-size: 10px;
+}
+
+/* 一条消息：对方头像在左、气泡在右；自己反过来。气泡尖角用 ::before 画 */
+.wx-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.wx-msg.me {
+  flex-direction: row-reverse;
+}
+
+/* 气泡那一列：图 / 正文 / 复制键竖着叠成一个整体，宽度由这一层管 */
+.wx-bubwrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 62%;
+}
+
+.wx-msg.me .wx-bubwrap {
+  align-items: flex-end;
+}
+
+.wx-bub {
+  position: relative;
+  max-width: 100%;
+  padding: 9px 12px;
+  border-radius: 4px;
+  background: #2c2c2c;
+  color: #e0e0e0;
+  font-size: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 尖角：对方朝左，自己朝右 */
+.wx-bub::before {
+  content: '';
+  position: absolute;
+  top: 13px;
+  width: 0;
+  height: 0;
+  border: 5px solid transparent;
+}
+
+.wx-msg.it .wx-bub::before {
+  left: -9px;
+  border-right-color: #2c2c2c;
+  border-left-width: 0;
+}
+
+.wx-msg.me .wx-bub {
+  background: #3eb575;
+  color: #ffffff;
+}
+
+.wx-msg.me .wx-bub::before {
+  right: -9px;
+  border-left-color: #3eb575;
+  border-right-width: 0;
+}
+
+/* 复制：平时隐藏，悬停时浮现快捷操作栏。
+   **正文本身也选得中**（见文件头那条 user-select），这个键只是省一步 */
+.wx-copy {
+  padding: 1px 8px;
+  border: 1px solid #2f2f2f;
+  border-radius: 3px;
+  background: transparent;
+  color: #6b6b6b;
+  font: inherit;
+  font-size: 11px;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.wx-bubwrap:hover .wx-copy,
+.wx-copy:focus {
+  opacity: 1;
+}
+
+.wx-copy:hover {
+  border-color: #4a4a4a;
+  color: #cfcfcf;
+}
+
+/* 他发来的图（或你发出去的）：点一下铺满面板看大图 */
+.wx-shots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.wx-shots img {
+  max-width: 220px;
+  max-height: 220px;
+  border-radius: 4px;
+  cursor: zoom-in;
+}
+
+/* 正在跑的那一轮：正文边吐边长，末尾一根光标 —— 一眼看出"他还在写" */
+.wx-live {
+  opacity: 0.94;
+}
+
+.wx-caret {
+  display: inline-block;
+  width: 6px;
+  height: 14px;
+  margin-left: 2px;
+  background: #8b8b8b;
+  vertical-align: text-bottom;
+  animation: wx-blink 1s steps(2) infinite;
+}
+
+/* 还没吐字的时候他在干什么（跑的是哪一步） */
+.wx-tool {
+  color: #7a7a7a;
+  font-size: 11px;
+}
+
+/* 他正忙着：三个点 */
+.wx-typing {
+  display: flex;
+  gap: 4px;
+  padding: 12px;
+}
+
+.wx-typing i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #8b8b8b;
+  animation: wx-blink 1.2s infinite;
+}
+
+.wx-typing i:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.wx-typing i:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes wx-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+
+/* ── 输入区：深色面板与顶部工具操作栏 ────────────── */
+
+.wx-foot {
+  flex: none;
+  padding: 0 18px 16px;
+}
+
+.wx-err {
+  margin: 0 0 6px;
+  color: #fa5151;
+  font-size: 12px;
+}
+
+/* 待发出去的图 */
+.wx-drafts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px 0;
+  border: 1px solid #2c2c2c;
+  border-bottom: 0;
+  border-radius: 5px 5px 0 0;
+  background: #232323;
+}
+
+.wx-draft {
+  position: relative;
+  display: inline-flex;
+  margin-bottom: 8px;
+}
+
+.wx-draft img {
+  width: 54px;
+  height: 54px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.wx-draft button {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #4a4a4a;
+  color: #d6d6d6;
+  font-size: 12px;
+  line-height: 14px;
+  cursor: pointer;
+}
+
+.wx-composer {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #2c2c2c;
+  border-radius: 5px;
+  background: #232323;
+}
+
+.wx-drafts + .wx-composer {
+  border-radius: 0 0 5px 5px;
+}
+
+/* 输入框顶部工具快捷键：表情、图片、文件、截图、语音等 */
+.wx-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px 0;
+}
+
+.wx-tool-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #9a9a9a;
+  cursor: pointer;
+}
+
+.wx-tool-btn:hover {
+  background: #2e2e2e;
+  color: #e6e6e6;
+}
+
+.wx-tool-btn.dim {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.wx-tool-btn.dim:hover {
+  background: transparent;
+  color: #9a9a9a;
+}
+
+.wx-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 78px;
+  max-height: 220px;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: #d6d6d6;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+}
+
+/* ★ 这里必须再来一条 :focus。
+ *
+ * 上头 `.wx-input { background: transparent }` 是故意的 —— 输入框的深灰底由外面
+ * 那个 `.wx-composer` 方块负责，它自己透出去就行。但**核心 base.css 里有一条**
+ * `textarea:focus { background: var(--bg) }`，特异性 (0,1,1) 压过 `.wx-input` 的 (0,1,0)：
+ * 于是**一点进去打字**，输入框就被刷成主题底色 —— 在这套写死深色的皮上就是一块惨白，
+ * 突兀得很（用户原话："这个好突兀啊"）。
+ *
+ * 修法不是去掉 transparent，而是把 focus 态也写明确（(0,2,0) 稳压核心那条）：
+ * 保持聚焦内外视觉一致性。 */
+.wx-input:focus {
+  border: 0;
+  background: transparent;
+}
+
+.wx-input::placeholder {
+  color: #6b6b6b;
+}
+
+/* 右下角：声音那一个图标 + 方块「发送」 */
+.wx-sendrow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 12px 10px;
+}
+
+.wx-ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #9a9a9a;
+  cursor: pointer;
+}
+
+.wx-ico:hover {
+  background: #2e2e2e;
+  color: #e6e6e6;
+}
+
+.wx-send {
+  min-width: 64px;
+  padding: 5px 14px;
+  border: 0;
+  border-radius: 4px;
+  background: #3eb575;
+  color: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.wx-send:hover {
+  background: #45c37f;
+}
+
+.wx-send:disabled {
+  background: #3a3a3a;
+  color: #7a7a7a;
+  cursor: default;
+}
+
+/* ── 右侧那栏：会话记录（挤出来的，不是盖上去的） ────────────────
+
+   ★ 类名一律 wx-hist-* —— 这一栏以前叫 .wx-recs，跟聊天区里那块**派单回执**
+   （容器也叫 .wx-recs）撞了名：于是回执被套上"宽 300px、左边一条竖线、深色底"，
+   在聊天区里缩成一条窄柱。同一个插件自己的两个部分撞名都能撞出这种下场 ——
+   更别说几块面板共处一个文档了。 */
+
+.wx-hist {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  min-height: 0;
+  border-left: 1px solid #000000;
+  background: #1e1e1e;
+}
+
+.wx-hist-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 12px;
+  border-bottom: 1px solid #000000;
+}
+
+.wx-hist-head b {
+  color: #e6e6e6;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.wx-hist-head .wx-act:last-child {
+  margin-left: auto;
+}
+
+.wx-hist-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.wx-hist-when {
+  margin: 0 0 10px;
+  color: #7a7a7a;
+  font-size: 12px;
+}
+
+/* 一次会话那一行：日子 + 起止时刻 + 开头一句 + 结尾一句 */
+.wx-seg {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 10px 11px;
+  border: 1px solid #2c2c2c;
+  border-radius: 5px;
+  background: #232323;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wx-seg:hover {
+  border-color: #3a3a3a;
+  background: #292929;
+}
+
+.wx-seg-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.wx-seg-top b {
+  color: #d6d6d6;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.wx-seg-top time {
+  color: #6b6b6b;
+  font-size: 11px;
+}
+
+.wx-seg-line {
+  color: #b8b8b8;
+  font-size: 12.5px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.wx-seg-foot {
+  color: #6b6b6b;
+  font-size: 11px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 回忆那一屏里的一条：就是"谁说了什么"，不摆气泡（这儿是看，不是聊） */
+.wx-rmsg {
+  margin-bottom: 12px;
+}
+
+.wx-rwho {
+  display: block;
+  margin-bottom: 3px;
+  color: #6b6b6b;
+  font-size: 11px;
+}
+
+.wx-rmsg.me .wx-rwho {
+  color: #3eb575;
+}
+
+.wx-rmsg p {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: #262626;
+  color: #cfcfcf;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wx-rmsg.me p {
+  background: #1f3a2c;
+}
+
+/* 当前这边顶上那句"这是第几次会话"：点一下就开记录区 */
+.wx-segline {
+  display: block;
+  width: 100%;
+  margin: 0 0 14px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: #202020;
+  color: #7a7a7a;
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.wx-segline:hover {
+  background: #262626;
+  color: #d6d6d6;
+}
+
+/* 距上次太久：输入框上头提醒一句 */
+.wx-newseg {
+  margin: 0 0 6px;
+  color: #7a7a7a;
+  font-size: 12px;
+}
+
+/* 待发出去的文件 */
+.wx-atts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.wx-att {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid #2f2f2f;
+  border-radius: 4px;
+  background: #232323;
+  color: #b8b8b8;
+  font-size: 12px;
+}
+
+.wx-att button {
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: #7a7a7a;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wx-act.on {
+  background: #2c2c2c;
+  color: #3eb575;
+}
+
+/* 看大图那一层：盖住**这块面板**，点一下关掉 */
+.wx-zoom {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.86);
+  cursor: zoom-out;
+}
+
+.wx-zoom img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}

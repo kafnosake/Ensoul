@@ -1,0 +1,38 @@
+{
+  "name": "ensoul",
+  "version": 1,
+  "preferredTheme": "paper",
+  "sizes": [
+    16,
+    20,
+    22,
+    24,
+    32,
+    48,
+    64,
+    128,
+    256,
+    512,
+    1024
+  ],
+  "svg": [
+    "svg/app-icon-light.svg",
+    "svg/app-icon-dark.svg",
+    "svg/app-icon-micro.svg",
+    "svg/app-icon-dark-micro.svg",
+    "svg/mark-layered-light.svg",
+    "svg/mark-layered-dark.svg",
+    "svg/mark-mono-dark.svg",
+    "svg/mark-mono-light.svg",
+    "svg/mark-current-color.svg",
+    "svg/mark-micro.svg",
+    "svg/core.svg",
+    "svg/wordmark-dark.svg",
+    "svg/lockup-horizontal-dark.svg",
+    "svg/lockup-stacked-dark.svg",
+    "svg/wordmark-light.svg",
+    "svg/lockup-horizontal-light.svg",
+    "svg/lockup-stacked-light.svg"
+  ],
+  "smallSize": "Use micro at 16–32px; use monochrome for dense UI and OS template icons."
+}

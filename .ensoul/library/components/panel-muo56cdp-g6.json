@@ -1,0 +1,20 @@
+{
+  "id": "panel-muo56cdp-g6",
+  "panel": "panel-muo56cdp-g6",
+  "name": "便利贴",
+  "kind": "sticker",
+  "title": "便利贴",
+  "look": {
+    "accent": "#eab308",
+    "density": "compact",
+    "showChat": false
+  },
+  "spec": {
+    "body": "messages",
+    "systemPrompt": "",
+    "actions": [],
+    "fields": []
+  },
+  "note": "便利贴白板：把回执与备忘钉成贴纸卡片，带大头针摊在白板上",
+  "at": 1790775220304
+}

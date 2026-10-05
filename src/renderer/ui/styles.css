@@ -1,0 +1,24 @@
+/* ============================================================================
+   视觉层入口 —— 每块各自一个文件，顺序即层叠顺序（跟拆分前逐行一致）。
+   加新样式请加到对应的那一块，不要堆回这里。
+   ========================================================================== */
+
+@import './styles/base.css';                  /* 设计变量、reset、滚动条、全局按钮与输入框长相 */
+@import './styles/shell.css';                 /* 外壳与思维链（顶栏 / 状态 / 正在想的呼吸点） */
+@import './styles/look.css';                  /* 设置 → 外观：主题、强调色、字体、效果开关 */
+@import './styles/notes.css';
+@import './styles/git-packager.css';                 /* 重点标记、右边缘的便签刻度、悬停摘要卡 */
+@import './styles/histconv.css';              /* 左边缘的历史会话刻度、抽屉与只读回看 */
+@import './styles/chrome.css';                /* 标签右键菜单、设置里收面板的那一条、宿主徽标、工作区选择器 */
+@import './styles/layout-bar.css';            /* 布局切片（顶栏那个控件：回到某一套摆法 / 照现在复制一份） */
+@import './styles/dock.css';                  /* 工作区与停靠树、标签组、落点预览、拖拽跟随 */
+@import './styles/panel.css';                 /* 面板外壳、滚动层、文本面板 */
+@import './styles/settings.css';              /* 设置弹层与设置面板、markdown 阅读视图 */
+@import './styles/panel-views.css';           /* 表格 / 表单 / 网页 / 文件树 */
+@import './styles/chat.css';                  /* 对话：消息、动作、用量账、图片与权限 */
+          /* 开源打包台（小林专属：便签右侧挂件） */
+@import './styles/float.css';                 /* 拖动浮窗的落点提示、悬浮面板（便签）、解除悬浮 */
+@import './styles/skills.css';                /* 技能与插件、回复下面那一条 */
+@import './styles/composer.css';              /* 输入框（composer）与它的浮层 */
+@import './styles/providers.css';             /* 提供方（模型配置） */
+@import './styles/misc.css';                  /* 新面板菜单、浮窗拉伸把手、项目运行、任务清单面板 */

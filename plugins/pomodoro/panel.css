@@ -1,0 +1,255 @@
+/* ============================================================================
+   番茄钟
+   面板主体由 .panel-scroll > * 撑满 100%，所以这里自己负责居中。
+   配色跟着当前阶段走：专注=强调色，短休=绿，长休=浅蓝（--tone 由组件设）。
+
+   两层：
+     .pomo       容器：把内容摆在中间，自己不留底（透明），也永远不出现滚动条
+     .pomo-inner 内容：按**自然尺寸**排（不折行），尺寸就按像素写，不乘任何倍率
+   缩放不归这块 CSS 管：核心的适配层看见这里**滚不动**（.pomo 是 overflow:hidden），
+   就把整块内容缩放着装进容器（见 src/renderer/panel/FitBox.tsx）——
+   这里只管自然尺寸长什么样。
+   ========================================================================== */
+
+/*
+   这块也会被当悬浮窗叠在**别的面板上面**，所以分工是：
+   容器透明（底下的内容照样透出来），只让表盘和按钮是实心的 —— 浮起来只剩一座钟。
+   散在外面的字没有底可依，给一层阴影，压在任何内容上都还看得清。
+*/
+.pomo {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 挂件上出现一根滑条，比内容被裁掉还难看 —— 宁可让组件把整块钟缩到装下 */
+  overflow: hidden;
+  /* 滚到底了别把宿主那块面板一起带着滚：这钟是浮在别人身上的 */
+  overscroll-behavior: contain;
+  outline: none;
+  background: transparent;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
+}
+
+/*
+   内容层。三条都不是装饰，是自适应成立的前提：
+     width:max-content  —— 不然这一层被容器宽度卡住，"自然宽度"量出来等于可用宽度，
+                            算出来的倍率等于当前值，就又变成只缩不涨
+     flex:none           —— 别被压扁
+     white-space:nowrap  —— 说明文字一折行，"自然高度"就随宽度变，自适应会在两种状态
+                            之间来回跳；宁可整块缩小，也不折行
+*/
+.pomo-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 20px;
+  width: max-content;
+  flex: none;
+  white-space: nowrap;
+}
+
+/* 宿主那一层的滚动也关掉：一块表盘不该带滑条 */
+.panel-scroll:has(> .pomo) {
+  overflow: hidden;
+}
+
+/* 点进来才有键盘焦点，键位提示不抢全局 */
+.pomo:focus-visible {
+  outline: 1px solid var(--line);
+  outline-offset: -6px;
+  border-radius: var(--r-md);
+}
+
+/* 表盘本身就是那块"底"：不透明的圆盘，浮起来才读得出时间 */
+.pomo-ring {
+  position: relative;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, var(--card) 0%, var(--panel) 72%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--line-soft);
+  text-shadow: none;
+}
+
+.pomo-ring svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pomo-track {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 8px;
+}
+
+.pomo-bar {
+  fill: none;
+  stroke: var(--tone, var(--accent));
+  stroke-width: 8px;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 300ms linear, stroke 300ms;
+}
+
+.pomo-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.pomo-phase {
+  font-size: 11.5px;
+  letter-spacing: 0.18em;
+  color: var(--tone, var(--accent));
+}
+
+.pomo-time {
+  font-size: 42px;
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.pomo-sub {
+  font-size: 11.5px;
+  color: var(--dim);
+}
+
+.pomo-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 按钮也一律实心 —— 底下垫的是什么都不许透出来 */
+.pomo-actions button {
+  justify-content: center;
+  min-width: 78px;
+  padding: 7px 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.42);
+}
+
+.pomo-actions button:hover {
+  background: var(--card-2);
+}
+
+.pomo-actions button.primary {
+  background: var(--tone, var(--accent));
+  border-color: transparent;
+  color: #0b0d10;
+  font-weight: 650;
+}
+
+/* 预设节奏 / 开关：一排小胶囊。不折行 —— 折行会让自然尺寸随宽度变 */
+.pomo-chips,
+.pomo-toggles {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.pomo-chip {
+  font-size: 11.5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  color: var(--dim);
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.pomo-chip:hover {
+  color: var(--text);
+}
+
+.pomo-chip.is-on {
+  color: var(--text);
+  border-color: var(--tone, var(--accent));
+  background: var(--accent-soft);
+}
+
+.pomo-dots {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--dim);
+}
+
+.pomo-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line);
+  transition: background var(--ease);
+}
+
+.pomo-dot.is-on {
+  background: var(--tone, var(--accent));
+}
+
+.pomo-count {
+  margin-left: 6px;
+}
+
+.pomo-count b {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.pomo-foot {
+  font-size: 11px;
+  color: var(--faint);
+  text-align: center;
+}
+
+/* 紧凑 / 宽松：只调尺寸，结构不变 */
+.density-compact .pomo-inner {
+  gap: 11px;
+  padding: 12px;
+}
+
+.density-compact .pomo-ring {
+  width: 138px;
+  height: 138px;
+}
+
+.density-compact .pomo-time {
+  font-size: 30px;
+}
+
+.density-roomy .pomo-inner {
+  gap: 24px;
+  padding: 28px;
+}
+
+.density-roomy .pomo-ring {
+  width: 230px;
+  height: 230px;
+}
+
+/*
+   实心的那几块**把鼠标要回来**。
+
+   浮起来时挂件壳是 pointer-events:none（见核心 float.css 的 bare-float），透明处漏给
+   底下的面板 —— 只有声明过的地方真的能点，不然表盘明明是实心的，按钮却点不到。
+   停靠时这几行等于没写（auto 本来就是默认），所以不用分状态写两份。
+*/
+.pomo-ring,
+.pomo-actions button,
+.pomo-chip {
+  pointer-events: auto;
+}
+
+.density-roomy .pomo-time {
+  font-size: 52px;
+}

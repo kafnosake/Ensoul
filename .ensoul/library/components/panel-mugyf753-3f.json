@@ -1,0 +1,21 @@
+{
+  "id": "panel-mugyf753-3f",
+  "panel": "panel-mugyf753-3f",
+  "name": "ESchat",
+  "kind": "eschat",
+  "title": "ESchat",
+  "look": {
+    "accent": "#3eb575",
+    "density": "normal",
+    "showChat": false,
+    "avatarKey": "chat"
+  },
+  "spec": {
+    "body": "messages",
+    "systemPrompt": "",
+    "actions": [],
+    "fields": []
+  },
+  "note": "ESchat：把名册里的 AI 员工摆成一张微信，点谁跟谁说话",
+  "at": 1790350361038
+}

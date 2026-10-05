@@ -1,0 +1,541 @@
+/* settings.css —— 设置弹层与设置面板、markdown 阅读视图
+   原 styles.css 第 1059-1391 行，按块原样搬过来的。 */
+
+/* ---------------------------------------------------------------- 设置弹层 */
+
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--mask);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fade-in 120ms ease-out;
+}
+
+.modal {
+  width: min(880px, 92vw);
+  max-height: 84vh;
+  /* 分成两栏之后，滚动交给右边的内容区 —— 让导航跟着一起滚就没法用了 */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 22px 22px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow-lg), var(--edge);
+  animation: pop-in 140ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+/* 标题压一条线：上面是"这是设置"，下面是内容，边界一眼看得出来 */
+.modal-head {
+  display: flex;
+  align-items: center;
+  padding-bottom: 11px;
+  margin-bottom: 13px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.modal-title {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.3px;
+}
+
+.modal-x {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  justify-content: center;
+  background: transparent;
+  border-color: transparent;
+  color: var(--dim);
+  border-radius: 8px;
+}
+
+.modal-x:hover {
+  background: var(--card);
+  color: var(--text);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------- 设置面板 */
+
+.settings {
+  display: grid;
+  grid-template-columns: 172px minmax(0, 1fr);
+  gap: 22px;
+  /* 内容顶多把这格撑到卡片上限，超了就自己内部滚（.set-body 那份 overflow 靠这个才生效） */
+  flex: 1 1 auto;
+  min-height: 0;
+  /* **只有这一层在动**：两栏自己不过是跟着被撑开，列表、输入框全不参与 ——
+     满屏元素一起动会显得晃。高度由 usePaneStretch 量出来写在行内，过渡完交回 auto。 */
+  transition: height 260ms cubic-bezier(0.22, 0.85, 0.3, 1);
+}
+
+/* 关掉动效偏好的人：切换就该是到位即完成 */
+@media (prefers-reduced-motion: reduce) {
+  .settings {
+    transition: none;
+  }
+}
+
+/* 左边是分类导航。它自己不滚，滚的是右边 */
+.set-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-right: 16px;
+  border-right: 1px solid var(--line-soft);
+  overflow: auto;
+}
+
+/* 内置那几页与「要下载的外部插件」分区之间那一道 —— 那些是后来装上去的，别跟骨架混成一片 */
+.set-nav-sep {
+  height: 1px;
+  margin: 6px 2px 5px;
+  background: var(--line-soft);
+}
+
+.set-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-start;
+  padding: 8px 10px 8px 12px;
+  font-size: 12.5px;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--dim);
+}
+
+.set-nav-item:hover {
+  background: var(--tint-a);
+  color: var(--text);
+}
+
+/* 选中的那一条：左边一小条强调色 —— 比整块变色安静，但一眼认得出来 */
+.set-nav-item.is-on {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.set-nav-item.is-on::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 2px;
+  height: 15px;
+  margin-top: -7.5px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.set-nav-label {
+  flex: 1;
+}
+
+.set-nav-count {
+  font-size: 10.5px;
+  line-height: 16px;
+  color: var(--faint);
+  background: var(--tint-b);
+  border-radius: 999px;
+  padding: 0 6px;
+  font-family: var(--font-code);
+}
+
+.set-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding-right: 6px;
+  overflow: auto;
+}
+
+/* 每页顶上那一行：这页是干什么的 */
+.set-head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 2px 2px 4px;
+}
+
+.set-head-title {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+}
+
+.set-head-desc {
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+/* 一块就是一张卡片：同类的东西装在一起，比一条条平铺好认 */
+.set-block {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 13px 12px;
+  background: var(--tint-a);
+  border: 1px solid var(--line-soft);
+  border-radius: 13px;
+}
+
+.set-title {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text);
+  letter-spacing: 0.2px;
+}
+
+.set-note {
+  font-size: 11.5px;
+  color: var(--faint);
+  line-height: 1.75;
+}
+
+.set-note strong {
+  color: var(--dim);
+  font-weight: 600;
+}
+
+.set-note code,
+.plg-none code {
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--dim);
+  background: var(--tint-b);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+/* 设置里的输入控件统一长相：安静、圆角，聚焦时才亮起来 */
+.set-body input:not([type='checkbox']),
+.set-body select,
+.set-body textarea {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  outline: none;
+  transition: border-color var(--ease), box-shadow var(--ease);
+}
+
+.set-body input:not([type='checkbox']):focus,
+.set-body select:focus,
+.set-body textarea:focus {
+  border-color: var(--focus-line);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.12);
+}
+
+.set-body select {
+  cursor: pointer;
+}
+
+.set-row {
+  display: flex;
+  gap: 8px;
+}
+
+.set-row input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-code);
+}
+
+/* 一行"名字 — 值 — 按钮"：路径、目录这类 */
+.set-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.set-k {
+  width: 82px;
+  flex: none;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.set-v {
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.set-v.mono {
+  font-family: var(--font-code);
+  font-size: 11px;
+}
+
+/* 行尾那颗按钮（打开目录之类）：安静待着，指过去才显形 */
+.set-line button {
+  margin-left: auto;
+  flex: none;
+  padding: 3px 9px;
+  font-size: 11.5px;
+  color: var(--dim);
+  background: transparent;
+  border-color: transparent;
+}
+
+.set-line button:hover {
+  color: var(--text);
+  background: var(--card);
+  border-color: var(--line);
+}
+
+.set-warn {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(229, 100, 95, 0.15);
+  color: #f08b86;
+  font-size: 11px;
+}
+
+.body-code {
+  flex: 1;
+  min-height: 160px;
+  resize: none;
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  line-height: 1.75;
+  background: var(--bg-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  tab-size: 2;
+}
+
+.body-code:focus {
+  border-color: var(--focus-line);
+  background: var(--bg);
+}
+
+/* markdown 阅读视图：自己滚，工具栏不跟着动 */
+.md-view {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 2px 2px 20px;
+  user-select: text;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+.md-h {
+  margin: 18px 0 8px;
+  line-height: 1.35;
+  font-weight: 650;
+}
+
+.md-h1 {
+  font-size: 18px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.md-h2 {
+  font-size: 15px;
+}
+
+.md-h3 {
+  font-size: 13.5px;
+}
+
+.md-h4,
+.md-h5,
+.md-h6 {
+  font-size: 12.5px;
+  color: var(--dim);
+}
+
+.md-view > *:first-child {
+  margin-top: 4px;
+}
+
+.md-p {
+  margin: 9px 0;
+}
+
+.md-ul {
+  margin: 9px 0;
+  padding-left: 20px;
+}
+
+.md-ul li {
+  margin: 4px 0;
+}
+
+.md-view code {
+  font-family: var(--font-code);
+  font-size: 12px;
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+.md-pre {
+  margin: 12px 0;
+  padding: 13px 15px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  overflow: auto;
+}
+
+.md-pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  line-height: 1.7;
+}
+
+.md-quote {
+  margin: 12px 0;
+  padding: 4px 0 4px 14px;
+  border-left: 3px solid var(--accent);
+  color: var(--dim);
+}
+
+.md-a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.md-a:hover {
+  border-bottom-color: var(--accent);
+}
+
+.md-hr {
+  margin: 18px 0;
+  border: none;
+  border-top: 1px solid var(--line-soft);
+}
+
+.md-table {
+  margin: 10px 0;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.md-table th,
+.md-table td {
+  padding: 6px 11px;
+  border: 1px solid var(--line-soft);
+  text-align: left;
+  vertical-align: top;
+  /* 单元格里塞了长路径 / 长 URL 时换行，别把面板撑破 */
+  word-break: break-word;
+}
+
+.md-table th {
+  background: var(--bg-soft);
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.md-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--card) 45%, transparent);
+}
+
+.md-view strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
+/* 插件分区行里那一格小控件（员工的模型下拉）：跟旁边的按钮一样安静，指过去才亮 */
+.set-body .ext-row .ext-inline {
+  flex: 0 0 auto;
+  max-width: 190px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--dim);
+  background: var(--tint-b);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.set-body .ext-row .ext-inline:hover {
+  color: var(--text);
+  border-color: var(--line);
+}
+
+/*
+  行内文本格（要自己打字的那些：包名 / 仓库地址 / 本地路径）。
+  它不是搜索框 —— 敲回车就把这一格交出去，所以比普通输入框窄、也比它安静；
+  聚焦时才亮边框，跟旁边那些按钮一个分量，不抢视线。
+*/
+.set-body .ext-row .ext-inline-text {
+  width: 240px;
+  min-width: 120px;
+  text-align: left;
+  padding: 3px 8px;
+}
+
+.set-body .ext-row .ext-inline-text:focus {
+  color: var(--text);
+  background: var(--card);
+  border-color: var(--accent, var(--line));
+  outline: none;
+}
+
+/*
+  控件行：比记录矮一点、暗一点，边框改成虚线 ——
+  一眼看得出它不是名单里的一员。
+*/
+.ext-row.is-control {
+  background: transparent;
+  border-style: dashed;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.ext-row.is-control .ext-name {
+  flex: 0 0 auto;
+  min-width: 0;
+  font-weight: 500;
+  color: var(--dim);
+}

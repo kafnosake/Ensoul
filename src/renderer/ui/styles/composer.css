@@ -1,0 +1,648 @@
+/* composer.css —— 输入框（composer）与它的浮层
+   原 styles.css 第 2482-2737 行，按块原样搬过来的。 */
+
+/* ---------------------------------------------------------------- 输入框（composer） */
+
+.composer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 12px 12px;
+  padding: 8px 8px 6px 10px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  transition: border-color var(--ease), box-shadow var(--ease);
+  /* 工具栏按**这一条本身**有多宽分档（见文件末尾那些 @container）。
+     起个名免得以后别处加了容器互相串味。 */
+  container: composer / inline-size;
+}
+
+.composer:focus-within {
+  border-color: var(--focus-line);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45), 0 0 0 3px var(--accent-soft);
+}
+
+.composer > textarea {
+  border: none;
+  background: transparent;
+  padding: 5px 8px 0;
+  min-height: 38px;
+  max-height: 30vh;
+  resize: none;
+  line-height: 1.6;
+  font-size: 12.5px;
+}
+
+.composer > textarea:focus {
+  border: none;
+  background: transparent;
+}
+
+.composer-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+/* 工具栏上所有的字块：**一行到底，绝不按字折行**。
+   注意中文的 min-content 宽度只有**一个字** —— 一句"工作区内"能被压成四个字一列，
+   所以 white-space: nowrap 是底线，剩下的靠下面那些分档把字让掉。 */
+.cbtn,
+.send,
+.perm,
+.perm-chip,
+.mode-chip,
+.model-chip {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* 按钮是圆形的、宽度是死的，一格都不许缩 */
+.cbtn,
+.send {
+  flex: none;
+}
+
+/* 模型、权限、模式：能缩，但缩不动的时候不硬挤（文字由下面分档决定去留） */
+.perm-chip,
+.mode-chip,
+.model-chip {
+  flex: 0 1 auto;
+}
+
+.cbtn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  justify-content: center;
+  background: transparent;
+  border-color: transparent;
+  color: var(--dim);
+  border-radius: 50%;
+  font-size: 16px;
+}
+
+.cbtn:hover,
+.cbtn.is-on {
+  background: var(--card);
+  color: var(--text);
+}
+
+.composer-note {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* agent 能干到哪一步 */
+.level-chip {
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--faint);
+}
+
+.level-chip:hover {
+  background: var(--card);
+  color: var(--dim);
+}
+
+.level-chip.level-full {
+  color: #f0b775;
+}
+
+.level-chip.level-read {
+  color: var(--dim);
+}
+
+/* agent 的动作记录 */
+.msg-tool .msg-body {
+  background: var(--bg-soft);
+  border-style: dashed;
+  font-size: 12px;
+}
+
+/* 工具栏右组：**占住剩下的空间、自己从右边对齐**，而不是靠 margin-left:auto 推过去。
+   推过去那种写法有个死穴 —— 内容一超宽，auto 外边距没法变负，整个右组就被顶到
+   容器外面去（"文字飞到窗口外"就是这个，跟设不设 nowrap 无关）。
+   换成 flex:1 + justify-content:flex-end 之后，这个组永远在容器里，
+   装不下的时候轮到下面那些分档把字让掉。 */
+.composer-right {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  background: var(--card);
+  border-color: var(--line-soft);
+  color: var(--dim);
+  font-size: 12px;
+  border-radius: 999px;
+  max-width: 240px;
+}
+
+/* 角色卡钉死的模型：看得见、点不动（员工面板专用） */
+.model-chip.is-locked {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.model-chip.is-locked .chip-caret {
+  display: none;
+}
+
+.model-chip:hover {
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 8px rgba(62, 207, 142, 0.7);
+  flex: none;
+}
+
+.model-chip.is-bare .chip-dot {
+  background: var(--danger);
+  box-shadow: 0 0 8px rgba(229, 100, 95, 0.7);
+}
+
+.chip-name {
+  /* min-width:0 是必须的：flex 子项的默认最小宽度就是它的内容宽度，
+     不归零的话 max-width 在这条链上根本起不了作用，名字长一点就把输入框顶出去 */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip-caret {
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.send {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.send:disabled {
+  background: var(--card);
+  color: var(--faint);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* ---------------------------------------------------------------- 工具栏分档
+   同一件事按**这条工具栏自己有多宽**换说法：够宽就写全，窄了先扔字、只留图标。
+   它是"看"的、不是"点"的 —— 图标 + 悬停里的完整说明足够，比挤成一团省略号好读。
+
+   为什么用容器查询而不是媒体查询：面板被拖窄的时候要变的是**这一条**，
+   而窗口一点没变。容器就是 .composer 自己（定义见文件开头）。 */
+
+/* 短说法默认不露脸（够宽时写全的），窄了才换上来 */
+.usage-chip .u-short {
+  display: none;
+}
+
+@container composer (max-width: 600px) {
+  /* 用量换成短说法：只留 token 总数 */
+  .usage-chip .u-full {
+    display: none;
+  }
+  .usage-chip .u-short {
+    display: inline;
+  }
+}
+
+@container composer (max-width: 500px) {
+  /* 用量只剩图标；权限也只剩盾牌 —— 颜色本身就说明走的是哪一条
+     （完全权限是强调色），要确认细节，悬停里写着 */
+  .usage-chip .u-short {
+    display: none;
+  }
+  .perm-chip .p-full {
+    display: none;
+  }
+}
+
+@container composer (max-width: 430px) {
+  /* 最窄的时候模型名也让掉，只留那颗状态点 + 箭头 */
+  .model-chip .chip-name {
+    display: none;
+  }
+  /* 模式名也让掉，只留那个小箭头 */
+  .mode-chip .m-name {
+    display: none;
+  }
+}
+
+/* 输入框上弹出的浮层：模型选择 / 文件引用 */
+.model-list,
+.ref-picker {
+  position: absolute;
+  right: 8px;
+  bottom: calc(100% - 4px);
+  z-index: 70;
+  width: 272px;
+  padding: 10px;
+  background: var(--pop);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow), var(--edge);
+  backdrop-filter: var(--glass-blur);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ml-head,
+.rp-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.ml-head button,
+.rp-head button {
+  margin-left: auto;
+  padding: 2px 9px;
+  font-size: 11px;
+  background: transparent;
+  border-radius: 999px;
+}
+
+.ml-note {
+  font-size: 11.5px;
+  color: var(--faint);
+  line-height: 1.55;
+}
+
+.ml-items {
+  max-height: 260px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ml-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ml-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 3px 3px;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.ml-group-name {
+  color: var(--dim);
+  font-weight: 600;
+}
+
+.ml-key {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--ok);
+}
+
+.ml-key.is-missing {
+  color: var(--danger);
+}
+
+/* 思考水平：五档，摆在模型列表上方。
+   样子做成"一条暗轨道 + 选中那格自己一小块圆角"——
+   **不要外框、更不要竖分隔线**：外框 + 一格块状填色贴满上下边，
+   在这个 272px 的浮层里看着像表格，又重又挤。
+   标签单独占一行（跟五档同排时总宽会超出浮层，最后一档会被挤没），
+   五格 flex:1 等分，等宽才像一条轨道。 */
+.ml-think {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 1px 3px 3px;
+}
+
+.ml-think-label {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.ml-think-opts {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--track);
+  border-radius: var(--r-sm);
+}
+
+/* 每格**真的**居中：光写 text-align 不够 —— 全局 button 带 padding，
+   内容盒被挤到左边去，看着就是没居中。这里用 flex 把文字按住正中间。 */
+.ml-think-opts button {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 0;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--faint);
+  transition: background var(--ease), color var(--ease);
+}
+
+.ml-think-opts button:hover {
+  color: var(--text);
+  background: var(--tint-b);
+}
+
+.ml-think-opts button.is-on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.3);
+}
+
+.set-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.set-tag.is-missing {
+  color: #f08b86;
+  border-color: rgba(229, 100, 95, 0.4);
+}
+
+/* 斜杠命令候选（输入框敲 / 时从上方冒出来） */
+.slash-pop {
+  position: absolute;
+  left: 8px;
+  bottom: calc(100% - 4px);
+  z-index: 70;
+  min-width: 260px;
+  max-width: 440px;
+  padding: 6px;
+  background: var(--pop);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow), var(--edge);
+  backdrop-filter: var(--glass-blur);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sp-head {
+  font-size: 11px;
+  color: var(--faint);
+  padding: 2px 6px 4px;
+}
+
+.sp-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  background: transparent;
+  border-color: transparent;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 12px;
+}
+
+.sp-item.is-sel {
+  background: var(--card);
+}
+
+.sp-id {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.sp-hint {
+  color: var(--faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- 排队条
+   还没发出去的话摆在输入框上面：排队的（等这一轮跑完自动发）和插话的
+   （已经送进正在跑的这一轮）分两段，各带一个小小的标签。 */
+
+.outbox {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 2px 4px;
+  border-bottom: 1px dashed var(--line-soft);
+}
+
+.outbox-err {
+  font-size: 11.5px;
+  color: #f0b775;
+  padding: 2px 6px;
+}
+
+.outbox-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.outbox-tag {
+  font-size: 10.5px;
+  color: var(--faint);
+  padding: 0 6px;
+  letter-spacing: 0.04em;
+}
+
+.outbox-tag.is-steer {
+  color: var(--accent);
+}
+
+.outbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.outbox-row:hover {
+  background: var(--card);
+}
+
+/* 插话的那几条：淡一点，它已经不在"排队"这个状态里了 */
+.outbox-row.is-steer {
+  color: var(--faint);
+  border-left: 2px solid var(--accent-soft);
+}
+
+.outbox-idx {
+  flex: none;
+  width: 15px;
+  text-align: right;
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.outbox-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outbox-pic,
+.outbox-time {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.outbox-edit {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 8px;
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.outbox-btn {
+  flex: none;
+  padding: 2px 8px;
+  font-size: 11px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--faint);
+  border-radius: 999px;
+}
+
+.outbox-btn:hover:not(:disabled) {
+  background: var(--card);
+  color: var(--text);
+}
+
+.outbox-btn.is-steer {
+  color: var(--accent);
+}
+
+.outbox-btn:disabled {
+  opacity: 0.4;
+}
+
+/* 排队 / 插话那两颗按钮：跟发送键同形，靠颜色分工 ——
+   排队是不打断它的那条（灰），插话会当场拐它的弯（强调色）。 */
+.send.is-queue,
+.send.is-steer {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--dim);
+}
+
+.send.is-queue:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.send.is-steer:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+
+/* 语音输入按钮（贴合在发送按钮左侧） */
+.composer-mic {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.composer-mic:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.composer-mic.is-recording {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+  animation: micPulse 1.2s infinite ease-in-out;
+}
+
+@keyframes micPulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50% { transform: scale(1.08); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+/* 挂着"等全部会话结束就重启"：输入框边缘打一层橙黄呼吸灯。
+   这一层不只是好看 —— 它同时说明"此刻回车不是发送，是排队等重启的那句"（见 Composer 的手势）。
+   用 animation 而不是两套状态类：动画会盖过 :focus-within 的静态边框色，
+   所以聚焦时那圈呼吸不会断掉（不然一聚焦就看不见灯了）。 */
+.composer.is-queued {
+  animation: composer-restart-breath 1.8s ease-in-out infinite;
+}
+
+@keyframes composer-restart-breath {
+  0%,
+  100% {
+    border-color: rgba(229, 181, 103, 0.32);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), 0 0 0 0 rgba(229, 181, 103, 0);
+  }
+  50% {
+    border-color: var(--warn);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), 0 0 16px 3px rgba(229, 181, 103, 0.5);
+  }
+}
