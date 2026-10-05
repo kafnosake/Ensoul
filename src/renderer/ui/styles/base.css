@@ -1,0 +1,248 @@
+/* base.css —— 设计变量、reset、滚动条、全局按钮与输入框长相
+   原 styles.css 第 1-138 行，按块原样搬过来的。 */
+
+/* ============================================================================
+   通用 UI 运行时 —— 视觉层
+   目标：主流桌面编辑器 / 对话工具的观感 —— 层次清楚、圆角柔和、默认安静。
+   类名与结构无关，只负责长相。
+   ========================================================================== */
+
+/* 白天模式 —— 覆盖 :root 那组夜晚值（html[data-theme=light] 比 :root 更具体，
+   谁先谁后都一样）。各处写死的深色已经全部换成了变量：新颜色请走变量，别再写死。 */
+html[data-theme='light'] {
+  --bg: #eef1f5;
+  --bg-soft: #e7ebf0;
+  --panel: #ffffff;
+  --panel-2: #f8fafc;
+  --card: #f4f7fa;
+  --card-2: #e9edf3;
+  --line: #dbe1e8;
+  --line-soft: #e9edf2;
+  --text: #1b212a;
+  --text-2: #47515e;
+  --dim: #5a6472;
+  --faint: #8a94a1;
+  --accent: #3a6fe8;
+  --accent-rgb: 58, 111, 232;
+  --accent-hi: #5b8bf2;
+  --accent-fg: #2b5fdb;
+  --accent-soft: rgba(58, 111, 232, 0.13);
+  /* 状态色 —— “进行中”（与强调色分家：换品牌色不该动状态指示） */
+  --busy: #3a6fe8;
+  --busy-rgb: 58, 111, 232;
+  --busy-hi: #5b8bf2;
+  --busy-fg: #2b5fdb;
+  --busy-soft: rgba(58, 111, 232, 0.13);
+  --ok: #0f9d63;
+  --danger: #d64a44;
+  --warn: #b07a12;
+  --shadow: 0 18px 44px rgba(20, 30, 50, 0.16);
+
+  --line-hi: #c3cbd5;
+  --focus-line: #95b0f0;
+  --scroll: #ccd2da;
+  --scroll-hi: #adb5bf;
+  --fill-dim: #c4cbd4;
+  --code-bg: #f3f5f8;
+  --code-fg: #2e3742;
+  --tint-a: rgba(0, 0, 0, 0.03);
+  --tint-b: rgba(0, 0, 0, 0.045);
+  --tint-c: rgba(0, 0, 0, 0.06);
+  --tint-d: rgba(0, 0, 0, 0.12);
+  --tint-e: rgba(0, 0, 0, 0.16);
+  --tint-f: rgba(0, 0, 0, 0.28);
+  --track: rgba(0, 0, 0, 0.07);
+  --pop: rgba(255, 255, 255, 0.66);
+  --glass-blur: blur(16px) saturate(1.7);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --mask: rgba(20, 26, 36, 0.42);
+  --shadow-lg: 0 30px 80px rgba(20, 30, 50, 0.2);
+  --pop-a: rgba(252, 253, 255, 0.95);
+  --pop-b: rgba(252, 253, 255, 0.78);
+  --pop-dim: rgba(246, 248, 251, 0.85);
+  --grad-bar: linear-gradient(180deg, #ffffff, #f1f4f8);
+  --grad-dock: linear-gradient(180deg, #fdfdfe, #eff2f6);
+  --user-a: #e7eeff;
+  --user-b: #dfe9fe;
+  --user-line: #c6d7fb;
+}
+
+:root {
+  --bg: #0b0d10;
+  --bg-soft: #101317;
+  --panel: #14181d;
+  --panel-2: #171c22;
+  --card: #1c222a;
+  --card-2: #232a33;
+  --line: #262d37;
+  --line-soft: #1e242c;
+  --text: #e9edf3;
+  --dim: #9aa4b2;
+  --faint: #6b7684;
+  --accent: #5b8cff;
+  --accent-rgb: 91, 140, 255;
+  --accent-hi: #6e9aff;
+  --accent-fg: #a9c2ff;
+  --text-2: #c3ccd9;
+  --accent-soft: rgba(var(--accent-rgb), 0.14);
+  /* 状态色 —— “进行中”（与强调色分家；浅色那套见 html[data-theme=light]） */
+  --busy: #5b8cff;
+  --busy-rgb: 91, 140, 255;
+  --busy-hi: #6e9aff;
+  --busy-fg: #a9c2ff;
+  --busy-soft: rgba(91, 140, 255, 0.14);
+  --ok: #3ecf8e;
+  --danger: #e5645f;
+  --warn: #e5b567;
+  --r-lg: 14px;
+  --r-md: 10px;
+  --r-sm: 8px;
+  --shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  --line-hi: #333c48;
+  --focus-line: #3a4a6b;
+  --scroll: #2c333d;
+  --scroll-hi: #3d4653;
+  --fill-dim: #39414d;
+  --code-bg: #0a0c0f;
+  --code-fg: #c9d2de;
+  --tint-a: rgba(255, 255, 255, 0.03);
+  --tint-b: rgba(255, 255, 255, 0.045);
+  --tint-c: rgba(255, 255, 255, 0.08);
+  --tint-d: rgba(255, 255, 255, 0.15);
+  --tint-e: rgba(255, 255, 255, 0.2);
+  --tint-f: rgba(255, 255, 255, 0.34);
+  --track: rgba(0, 0, 0, 0.26);
+  --pop: rgba(23, 28, 34, 0.66);
+  --glass-blur: blur(16px) saturate(1.5);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --mask: rgba(6, 8, 11, 0.6);
+  --shadow-lg: 0 30px 80px rgba(0, 0, 0, 0.62);
+  --pop-a: rgba(18, 22, 28, 0.94);
+  --pop-b: rgba(18, 22, 28, 0.7);
+  --pop-dim: rgba(14, 16, 20, 0.75);
+  --grad-bar: linear-gradient(180deg, #171c22, #13171c);
+  --grad-dock: linear-gradient(180deg, #191e25, #161a20);
+  --user-a: #23324d;
+  --user-b: #1e2a41;
+  --user-line: #2c3d5c;
+  --ease: 140ms cubic-bezier(0.2, 0, 0.2, 1);
+  /* 字体：默认就是原来那两串；设置里选了别的，才被内联变量盖掉（见 ui/theme.ts） */
+  --font-ui: "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+  --font-code: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--window-base, var(--bg));
+  color: var(--text);
+  font: 12.5px/1.55 var(--font-ui);
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 5px 11px;
+  cursor: pointer;
+  transition: background var(--ease), border-color var(--ease), color var(--ease), transform var(--ease);
+}
+
+button:hover {
+  background: var(--card-2);
+  border-color: var(--line-hi);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+  transform: none;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-on, #fff);
+  box-shadow: 0 2px 10px rgba(var(--accent-rgb), 0.25);
+}
+
+button.primary:hover {
+  background: var(--accent-hi);
+}
+
+input,
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 6px 9px;
+  outline: none;
+  user-select: text;
+  transition: border-color var(--ease), background var(--ease);
+}
+
+input:focus,
+textarea:focus {
+  border-color: var(--focus-line);
+  background: var(--bg);
+}
+
+::placeholder {
+  color: var(--faint);
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scroll);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-hi);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.blank,
+.muted {
+  color: var(--faint);
+}
+
+/* 状态点点"正在工作"时的呼吸 —— 名字边上那颗点，跑起来才动 */
+@keyframes dot-breathe {
+  50% {
+    opacity: 0.4;
+  }
+}

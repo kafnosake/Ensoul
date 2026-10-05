@@ -1,0 +1,44 @@
+{
+  "name": "ensoul",
+  "productName": "ensoul",
+  "version": "0.1.0",
+  "description": "可自我进化的对话式代码框架：无限浮窗 + 选项卡合并 + 浮窗即对话框",
+  "main": "dist/main/index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "setup": "node scripts/setup.js",
+    "brand:runtime": "node scripts/brand-runtime.js",
+    "brand:assets": "node scripts/export-brand-assets.cjs",
+    "dev": "vite",
+    "build:main": "tsc -p tsconfig.main.json",
+    "check:types": "node scripts/check-types.js",
+    "test:packs": "node scripts/test-ensoulpack.js",
+    "test:runtime": "npm run build:main && node --test scripts/test-runtime.js scripts/test-tasks.js scripts/test-file-writes.js",
+    "build:renderer": "vite build",
+    "build": "node scripts/check-types.js && npm run build:main && npm run build:renderer",
+    "start": "node scripts/launch.js",
+    "app": "node scripts/launch.js --no-build",
+    "electron:check": "node scripts/ensure-electron.js --check",
+    "electron:list": "node scripts/ensure-electron.js --list",
+    "postinstall": "node scripts/ensure-electron.js --soft"
+  },
+  "devDependencies": {
+    "@electron/packager": "^18.4.4",
+    "sharp": "^0.34.5",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  },
+  "dependencies": {
+    "koffi": "^3.3.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

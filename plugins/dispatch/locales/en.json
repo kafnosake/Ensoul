@@ -1,0 +1,17 @@
+{
+  "agent": "Agents",
+  "AI 员工名册：就地调模型，去调度中心或进工作面": "Agent roster: configure models, dispatch center or workspace",
+  "在调度中心中查看": "View in Dispatch",
+  "对话": "Chat",
+  "经理": "Manager",
+  "员工": "Agent",
+  "无部门": "Unassigned",
+  "美术组": "Art Team",
+  "文案组": "Copywriting Team",
+  "开发组": "Dev Team",
+  "执行组": "Execution Team",
+  "开源组": "Open Source Team",
+  "策划组": "Planning Team",
+  "人力资源部": "HR Dept",
+  "编制里还没有人 —— 去调度中心建一家公司、一个部门，再往里加员工。": "No agents yet — create a department in Dispatch first."
+}

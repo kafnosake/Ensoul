@@ -1,0 +1,509 @@
+/* shell.css —— 外壳与思维链（顶栏 / 状态 / 正在想的呼吸点）
+   原 styles.css 第 139-241 行，按块原样搬过来的。 */
+
+/* ---------------------------------------------------------------- 外壳 */
+
+.shell,
+.floating-shell,
+.widget-shell {
+  position: relative; /* 落点提示是绝对定位的，得有个参照 */
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 46px;
+  padding: 0 8px 0 16px;
+  background: var(--grad-bar);
+  border-bottom: 1px solid var(--line-soft);
+  -webkit-app-region: drag;
+  flex: none;
+}
+
+.titlebar button,
+.titlebar-actions,
+.win-buttons {
+  -webkit-app-region: no-drag;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.brand-mark {
+  width: 24px;
+  height: 24px;
+  background: var(--text);
+  -webkit-mask: url('../../../../assets/brand/svg/mark-micro.svg') center / contain no-repeat;
+  mask: url('../../../../assets/brand/svg/mark-micro.svg') center / contain no-repeat;
+  flex: none;
+}
+
+/* ---------------------------------------------------------------- 思维链 */
+
+.think-box {
+  margin: 6px 0;
+  padding: 6px 9px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--faint);
+  background: var(--tint-a);
+  border-left: 2px solid var(--line);
+  border-radius: 0 7px 7px 0;
+}
+
+.think-box summary {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--dim);
+  cursor: pointer;
+  list-style: none;
+}
+
+.think-box summary::-webkit-details-marker {
+  display: none;
+}
+
+/* 正在想的时候有个呼吸的点，一眼看出它还活着 */
+.think-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: think-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes think-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.think-body {
+  max-height: 220px;
+  margin-top: 5px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* 思考的正文要用正文色：.think-box 那层是 --faint（很暗），
+     整段思考都跟着它走的话，在深色底上基本读不出来。 */
+  color: var(--text);
+  opacity: 0.88;
+}
+
+
+/* ============================================================================
+   全局缩放 HUD 胶囊提示条 (Ctrl + 滚轮 / Ctrl + 0)
+   ========================================================================== */
+.zoom-hud-capsule {
+  position: fixed;
+  top: 48px;
+  right: 24px;
+  z-index: 999999;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  background: var(--bg-card, rgba(30, 32, 38, 0.88));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--line-soft, rgba(255, 255, 255, 0.12));
+  border-radius: 20px;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.12);
+  color: var(--text, #ffffff);
+  font-size: 13px;
+  font-weight: 600;
+  user-select: none;
+  cursor: pointer;
+  pointer-events: auto;
+  animation: zoom-hud-pop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.15s ease, opacity 0.2s ease, background-color 0.15s ease;
+}
+
+.zoom-hud-capsule:hover {
+  transform: scale(1.05);
+  background: var(--bg-hover, rgba(40, 44, 52, 0.95));
+}
+
+.zoom-hud-icon {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.zoom-hud-text {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+
+.zoom-hud-reset {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+  background: var(--accent, #eab308);
+  color: #18181b;
+  border-radius: 10px;
+  margin-left: 2px;
+}
+
+@keyframes zoom-hud-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ============================================================================
+   界面缩放 —— 面板级（Ctrl+滚轮）与设置里的全局滑块
+   ========================================================================== */
+
+/*
+ * 面板级缩放的壳。外层**只是个容器**（尺寸、撑满、定位参照），自己不缩放；
+ * 真正带上 zoom 的是内层那一格 —— 缩放的坐标系得跟**占位的那块地方**对齐。
+ * 像 .panel-surface 一样 flex:1 + 100% 宽高：内层绝对定位填满它，而 flex 的子元素
+ * 绝对定位之后不参与父级布局，所以填下去不会顶到外边。
+ */
+.panel-zoom-box {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panel-zoom-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/*
+ * 面板的比例显示 —— 挂在对话区头部那一行、git 状态条的右手边。
+ *
+ * 为什么不浮在面板的角上：四个角各有主人（右上角正是 git 状态条，右下角是输入区），
+ * 浮上去迟早压着谁（踩过：右上角的 110% 把「新 5」挡掉一半）。头部那一行本来就是
+ * 「这块面板现在是什么处境」的地方 —— 比例放这儿，跟旁边那些字是一类东西。
+ *
+ * 100% 时极淡（只当「这儿写着现在是几倍」）；不在 100% 就亮起来、点一下还原 ——
+ * 调歪了只能一点点往回滚，那不叫功能。
+ */
+.panel-zoom-hud {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--faint);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+  opacity: 0.55;
+  user-select: none;
+  transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.panel-zoom-hud:hover {
+  opacity: 1;
+  color: var(--dim);
+}
+
+/* 不在 100%：亮着、可点一下还原 */
+.panel-zoom-hud.is-off {
+  opacity: 1;
+  cursor: pointer;
+  color: var(--accent, #5b8cff);
+  background: var(--line-soft);
+}
+
+.panel-zoom-hud.is-off:hover {
+  border-color: var(--accent, #5b8cff);
+}
+
+/* ---------------------------------------------------------------- 挂件窗口 */
+
+/*
+ * 挂件窗口（见 Panel.widget）—— 这扇窗在系统上是无壳、可透明的，
+ * 所以最后这两层**一个字的底都不能铺**：铺了透明就白设，形象会变成贴在一块灰板上。
+ *
+ * 跟 .floating-shell 的分水岭就是这一条：浮窗是"嵌在工作台里的小工作台"（要底、要壳），
+ * 挂件是"贴在屏幕上的形象"（不要底、不要壳）。
+ */
+.widget-shell,
+.widget-body {
+  background: transparent;
+}
+
+.widget-body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* 无壳窗口不给圆角：圆角会把透明的四角切出白边来 */
+  border-radius: 0;
+}
+
+/* 面板铺满整扇窗 —— 挂件窗口里只有这一块，留边就是漏出透明底 */
+.widget-body > .panel-zoom-box {
+  height: 100%;
+  margin: 0;
+}
+
+/*
+ * 挂件上那两条小按钮：平时不出现，鼠标移进来才浮起来。
+ *
+ * 两条都得显式写 pointer-events: auto —— 挂件可以是**鼠标穿透**的（透明处漏给
+ * 底下的程序，见 floatBare 那套），穿透层上的按钮不显式声明就是"看得见摸不着"。
+ */
+.widget-tools {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 9;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.widget-shell:hover .widget-tools {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.widget-tools button {
+  pointer-events: auto;
+  height: 22px;
+  min-width: 22px;
+  padding: 0 7px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text, #e9edf6);
+  /* 半透明底：挂件本身可能是透明的，纯色底会像贴了块补丁 */
+  background: rgba(20, 25, 37, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+
+.widget-tools button:hover {
+  background: rgba(32, 40, 58, 0.92);
+}
+
+.widget-tools button.is-danger:hover {
+  color: #fff;
+  background: rgba(206, 66, 66, 0.9);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+
+/* ---------------------------------------------------------------- 桌面组件卡面 */
+
+/* 桌面卡面独立于主主题；透明只用于背景，内容保持实色。 */
+html.widget-card-document,
+html.widget-card-document body,
+html.widget-card-document #root {
+  background: transparent !important;
+}
+
+.widget-card {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: 0;
+  color: #f3f5f8;
+  font-size: 13px;
+  --bg: transparent;
+  --panel: transparent;
+  --panel-2: transparent;
+  --card: rgba(255, 255, 255, 0.06);
+  --card-2: rgba(255, 255, 255, 0.09);
+  --text: #f3f5f8;
+  --text-2: #d2d8e2;
+  --dim: #c0c9d6;
+  --faint: #aab7c9;
+  --code-fg: #f3f5f8;
+  --busy-fg: #f3f5f8;
+  --accent: #9abfff;
+  --line: rgba(255, 255, 255, 0.14);
+  --line-soft: rgba(255, 255, 255, 0.08);
+  --desktop-radius: 8px;
+  --desktop-gap: 8px;
+}
+
+.widget-card > .widget-body {
+  position: relative;
+  box-sizing: border-box;
+  flex: 1 1 0;
+  height: 0;
+  min-width: 0;
+  min-height: 0;
+  isolation: isolate;
+  clip-path: inset(0 round var(--desktop-radius));
+  border-radius: var(--desktop-radius);
+  overflow: hidden;
+  background: rgba(14, 18, 23, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.widget-card > .widget-tools {
+  top: 5px;
+  right: 5px;
+}
+
+.widget-card .widget-tools button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  padding: 0;
+  border-radius: 4px;
+  color: var(--text);
+}
+
+.desktop-drag-handle {
+  position: absolute;
+  top: 2px;
+  left: 8px;
+  right: 88px;
+  height: 20px;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.desktop-drag-handle:active { cursor: grabbing; }
+.desktop-drag-handle > span {
+  width: 26px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--dim);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.widget-card:hover .desktop-drag-handle > span { opacity: 0.65; }
+
+.desktop-glass { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; z-index: -1; }
+.desktop-glass > div { position: absolute; inset: -24px; background-repeat: no-repeat; filter: blur(20px) saturate(0.75); opacity: 0.55; }
+
+.desktop-content {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  padding: 24px 10px 10px;
+  color: var(--text);
+}
+.desktop-content > :first-child, .desktop-content > .fit-box > .fit-inner > :first-child { background: transparent !important; color: inherit; }
+.desktop-content :where(button, input, textarea, select) {
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.desktop-content :where(button, a, input, textarea, select) { -webkit-app-region: no-drag; }
+
+.desktop-stack { display: flex; flex-direction: column; gap: var(--desktop-gap); }
+.desktop-row { display: flex; align-items: center; gap: var(--desktop-gap); }
+.desktop-value { font-size: 32px; line-height: 1.15; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+.desktop-label { font-size: 12px; line-height: 1.4; color: var(--dim); }
+.desktop-button { min-height: 28px; padding: 4px 8px; font: inherit; cursor: pointer; }
+.desktop-button:hover { background: var(--card-2); }
+
+.widget-return-notice { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 40; display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); font-size: 12px; }
+.widget-return-notice > button { background: transparent; color: var(--accent); white-space: nowrap; }
+
+.widget-card:has(> .desktop-create) { gap: 8px; }
+.desktop-create {
+  flex: none;
+  height: 56px;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px;
+  background: rgba(15, 19, 25, 0.88);
+}
+.desktop-create-input { height: 100%; display: flex; align-items: center; gap: 6px; }
+.desktop-create, .desktop-create :where(textarea, button) { -webkit-app-region: no-drag; }
+.desktop-create textarea {
+  user-select: text;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  resize: none;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  padding: 6px;
+}
+.desktop-create textarea::placeholder { color: var(--dim); }
+.desktop-create button { width: 30px; height: 30px; padding: 0; border-radius: 5px; color: var(--text); background: var(--card); }
+.desktop-create button.desktop-create-close { width: 22px; color: var(--dim); background: transparent; }
+.desktop-create:has(.desktop-create-error) { height: auto; min-height: 56px; }
+.desktop-create-error { padding: 2px 6px; color: var(--text-2); font-size: 11px; }
+.desktop-create-progress {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line);
+  border-top-color: var(--text);
+  border-radius: 50%;
+  animation: desktop-create-spin 900ms linear infinite;
+}
+.desktop-create-cancel { position: absolute; bottom: 8px; right: 32px; z-index: 9; padding: 2px 4px; font-size: 11px; color: var(--dim); background: var(--card); border-radius: 4px; opacity: 0; }
+.widget-card:hover .desktop-create-cancel { opacity: 1; }
+@keyframes desktop-create-spin { to { transform: rotate(360deg); } }
+.desktop-create-repair { position: absolute; bottom: 8px; right: 8px; font-size: 11px; color: var(--text); background: var(--card); }
+
+/* 桌面组件的编辑窗（右键 → 在 Ensoul 中打开）—— 这扇窗是普通的，得有底 */
+.desktop-editor {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.desktop-editor > header {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.desktop-editor > .desktop-editor-chat {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}

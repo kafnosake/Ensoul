@@ -1,0 +1,700 @@
+/* ============================================================================
+   调度中心 —— 编制管理台：左边组织树（部门 → 员工），右边是这个人的**角色卡**。
+   像网页那样：读数、点开一个人、改他的卡。刻意不摆在勤状态灯。
+   类名一律 dp- 前缀，别碰核心的选择器。
+   面板主体由 .panel-scroll > * 撑满 100%，所以这里自己管布局。
+
+   这一版整体收紧了一档（字号 / 行距 / 控件 / 栏宽都小一号）：
+   管理台是拿来"扫"的，不是拿来"读"的 —— 一屏能多看到几行，才装得下后续加的人。
+   角色卡区封顶 700px，再宽就是白纸。
+   ========================================================================== */
+
+.dp {
+  height: 100%;
+  /* 弹窗遮罩要盖住整块面板 —— 定位基准 */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--text);
+  outline: none;
+}
+
+/* ------------------------------------------------------------------ 顶栏 */
+
+.dp-top {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dp-me {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.dp-stats {
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.dp-note {
+  flex: 1 1 100%;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--accent);
+}
+
+.dp-note.bad {
+  color: var(--danger);
+}
+
+/* ------------------------------------------------------------------ 两栏 */
+
+.dp-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.dp-tree {
+  flex: 0 0 200px;
+  width: 200px;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-right: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel-2) 60%, transparent);
+}
+
+.dp-dept-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.dp-dept-row:hover {
+  background: var(--card-2);
+}
+
+.dp-dept-row.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* 二级部门行：比公司行缩一档，三层一眼看出 */
+.dp-dept2 {
+  margin-left: 14px;
+  font-weight: 500;
+}
+
+/* 折叠三角：9px 的 ▸ 字符太难点 —— 换成 20px 点击区 + CSS 画的三角，展开时转 90°（.open） */
+.dp-caret {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--faint);
+}
+
+.dp-caret:hover {
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+}
+
+.dp-caret i {
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 0 4px 6.5px;
+  border-color: transparent transparent transparent var(--faint);
+  transition: transform 0.12s ease;
+}
+
+.dp-caret.open i {
+  transform: rotate(90deg);
+}
+
+.dp-dept-row.on .dp-caret i {
+  border-left-color: var(--accent);
+}
+
+.dp-dept-count {
+  margin-left: auto;
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--faint);
+}
+
+/* 行右侧的加号 / 挂载钮：加子级只在层级行上做 —— 同样给足点击区 */
+.dp-row-add {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-left: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--faint);
+  cursor: pointer;
+}
+
+.dp-row-add:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* 行右侧动作组：整组靠右（计数删掉后由它接管 margin-left:auto） */
+.dp-row-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 1px;
+}
+
+/* 完成的工作：每条下面那行小字 = 实现路径 */
+.dp-case-how {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--faint);
+}
+
+/* 员工行：缩进到部门名下面（部门行 = 14 外缩 + 7 内距 + 20 折叠区 + 5 间距 = 46） */
+.dp-emp {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 7px 4px 46px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.dp-emp:hover {
+  background: var(--card-2);
+}
+
+.dp-emp.on {
+  background: var(--accent-soft);
+}
+
+.dp-emp-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dp-emp.on .dp-emp-name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* 头像：上传过就显示图，没上传就是名字首字 + 固定色 */
+
+.dp-av {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  user-select: none;
+  overflow: hidden;
+}
+
+.dp-av.big {
+  width: 52px;
+  height: 52px;
+  font-size: 19px;
+}
+
+.dp-av.big.ghost {
+  border: 1.5px dashed var(--line);
+  background: transparent !important;
+  color: var(--faint);
+  font-size: 17px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.dp-mgr-tag {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.dp-warn {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--danger);
+}
+
+.dp-empt {
+  padding: 6px 10px 6px 46px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--faint);
+}
+
+.dp-mini {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.dp-mini:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.dp-newdept {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dp-newdept input {
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.dp-newdept input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.dp-newdept button {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dp-newdept button:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.dp-newdept button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 层级行右侧「＋」展开的内联建部门行（挂在公司行正下方） */
+.dp-addrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dp-addrow input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dp-addrow .dp-danger {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.dp-addrow-in {
+  margin: 1px 0 3px 14px;
+  gap: 5px;
+}
+
+.dp-addrow-in input {
+  padding: 4px 7px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--card-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.dp-addrow-in input:focus {
+  outline: none;
+}
+
+/* ------------------------------------------------------------ 角色卡 */
+
+/* 封顶 700px：表单再宽就是白纸，一行字拉老远反而难扫 */
+.dp-card {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 700px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.dp-empty {
+  margin: 24px auto 0;
+  max-width: 340px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--faint);
+}
+
+.dp-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dp-card-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.dp-card-sub {
+  margin-top: 3px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--faint);
+}
+
+.dp-avwrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.dp-avwrap input[type='file'] {
+  display: none;
+}
+
+/* 挂现有员工 = 弹窗：盖在整个面板上（.dp 有 position:relative 才盖得住） */
+.dp-modal-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.36);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+}
+
+.dp-modal {
+  width: min(620px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.42);
+  overflow: hidden;
+}
+
+.dp-modal-body {
+  flex: 1 1 auto;
+  min-height: 140px;
+  overflow-y: auto;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* 字段一行一个，横着排 —— 像表单，不像仪表盘 */
+
+.dp-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.dp-field > label {
+  flex: 0 0 68px;
+  padding-top: 5px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.dp-field > .dp-in {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dp-in input[type='text'],
+.dp-in textarea,
+.dp-in select {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.dp-in textarea {
+  min-height: 56px;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.dp-in textarea.prompt {
+  min-height: 140px;
+  font-size: 12px;
+}
+
+.dp-in input:focus,
+.dp-in textarea:focus,
+.dp-in select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.dp-help {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--faint);
+}
+
+.dp-help.bad {
+  color: var(--danger);
+}
+
+.dp-card-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.dp-primary {
+  padding: 5px 16px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dp-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dp-danger {
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--faint);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.dp-danger:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.dp-foot-note {
+  flex: 1 1 150px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--faint);
+}
+
+/* 履历 / 学会的工作流：小字列表，一眼扫过去 */
+
+.dp-hist {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dp-hist li {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--dim);
+  padding-left: 8px;
+  border-left: 2px solid var(--line);
+}
+
+.dp-hist time {
+  color: var(--faint);
+  font-size: 10.5px;
+}
+
+.dp-hist b {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* 学会的工作流那行：条目 + 行内「复制给…」，不另起一行省空间 */
+
+.dp-learn .dp-copy {
+  width: auto;
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--faint);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.dp-learn .dp-copy:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ------------------------------------------------------------ 右：总提示词 */
+
+/* 分段编辑 + 合成预览都挤在这一栏，所以封顶窄一点，给中间角色卡留地方 */
+.dp-prompt {
+  flex: 0 0 340px;
+  max-width: 340px;
+  min-width: 260px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px 18px;
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: color-mix(in srgb, var(--panel-2) 50%, transparent);
+}
+
+.dp-pt-head {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dp-pt-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dp-pt-sec.grow {
+  flex: 1 1 auto;
+  min-height: 120px;
+}
+
+.dp-pt-label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.dp-pt-count {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.dp-pt-area {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.dp-pt-area:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.dp-pt-area:disabled {
+  opacity: 0.5;
+}
+
+/* 合成结果：只读、等宽一点，长得像"最终那份文件" */
+.dp-pt-prev {
+  flex: 1 1 auto;
+  min-height: 100px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-soft, var(--card-2));
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-y: auto;
+  color: var(--dim);
+}

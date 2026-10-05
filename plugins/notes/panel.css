@@ -1,0 +1,535 @@
+.ensoul-note-board-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  background: #fdfbf7;
+  overflow: hidden;
+  user-select: none;
+  font-family: inherit;
+  position: relative;
+}
+
+.note-whiteboard {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px 14px;
+  box-sizing: border-box;
+  background-color: #f8fafc;
+  background-image: 
+    radial-gradient(#e2e8f0 1.2px, transparent 1.2px),
+    radial-gradient(#e2e8f0 1.2px, #f8fafc 1.2px);
+  background-size: 20px 20px;
+  background-position: 0 0, 10px 10px;
+  display: flex;
+  flex-direction: column;
+  scroll-behavior: smooth;
+  cursor: crosshair;
+}
+
+.note-pins-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  align-content: flex-start;
+}
+
+.note-pin-card {
+  position: relative;
+  width: 114px;
+  min-height: 78px;
+  padding: 15px 9px 20px;
+  box-sizing: border-box;
+  border-radius: 3px 3px 4px 3px;
+  box-shadow:
+    0 2px 4px -1px rgba(0, 0, 0, 0.08),
+    0 1px 2px -1px rgba(0, 0, 0, 0.05);
+  cursor: grab;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease;
+  word-break: break-word;
+  display: flex;
+  flex-direction: column;
+}
+
+.note-pin-card:active {
+  cursor: grabbing;
+}
+
+.note-pin-card:hover {
+  transform: translateY(-2px) scale(1.02) !important;
+  box-shadow:
+    0 8px 12px -2px rgba(0, 0, 0, 0.12),
+    0 4px 6px -2px rgba(0, 0, 0, 0.06);
+  z-index: 10;
+}
+
+.note-pin-card.is-editing {
+  cursor: default;
+  transform: scale(1.04) !important;
+  box-shadow: 0 8px 16px -2px rgba(0, 0, 0, 0.18);
+  z-index: 20;
+}
+
+.note-pin-card.is-launching {
+  animation: noteLaunch 0.35s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+}
+
+@keyframes noteLaunch {
+  0% {
+    opacity: 0;
+    transform: translateY(28px) scale(0.65) rotate(0deg);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1.04) rotate(4deg);
+  }
+  85% {
+    opacity: 1;
+    transform: translateY(1px) scale(0.98) rotate(-1deg);
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.note-pin-thumbtack {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.thumbtack-dot {
+  width: 3px;
+  height: 3px;
+  background: #ffffff;
+  border-radius: 50%;
+  opacity: 0.85;
+}
+
+.note-pin-text {
+  font-size: 12px;
+  line-height: 1.35;
+  color: #334155;
+  font-weight: 500;
+  user-select: none;
+  min-height: 36px;
+}
+
+.note-pin-edit-area,
+textarea.note-pin-edit-area {
+  width: 100% !important;
+  min-height: 36px !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  outline: none !important;
+  resize: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 12px !important;
+  line-height: 1.35 !important;
+  color: #1e293b !important;
+  font-weight: 500 !important;
+  font-family: inherit !important;
+  box-sizing: border-box !important;
+}
+
+.note-pin-edit-area:focus,
+textarea.note-pin-edit-area:focus {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.note-clock-btn {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: #94a3b8;
+  cursor: pointer;
+  opacity: 0.45;
+  transition: all 0.15s ease;
+  z-index: 5;
+}
+
+.note-pin-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+}
+
+.note-pin-card:hover .note-clock-btn {
+  opacity: 0.9;
+}
+
+.note-target-emp {
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 1.5px 5px 1.5px 2px;
+  font-size: 10px;
+  line-height: 1;
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  max-width: 78px;
+  overflow: hidden;
+}
+
+.note-target-emp.is-sent {
+  background: rgba(240, 253, 244, 0.9);
+  border-color: #86efac;
+  color: #15803d;
+}
+
+.note-emp-avatar {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.note-emp-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.note-emp-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 38px;
+  font-size: 9.5px;
+  font-weight: 600;
+}
+
+.note-emp-cancel {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+
+.note-emp-cancel:hover {
+  color: #ef4444;
+}
+
+.note-emp-check {
+  font-size: 9.5px;
+  color: #16a34a;
+  font-weight: 800;
+}
+
+.note-clock-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #d97706;
+  opacity: 1 !important;
+}
+
+.note-clock-btn.is-set {
+  opacity: 1 !important;
+  color: #d97706;
+  background: rgba(254, 240, 138, 0.9);
+  width: auto;
+  padding: 0 5px;
+  gap: 3px;
+  border: 1px solid rgba(250, 204, 21, 0.8);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.note-clock-tag {
+  font-size: 10px;
+  font-weight: 700;
+  color: #854d0e;
+  line-height: 1;
+  letter-spacing: -0.3px;
+}
+
+.note-ring-popover {
+  position: fixed;
+  z-index: 10000;
+  width: 126px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.18), 0 4px 10px -2px rgba(0, 0, 0, 0.08);
+  padding: 10px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  animation: popFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes popFadeIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.note-ring-body {
+  position: relative;
+  width: 104px;
+  height: 104px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+  margin: 0 auto;
+}
+
+.note-ring-body:active {
+  cursor: grabbing;
+}
+
+.note-ring-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 104px;
+  height: 104px;
+  pointer-events: all;
+  display: block;
+}
+
+.note-ring-knob {
+  cursor: grab;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.22));
+  transition: transform 0.06s ease;
+}
+
+.note-ring-knob:active {
+  cursor: grabbing;
+}
+
+.note-ring-label-center {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  text-align: center;
+}
+
+.note-ring-val {
+  font-size: 17px;
+  font-weight: 700;
+  color: #d97706;
+  line-height: 1;
+  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.3px;
+}
+
+.note-ring-turn-tag {
+  font-size: 8px;
+  font-weight: 700;
+  color: #ea580c;
+  background: rgba(254, 215, 170, 0.55);
+  border: 1px solid rgba(251, 146, 60, 0.4);
+  padding: 1.5px 5px;
+  border-radius: 8px;
+  margin-top: 4px;
+  line-height: 1;
+  letter-spacing: -0.2px;
+}
+
+.note-ring-sub {
+  font-size: 9px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.note-pin-card.is-done {
+  cursor: pointer;
+  border: 1px solid #86efac;
+  box-shadow:
+    0 0 0 2px rgba(16, 185, 129, 0.12),
+    0 2px 4px -1px rgba(0, 0, 0, 0.08);
+}
+
+.note-pin-done-stamp {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  width: 50px;
+  height: 50px;
+  color: #c62f28;
+  opacity: 1;
+  pointer-events: none;
+  user-select: none;
+  z-index: 4;
+}
+
+.note-pin-done-stamp svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.note-stamp-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.note-pin-card.is-done .note-clock-btn {
+  display: none;
+}
+
+.note-pin-close-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1.5px solid rgba(0, 0, 0, 0.12);
+  border-radius: 50%;
+  background: #ffffff;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.14s ease, background-color 0.14s ease, color 0.14s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  z-index: 20;
+  font-size: 14px;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.note-pin-card:hover .note-pin-close-btn {
+  opacity: 0.85;
+}
+
+.note-pin-close-btn:hover {
+  opacity: 1 !important;
+  background: #ef4444;
+  color: #ffffff;
+  border-color: #ef4444;
+}
+
+/* 白板右下角微型悬浮缩放条 */
+.note-zoom-bar {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+  padding: 3px 8px;
+  box-shadow: 0 4px 14px -2px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
+  opacity: 0.75;
+  transition: opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  user-select: none;
+}
+
+.note-zoom-bar:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px -2px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.note-zoom-btn {
+  background: transparent;
+  border: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 500;
+  color: #475569;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  padding: 0;
+  line-height: 1;
+}
+
+.note-zoom-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #0f172a;
+}
+
+.note-zoom-reset {
+  background: transparent;
+  border: none;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: color 0.15s ease;
+  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
+  line-height: 24px;
+}
+
+.note-zoom-reset:hover {
+  color: #d97706;
+}

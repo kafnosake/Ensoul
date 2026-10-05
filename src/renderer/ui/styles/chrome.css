@@ -1,0 +1,497 @@
+/* chrome.css —— 标签右键菜单、设置里收面板的那一条、宿主徽标、工作区选择器
+   原 styles.css 第 412-651 行，按块原样搬过来的。 */
+
+/* 标签右键出来的小菜单 */
+.ctx-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+}
+
+.ctx-menu {
+  position: fixed;
+  z-index: 81;
+  min-width: 168px;
+  padding: 5px;
+  background: var(--pop);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow), var(--edge); backdrop-filter: var(--glass-blur);
+}
+
+.ctx-menu button {
+  display: block;
+  width: 100%;
+  padding: 6px 9px;
+  font-size: 12px;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+
+.ctx-menu button:hover {
+  background: var(--card);
+}
+
+/* 收面板 / 选面板的那一条：下拉 + 输入 + 按钮 */
+.cmp-bar {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0 10px;
+}
+
+.cmp-bar select,
+.cmp-bar input {
+  min-width: 0;
+  font-size: 11.5px;
+}
+
+.cmp-bar select {
+  max-width: 190px;
+}
+
+.cmp-bar input {
+  flex: 1;
+}
+
+.cmp-bar button {
+  flex: none;
+  font-size: 11.5px;
+}
+
+/* 组件那一行的名字：本身就是个按钮 —— 点它就地改成输入框改名 */
+.cmp-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+  font-weight: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 2px 6px;
+  cursor: text;
+}
+
+.cmp-name:hover {
+  background: var(--tint-b);
+  border-color: var(--line);
+}
+
+.cmp-rename {
+  width: 160px;
+  font-size: 12px;
+  padding: 3px 8px;
+}
+
+/* 宿主上的徽标：挂在我这儿的浮窗有几个 */
+.win-kids {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  font-size: 10.5px;
+  color: var(--accent);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+/* 左上角的工作区选择器：当前在哪个项目一眼可见，点开能切 */
+.ws-pick {
+  position: relative;
+  margin-left: 4px;
+}
+
+.ws-pick-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--text);
+}
+
+.ws-pick-btn:hover {
+  border-color: var(--accent);
+}
+
+.ws-pick-name {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-pick-mask {
+  /* 遮罩和菜单都长在 .titlebar 里，而那是 -webkit-app-region: drag ——
+     Windows 会把落在拖动区上的点击当成"拖窗口"直接吞掉，元素根本收不到事件。
+     不标 no-drag 的话，菜单上点一下毫无反应，看着就是坏的。 */
+  -webkit-app-region: no-drag;
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.ws-pick-menu {
+  -webkit-app-region: no-drag;
+  position: absolute;
+  z-index: 41;
+  top: 32px;
+  left: 0;
+  min-width: 280px;
+  max-width: 440px;
+  padding: 5px;
+  background: var(--pop);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow), var(--edge); backdrop-filter: var(--glass-blur);
+  animation: pop-in 120ms ease-out;
+}
+
+.ws-pick-head {
+  padding: 5px 8px;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.ws-pick-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 6px 8px;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--text);
+}
+
+.ws-pick-item:hover {
+  background: var(--card);
+}
+
+.ws-pick-item.is-on {
+  background: var(--card);
+  border-color: var(--line);
+}
+
+.ws-pick-item-name {
+  font-size: 12px;
+}
+
+.ws-pick-item-path {
+  max-width: 390px;
+  font-size: 10.5px;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* "或粘一个路径"那一行：系统目录对话框打不开、或者在别的屏幕上找不着时的第二条路 */
+.ws-pick-manual {
+  display: flex;
+  gap: 5px;
+  padding: 5px 6px 3px;
+  -webkit-app-region: no-drag;
+}
+
+.ws-pick-manual input {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 7px;
+  font-size: 11.5px;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  -webkit-app-region: no-drag;
+}
+
+.ws-pick-manual button {
+  flex: none;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 11.5px;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.ws-pick-manual button:disabled {
+  opacity: 0.45;
+}
+
+.ws-pick-add {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--dim);
+  border-top: 1px solid var(--line-soft);
+  border-radius: 0 0 7px 7px;
+}
+
+.titlebar-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.titlebar-actions button {
+  background: transparent;
+  border-color: transparent;
+  color: var(--dim);
+}
+
+.titlebar-actions button:hover {
+  background: var(--card);
+  color: var(--text);
+}
+
+.win-buttons {
+  display: flex;
+  gap: 2px;
+  margin-left: 6px;
+}
+
+.win-buttons button {
+  height: 30px;
+  min-width: 36px;
+  justify-content: center;
+  padding: 0 9px;
+  background: transparent;
+  border-color: transparent;
+  border-radius: 7px;
+  color: var(--dim);
+}
+
+.win-buttons button:hover {
+  background: var(--card);
+  color: var(--text);
+}
+
+.win-buttons .win-close:hover {
+  background: var(--danger);
+  border-color: transparent;
+  color: #fff;
+}
+
+/* ---------------------------------------------------------------- 收纳区（菜单栏中间那一段） */
+
+/*
+ * 它就是顶栏里的一段，不另起一行 —— 左边是品牌+工作区，右边是设置和窗口按钮，
+ * 中间这块空着也是空着。
+ *
+ * 它自己**就是一个拖拽落点**（面板往这儿一放 = 收起来），所以空着的时候也得占着地方，
+ * 用一行淡字把"这儿能放"说清楚 —— 不然没人看得出来这东西能拖过来。
+ * 撑开的程度取决于内容：不拖动时按内容宽度，一拖动就吃掉中间所有空白（落点最大、最好瞄）。
+ */
+.cmpfav-slot {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  margin-right: 36px;
+  -webkit-app-region: drag;
+}
+
+.cmpfav {
+  /* 顶栏整条是窗口拖拽区，这一段要接指针事件，必须自己声明不是 */
+  -webkit-app-region: no-drag;
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: 8px;
+  overflow: hidden; /* 摆不下靠 max 收进下拉，不横向滚 */
+}
+
+.cmpfav-empty {
+  padding-left: 2px;
+  color: var(--faint);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+/* 正拖着东西：这一段撑满中间，给一道左边线，说明这儿能接 */
+.cmpfav.is-active {
+  width: 100%;
+  flex: 1 1 auto;
+  background: var(--tint-b);
+  box-shadow: inset 2px 0 0 var(--accent-soft);
+}
+
+/* 指针就压在这一段上 —— 松手就存 */
+.cmpfav.is-drop {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.cmpfav-item.is-dragging {
+  opacity: 0.38;
+}
+
+.cmpfav-drop-slot {
+  flex: none;
+  width: 3px;
+  height: 18px;
+  pointer-events: none;
+  align-self: center;
+  margin: 0 1px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.55);
+  animation: tab-slot-in 90ms ease-out;
+}
+
+.cmpfav-item {
+  display: flex;
+  align-items: center;
+  flex: none;
+  height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--card);
+  transition: background var(--ease), border-color var(--ease);
+}
+
+.cmpfav-item:hover {
+  background: var(--card-2);
+  border-color: var(--line-hi);
+}
+
+.cmpfav-name {
+  height: 100%;
+  max-width: 132px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dim);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* 点一下打开那个面板（开着就切过去）；按住能拖出去，松在布局的哪儿就开在哪儿 */
+  cursor: grab;
+}
+
+.cmpfav-name:hover,
+.cmpfav-name:active {
+  background: transparent;
+  color: var(--text);
+  transform: none;
+}
+
+/* 这个面板此刻开着 —— 入口点亮，点一下是"切过去"。
+   条上不放删除键：删除只在 设置 → 收纳区 里手动做，软件不给自己清除的入口 */
+.cmpfav-name.is-on {
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.cmpfav-menu-item.is-on {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.cmpfav-more {
+  position: relative;
+  flex: none;
+}
+
+.cmpfav-more-btn {
+  height: 22px;
+  padding: 0 6px;
+  color: var(--dim);
+  font-size: 11.5px;
+}
+
+.cmpfav-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.cmpfav-menu {
+  position: absolute;
+  top: 26px;
+  left: 0;
+  z-index: 41;
+  min-width: 180px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+  box-shadow: var(--shadow);
+}
+
+.cmpfav-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  font-size: 12px;
+  text-align: left;
+}
+
+.cmpfav-menu-item:hover {
+  background: var(--card);
+}
+
+.cmpfav-menu-name {
+  min-width: 0;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cmpfav-menu-kind {
+  flex: none;
+  color: var(--faint);
+  font-size: 10.5px;
+}
+
+.floating-bar {
+  cursor: move;
+  /*
+   * 关键：浮窗标题栏不能是系统拖拽区。
+   *
+   * 在 -webkit-app-region: drag 的区域上，Windows 会接管鼠标，pointer 事件根本不派发 ——
+   * beginDrag / moveDrag / endDrag 一次都不会执行，于是落点判定、拖动预览、附属分派
+   * 全都无从谈起。（这里曾经就是这样：整套逻辑写好了却全是死代码，拖动只会让窗口平移。）
+   *
+   * 主窗口不用改：它不需要判定"落到谁身上"，系统拖动够用。
+   */
+  -webkit-app-region: no-drag;
+}
+
+.floating-bar .win-buttons {
+  margin-left: auto;
+}

@@ -1,0 +1,2 @@
+:root { --ensoul-ink: #202328; --ensoul-fold: #74777c; --ensoul-paper: #fffdf8; --ensoul-paper-shade: #ece6dc; --ensoul-clear-space: 0.25em; }
+.ensoul-logo { display: inline-block; width: 24px; height: 24px; background: currentColor; mask: url("../svg/mark-micro.svg") center / contain no-repeat; -webkit-mask: url("../svg/mark-micro.svg") center / contain no-repeat; }

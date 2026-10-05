@@ -1,0 +1,270 @@
+/* histconv.css —— 会话区**左边界**上的「历史会话」小栏（跟右边缘那条便签刻度同一族）
+   数据来自 .ensoul/state/histconv/<面板 id>.json（plugins/histconv 写的），界面只负责显示。
+   界面上的动作（跳转 / 改名 / 换标题 / 排序 / 删除）写 histconv.cmd.json 递回插件。
+
+   它是**会话区自己的东西**：贴着消息列的左边缘住在那道留白里，垂直居中，
+   **没有边框、没有圆角、没有投影** —— 就是一列裸文字，不是浮窗。
+   宽度怎么决定见 HistRail.tsx 顶部那段 —— 留白挤不下就让位。 */
+
+/* ------------------------------------------------------------ 头栏那颗 ☰ */
+
+/* 历史会话小栏的开合。收起之后会话区左边什么都不留 —— 全靠它 */
+.dock-hist {
+  flex: none;
+  padding: 1px 5px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--tint-f);
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+
+.dock-hist:hover,
+.dock-hist.on {
+  color: var(--accent);
+  background: var(--tint-c);
+}
+
+/* ------------------------------------------------------------ 这一栏本体 */
+
+/*
+ * 它是**绝对定位**的：消息列居中（--col-w），列左边缘 = 50% - col/2，
+ * 这一栏就贴在它左边、留一道缝。所以摆出它**消息列一点都不动**。
+ * 宽度是 HistRail 量出来传进来的：留白够就 176，挤得动就跟着缩，
+ * 缩不动（<120）整栏不画、让位给会话列。
+ *
+ * 为什么不做成 flex 里的一栏：那样它一开就把消息列推窄，而列的宽度又是按容器
+ * 算的 —— 栏越宽、容器越窄、算出来的留白越小，两边互相追，会闪。
+ * 留白是**容器本身**的量，跟这一栏开不开无关，量它才是稳的。
+ */
+.hist-rail {
+  position: absolute;
+  /* 贴住消息列的左边缘：整块容器里列的左缘在 50% - --col-w/2 处，
+     这一栏右缘再往左退一道缝。列多宽都跟着走。 */
+  right: calc(50% + var(--col-w) * 0.5 + 12px);
+  top: 2px;
+  bottom: 2px;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  /* **垂直居中**——用户点名的：不要从顶上铺下来，居在列的中间 */
+  justify-content: center;
+  min-height: 0;
+  /* 裸的：没有边框、圆角、底、投影。它跟便签刻度一样，是会话区自己的一部分 */
+  background: none;
+  /* 空白处别挡底下 */
+  pointer-events: none;
+}
+
+/* 挤不下了：整栏让位给会话列。**用 display:none 而不是不渲染** —— 它同时是
+   量宽度的耳朵，从树上摘掉 ResizeObserver 就断了，窗口再拉大也回不来。 */
+.hist-rail.is-hidden {
+  display: none;
+}
+
+/* 里头每一件都是能点的，得把指针收回来 */
+.hist-rail > * {
+  pointer-events: auto;
+}
+
+/* 栏头：一行小字 + 收合。跟便签一样安静，不抢眼 */
+
+/* 列表自己滚 —— 十版、四十版都不成问题 */
+.hist-scroll {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 72vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* 分组标题：今天 / 昨天 / 7 天内 / 更早。右对齐，跟标题同一列 */
+.hist-group {
+  padding: 7px 4px 3px;
+  font-size: 10px;
+  color: var(--tint-f);
+  letter-spacing: 0.4px;
+  text-align: right;
+}
+
+/* 一版一行：**只写标题**。整行可点（点=跳过去）、可拖（拖=排序）、
+   右键出菜单。
+   **右对齐** —— 这一栏在列的左边，"贴着列缘"就是让字右端落在离列缘一道缝的
+   地方；左对齐的话字头钉在栏的最左边，多短都离得远。 */
+.hist-row {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 5px;
+  padding: 3px 4px;
+  border-radius: 5px;
+  color: var(--dim);
+  font-size: 11.5px;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.hist-row:hover {
+  background: var(--tint-b);
+  color: var(--text);
+}
+
+.hist-row.is-picked {
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--text);
+}
+
+.hist-row.is-current {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.hist-row.is-current .hist-name::before {
+  content: '● ';
+  font-size: 8px;
+  vertical-align: middle;
+  margin-right: 3px;
+  color: var(--accent);
+}
+
+.hist-row.is-drag {
+  opacity: 0.45;
+}
+
+/* 抓手：已撤 —— 整行都能拖，不用再占一个符号位 */
+
+/* 标题：能缩就缩，太长省略号 —— 一行就是一版，不许多行 */
+.hist-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 就地改名 */
+.hist-rename {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 4px;
+  border: 1px solid var(--focus-line);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: right;
+}
+
+/* 「⋯」：指到那一行才显。它只占 12px —— 标题紧挨着它，离列缘就差这一点 */
+.hist-more {
+  flex: none;
+  width: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--tint-f);
+  font-size: 12px;
+  line-height: 1;
+  text-align: center;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.hist-row:hover .hist-more {
+  opacity: 1;
+}
+
+.hist-more:hover {
+  color: var(--accent);
+}
+
+/* 行上的小菜单（fixed：位置按点的那颗按钮算，不受这一栏的 overflow 裁） */
+.hist-menu {
+  position: fixed;
+  z-index: 90;
+  min-width: 132px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--pop-a);
+  box-shadow: var(--shadow);
+  backdrop-filter: var(--glass-blur);
+  display: flex;
+  flex-direction: column;
+}
+
+.hist-menu button {
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-2);
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hist-menu button:hover {
+  background: var(--tint-c);
+  color: var(--text);
+}
+
+.hist-menu button.is-danger:hover {
+  background: rgba(229, 100, 95, 0.16);
+  color: var(--danger);
+}
+
+/* ------------------------------------------------------------ 多选操作栏 */
+
+.hist-multi {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--tint-a);
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.hist-multi-n {
+  margin-right: auto;
+}
+
+.hist-multi-btn {
+  padding: 2px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--tint-c);
+  color: var(--dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.hist-multi-btn:hover {
+  color: var(--text);
+}
+
+.hist-multi-del {
+  padding: 2px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: rgba(229, 100, 95, 0.16);
+  color: var(--danger);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.hist-multi-del:disabled {
+  background: var(--tint-b);
+  color: var(--tint-f);
+  cursor: default;
+}

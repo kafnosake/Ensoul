@@ -1,0 +1,175 @@
+/* panel.css —— 面板外壳、滚动层、文本面板
+   原 styles.css 第 919-1058 行，按块原样搬过来的。 */
+
+/* ---------------------------------------------------------------- 面板 */
+
+.panel-surface {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+  /* 定位参照：看图那一层是 absolute inset:0，就铺在这块面板上（见 ui/ImageView）。
+     面板不 relative 的话，那层会一路找到别的祖先上去 —— 又变成盖满窗口。 */
+  position: relative;
+}
+
+.panel-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px;
+  gap: 12px;
+  /* 关键：面板本身不滚。滚动交给里面的内容区，
+     否则工具栏、路径行会跟着一起被滑条拖着走 */
+  overflow: hidden;
+}
+
+/* 唯一滚动的那一层 */
+.panel-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: block;
+}
+
+/* 内容（文本区 / 文件树 / 输出）吃满这一层；内容再多也由它自己内部滚 */
+.panel-scroll > * {
+  height: 100%;
+  min-height: 0;
+}
+
+/* ---------------------------------------------------------------- 嵌入内容的自适应层
+   FitBox：外层就是"装它的那块地方"，内层按 --panel-zoom 整体缩放。
+   只有声明了 data-fit="natural" 的内容才会被缩放（见 panel/FitBox.tsx），
+   别的面板倍率恒为 1，等于没有这一层。
+   内层用绝对定位 + 显式尺寸（组件按倍率算好），所以外层必须 relative、内层必须 flex：
+   少了 flex，里面的 .panel-surface（flex:1）就没有高度可撑。 */
+
+.fit-box {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.fit-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  transform-origin: 0 0;
+}
+
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+/* 对话面板上的那一行动作按钮：面板没有 .panel-main 的填充，得自己让开边 */
+.panel-actions-dock {
+  padding: 12px 16px 0;
+}
+
+.density-compact .panel-main {
+  padding: 10px 12px;
+  gap: 8px;
+}
+
+.density-roomy .panel-main {
+  padding: 22px 24px;
+}
+
+.body-blank {
+  margin: auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.blank-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--dim);
+}
+
+.blank-note {
+  color: var(--faint);
+  font-size: 12.5px;
+}
+
+/* ---------------------------------------------------------------- 文本面板 */
+
+.editor-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.editor-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.editor-path {
+  font-size: 11.5px;
+  color: var(--faint);
+  font-family: var(--font-code);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-tools {
+  margin-left: auto;
+  display: flex;
+  gap: 3px;
+  padding: 2px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+}
+
+.editor-tools button {
+  padding: 3px 10px;
+  font-size: 11.5px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--faint);
+  border-radius: 7px;
+}
+
+.editor-tools button:hover {
+  color: var(--text);
+}
+
+.editor-tools button.is-on {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 1px 0 var(--tint-a) inset;
+}
+
+.editor-tools button {
+  padding: 4px 9px;
+}
+
+.editor-tools button.is-dirty {
+  color: var(--accent);
+}
+
+.editor-dirty {
+  font-size: 10px;
+  color: var(--accent);
+  line-height: 1;
+}

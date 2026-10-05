@@ -1,0 +1,12 @@
+{
+  "agent 想重启应用时先摆一条请求，等用户点头才真的重启": "Intercept restart_project and prompt user for confirmation first",
+  "它想重启应用让改动生效": "It wants to restart the app to apply changes",
+  " —— 会先构建，窗口消失一下再回来，对话还在。": " — will build first; window disappears briefly then returns, preserving chat.",
+  "确认重启": "Confirm restart",
+  "先不重启": "Not now",
+  "等全部会话结束": "When idle",
+  "重启**没有执行** —— 请求已经摆到界面上，用户有三个选择：": "Restart **not executed** — request displayed to user with 3 choices:",
+  "「确认重启」立刻做；「等全部会话结束」让核心盯着，所有会话都跑完自动重启；「先不重启」作废。": "'Confirm restart' does it now; 'When idle' restarts after all sessions finish; 'Not now' cancels.",
+  "现在把话说完：改了哪些文件、为什么必须重启才生效，然后停下等用户点。": "Explain which files changed and why restart is needed, then wait for user action.",
+  "不要再调 restart_project：重复调用只是再挂一条同样的请求。": "Do not call restart_project again: repeated calls just post duplicate prompts."
+}

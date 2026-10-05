@@ -1,0 +1,250 @@
+/* misc.css —— 新面板菜单、浮窗拉伸把手、项目运行、任务清单面板
+   原 styles.css 第 3021-3225 行，按块原样搬过来的。 */
+
+/* ---------------------------------------------------------------- 新面板菜单 */
+
+.new-menu-wrap {
+  position: relative;
+}
+
+.new-menu {
+  position: absolute;
+  right: 0;
+  top: 36px;
+  z-index: 60;
+  min-width: 250px;
+  padding: 6px;
+  background: var(--pop);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow), var(--edge);
+  backdrop-filter: var(--glass-blur);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.new-menu button {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  background: transparent;
+  border-color: transparent;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.new-menu button:hover {
+  background: var(--card);
+}
+
+.menu-label {
+  font-size: 13px;
+}
+
+.menu-hint {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* ---------------------------------------------------------------- 浮窗拉伸把手 */
+
+.resize-handle {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+  z-index: 30;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--fill-dim);
+  border-bottom: 2px solid var(--fill-dim);
+  border-radius: 0 0 3px 0;
+  transition: border-color var(--ease);
+}
+
+.resize-handle:hover::after {
+  border-color: var(--accent);
+}
+
+/* 分块出现时轻微淡入 */
+.dock-split {
+  animation: dock-in 160ms ease-out;
+}
+
+/* ---------------------------------------------------------------- 项目运行 */
+
+@keyframes dock-in {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+body.is-resizing {
+  user-select: none;
+}
+
+/* 已废弃：老的输入区结构 */
+.dock-input {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- 任务清单面板
+   读的是插件写下的那件事：`.ensoul/state/todo.json`。
+   安静为主 —— 只有"正在进行"那一条给颜色，其余都退到背景里。 */
+
+.todo-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 18px;
+}
+
+.todo-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.todo-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.todo-doing {
+  font-size: 12px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.todo-when {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.todo-bar {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--line-soft);
+  overflow: hidden;
+}
+
+.todo-bar i {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+  border-radius: 999px;
+  transition: width 240ms var(--ease);
+}
+
+.todo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.todo-item {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--dim);
+}
+
+.todo-item:last-child {
+  border-bottom: none;
+}
+
+.todo-mark {
+  flex: 0 0 14px;
+  text-align: center;
+  color: var(--faint);
+}
+
+.todo-item.is-in_progress {
+  color: var(--text);
+  background: var(--accent-soft);
+  border-radius: var(--r-sm);
+  border-bottom-color: transparent;
+}
+
+.todo-item.is-in_progress .todo-mark {
+  color: var(--accent);
+}
+
+.todo-item.is-completed {
+  color: var(--faint);
+}
+
+.todo-item.is-completed .todo-text {
+  text-decoration: line-through;
+}
+
+.todo-item.is-completed .todo-mark {
+  color: var(--ok);
+}
+
+/* ---------------------------------------------------------------- 面板崩了的兜底
+
+   plugin/PanelBoundary.tsx 用它。以前一块面板（哪怕只是一个插件脸）渲染抛异常，
+   整棵 React 树会被卸掉、全窗口白屏 —— 现在坏的是这一块，话摆在脸上。 */
+
+.panel-crash {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding: 18px;
+  overflow: auto;
+  color: var(--text);
+}
+
+.panel-crash .crash-head {
+  color: var(--danger, #e2585f);
+  font-weight: 600;
+}
+
+.panel-crash .crash-msg {
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--text);
+  font-family: var(--font-code);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+.panel-crash .crash-note {
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.panel-crash .crash-acts {
+  display: flex;
+  gap: 8px;
+}

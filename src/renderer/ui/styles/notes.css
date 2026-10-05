@@ -1,0 +1,204 @@
+/* notes.css —— 重点标记、右边缘的便签刻度、悬停摊开的那张卡
+   便签的数据来自 .ensoul/state/notes.json（plugins/notes 写的），界面只负责显示。 */
+
+/* ---------------------------------------------------------------- 便签与重点标记 */
+
+/* 助手用 ==…== 圈出来的重点。颜色要能在一屏文字里立刻被认出来，但不能刺眼 */
+.hl {
+  padding: 0 2px;
+  color: var(--text);
+  background: rgba(255, 214, 102, 0.2);
+  border-bottom: 1px solid rgba(255, 214, 102, 0.5);
+  border-radius: 3px;
+}
+
+/* 便签刻度：贴在会话区右边缘的一条刻痕带。
+   **它不占宽度** —— 盖在会话区上，会话区该多宽还是多宽。
+   会话列自己有一条**可拖的宽度**（.dock-edge / --col-w，见 chat.css），跟这里**无关**：
+   刻度落在列的留白里（SESSION_GUTTER），列再宽也压不到它，它也不挤列 ——
+   两件事只是住得近，谁也不读谁。
+   平时只是几道几乎看不见的短横，鼠标在**这一带**动（不必正好指到某一格），
+   最近的那一格就吸过来亮起来、完整内容在左边摊开。 */
+.note-gauge {
+  position: absolute;
+  /* 挂在 .dock-body（消息区那一块）上，不是整个面板 —— 往下一路铺到输入框会把
+     右边的发送按钮压住。 */
+  top: 2px;
+  bottom: 2px;
+  /* 钉在**消息列右边缘外侧那 22px 留白**里（SESSION_GUTTER），不是面板最右边。
+     消息列是**居中**的：面板一宽，"列的右边缘"和"面板的右边缘"能差好几百像素。
+     以前这里是 right: 3px —— 刻度于是孤零零飘在离对话很远的地方（文件面板里
+     那一块本来就只有背景）。刻度是这一列的把手，就该挨着这一列。
+     --col-w 定义在 .chatdock 上（见 chat.css），这里有继承。 */
+  left: calc(50% + var(--col-w) * 0.5);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  /* **贴底排**：最新的一条永远在最下面，条数变了也不从中间往外挤 */
+  justify-content: flex-end;
+  /* 一格 2px + 缝 3px —— 一屏能摆下三十来格，而每一格仍是"细刻痕"的样子 */
+  gap: 3px;
+  width: 22px;
+  /* 整条带子都接收鼠标：刻度只有 2px 高，要求"正好指到那一格"等于要求瞄准，
+     于是就有了"特别难点"的手感。现在鼠标在这条带子里动，就按**最近**的一格
+     吸过去（见 NoteGauge 的 aim / SNAP）。它只有 22px 宽、又落在列的留白里，
+     挡不到正文的点击与选字。 */
+  cursor: pointer;
+}
+
+.note-tick {
+  flex: none;
+  margin-left: auto;
+  width: 9px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--tint-d);
+  transition: width 0.12s, height 0.12s, background 0.12s, box-shadow 0.12s;
+}
+
+/* 更早的那几条没摆出来的提示：顶上留一格极小的横线，说明"上面还有" */
+.note-tick.is-more {
+  width: 5px;
+  height: 1px;
+  opacity: 0.5;
+}
+
+/* 整条被指到时，所有刻度一起亮一点 —— 不然"这里有东西"要碰运气才发现 */
+.note-gauge:hover .note-tick {
+  background: var(--tint-f);
+}
+
+/* 已经挂上"这轮回答标出来的信息"的那几条亮一点；这一轮还没答完、
+   下面还空着的是暗的。**长短一律相同 —— 刻度不表示进度**，它就是个把手。 */
+.note-tick.has-marks {
+  background: rgba(var(--accent-rgb), 0.55);
+}
+
+.note-gauge:hover .note-tick.has-marks {
+  background: rgba(var(--accent-rgb), 0.85);
+}
+
+/* 便签 0 条的时候：这一条轨道也得看得见。
+   文件面板的会话区右边缘本来什么都没有（那两条拖边默认只有 5% 白），
+   用户在那儿找不着任何东西 —— 于是以为"文件面板里根本没有会话区的控制逻辑"。
+   这里摆一道极淡的短线，说明"刻度带在这儿、只是还没有内容"。
+   只画在非对话面板里：整块对话面板不缺这一道线。 */
+.chatdock:not(.is-full) .note-gauge.is-empty::before {
+  content: '';
+  flex: none;
+  margin-left: auto;
+  width: 9px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--tint-e);
+}
+
+/* 正被指的那一格：拉长、点亮。
+   **吸附**选中的那一格由 JS 标 is-hot —— 鼠标在这一带里偏一点也算数，
+   所以这里不是 :hover 而是类名。
+   **高度一律不动**（2px）：这一列是紧挨着排的，某一格变高 1px 会把上面所有格
+   推上去 1px，鼠标一动就换一格、换一格又推一次 —— 那样整条带子会抖。 */
+.note-tick.is-hot {
+  width: 16px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+.note-tick.is-more.is-hot {
+  width: 5px;
+  background: var(--tint-f);
+  box-shadow: none;
+}
+
+/* 悬停摊开的那张卡：位置由 JS 按被指的那一格算，所以是 fixed */
+.note-pop {
+  position: fixed;
+  z-index: 90;
+  width: 320px;
+  max-height: 46vh;
+  padding: 9px 11px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* 它只是"给你看"的：绝不许挡住底下的点击 */
+  pointer-events: none;
+}
+
+.note-pop-meta {
+  margin-bottom: 3px;
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+/* 点住的那张：鼠标移开也不消失，所以它得能滚、能选中文字 ——
+   内容长的时候，光"瞄一眼"是看不全的。 */
+.note-pop.is-pinned {
+  overflow-y: auto;
+  pointer-events: auto;
+  padding-right: 20px;
+}
+
+.note-pop-close {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--faint);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.note-pop-close:hover {
+  background: var(--tint-c);
+  color: var(--text);
+}
+
+/* 我说的话下面挂着的那几条 —— 它这一轮回答里标出来的信息 */
+.note-pop-marks {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.note-pop-marks li {
+  position: relative;
+  margin-top: 5px;
+  padding-left: 11px;
+  color: var(--text);
+  opacity: 0.85;
+}
+
+.note-pop-marks li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.75;
+}
+
+/* 只有我说的话、这一轮还没标出什么 */
+.note-pop-none {
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--faint);
+}

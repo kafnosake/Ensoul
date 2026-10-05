@@ -1,0 +1,417 @@
+/* dock.css —— 工作区与停靠树、标签组、落点预览、拖拽跟随
+   原 styles.css 第 652-918 行，按块原样搬过来的。 */
+
+/* ---------------------------------------------------------------- 工作区与停靠树 */
+
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  padding: 10px;
+  gap: 0;
+}
+
+.dock-split {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.dock-row {
+  flex-direction: row;
+}
+
+.dock-column {
+  flex-direction: column;
+}
+
+.dock-cell {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 两格的比例读容器上的 `--split`。
+   **拖动分割线时这个变量由 JS 直接写**（见 DockTree.tsx 的 startResize）——
+   一个 setState、一次 React 重渲染都不发，这是"拖起来不卡"的关键。
+   静态时它由 React 按 node.ratio 下发。 */
+.dock-split > .dock-cell:first-child {
+  flex-grow: var(--split, 0.5);
+}
+.dock-split > .dock-cell:last-child {
+  flex-grow: calc(1 - var(--split, 0.5));
+}
+
+.dock-gutter {
+  flex: none;
+  background: transparent;
+  transition: background var(--ease);
+}
+
+.dock-gutter:hover {
+  background: rgba(var(--accent-rgb), 0.5);
+}
+
+.gutter-row {
+  width: 10px;
+  cursor: col-resize;
+}
+
+.gutter-column {
+  height: 10px;
+  cursor: row-resize;
+}
+
+/* ---------------------------------------------------------------- 标签组 */
+
+.tabs-group {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+  border: 1px solid var(--line-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  box-shadow: 0 1px 0 var(--tint-a) inset, 0 10px 30px rgba(0, 0, 0, 0.25);
+  transition: border-color var(--ease), box-shadow var(--ease);
+}
+
+.tabs-group.is-drop-target {
+  border-color: rgba(var(--accent-rgb), 0.65);
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.tabs-group.is-dragging {
+  opacity: 0.55;
+}
+
+.tabstrip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 34px;
+  padding: 0 6px;
+  background:
+    linear-gradient(var(--line-soft), var(--line-soft)) left bottom / 100% 1px no-repeat,
+    var(--grad-dock);
+  flex: none;
+}
+
+.tabs {
+  display: flex;
+  align-self: stretch;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 200px;
+  /* 顶掉 min-width:auto 的内容下限，不然 nowrap 标题会把标签钉死在自然宽度 */
+  min-width: 0;
+  align-self: stretch;
+  padding: 0 6px 0 9px;
+  border-radius: 9px 9px 0 0;
+  color: var(--dim);
+  cursor: default;
+  white-space: nowrap;
+  transition: background var(--ease), color var(--ease);
+}
+
+.tab:hover {
+  background: var(--card);
+  color: var(--text);
+}
+
+.tab.is-on {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* 工作状态：只有"正在工作"呼吸，其余三色（完成/失败/待确认）静止等着被看见 */
+.tab-dot.st-working {
+  animation: dot-breathe 1.4s ease-in-out infinite;
+}
+.tab-dot.st-done,
+.tab-dot.st-error,
+.tab-dot.st-confirm {
+  box-shadow: 0 0 6px currentColor;
+}
+
+.tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-x,
+.tab-chat {
+  width: 19px;
+  height: 19px;
+  padding: 0;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  border-radius: 6px;
+  flex: none;
+  opacity: 0;
+  transition: opacity var(--ease), background var(--ease), color var(--ease);
+}
+
+.tab:hover .tab-x,
+.tab.is-on .tab-x,
+.tab:hover .tab-chat {
+  opacity: 1;
+}
+
+.tab-chat.is-on {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.tab-x:hover,
+.tab-chat:hover {
+  background: var(--card-2);
+  color: var(--text);
+}
+
+.tab-add {
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  justify-content: center;
+  background: transparent;
+  border-color: transparent;
+  color: var(--dim);
+  border-radius: 8px;
+  flex: none;
+}
+
+.tab-add:hover {
+  background: var(--card);
+  color: var(--text);
+}
+
+.tabs-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/*
+ * 落点预览：全局一层，跨块移动时平滑滑过去。
+ *
+ * 毛玻璃而不是实心框 —— 它盖住的是**即将被占的那块地**，透出底下的内容才看得清
+ * 自己在动哪一块。拖动中一次 resize 都不发生（不碰真布局），所以不会抖。
+ */
+.dock-preview {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  background: rgba(var(--accent-rgb), 0.1);
+  backdrop-filter: blur(18px) saturate(1.3);
+  border: 1px solid rgba(var(--accent-rgb), 0.5);
+  border-radius: var(--r-lg);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  transition: left 120ms ease-out, top 120ms ease-out, width 120ms ease-out, height 120ms ease-out;
+}
+
+/*
+ * 落在标签栏上时，标签之间那个空位 —— 它把两侧的标签挤开，看上去就是
+ * "马上就要插在这儿"。
+ *
+ * 做**一道细线**，不做一块圆角蓝方块。原来是个 84px 的填充块：它一出现
+ * 就是"往标签中间塞了个蓝框"，很突兀；而它要说的其实只有一件事 —— 插在这一格。
+ * 线的好处是它贴着标签的边缘，像文本光标，不会和落点预览（那种大块毛玻璃框）混淆。
+ */
+.tab-slot {
+  flex: none;
+  width: 3px;
+  /* 它就摆在光标底下：一旦能被点到，"插在第几个"当场问空、空位跳走 —— 标签由此抽搐 */
+  pointer-events: none;
+  align-self: stretch;
+  margin: 7px 1px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.55);
+  animation: tab-slot-in 90ms ease-out;
+}
+
+@keyframes tab-slot-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+/* 空标签组 */
+.group-empty {
+  flex: 1;
+  margin: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed var(--line-hi);
+  border-radius: var(--r-lg);
+  color: var(--faint);
+}
+
+.empty-icon {
+  color: var(--fill-dim);
+  transform: scale(2);
+  margin-bottom: 10px;
+}
+
+.empty-title {
+  color: var(--dim);
+}
+
+.empty-note {
+  font-size: 12px;
+}
+
+.group-empty button {
+  margin-top: 6px;
+}
+
+/* ---------------------------------------------------------------- 拖拽跟随 */
+
+/* 正在被抽走的那一块：显成一个空位（虚线框），眼睛才知道哪儿在腾地方 */
+.tabs-group.is-lifting > .tabs-body {
+  opacity: 0.28;
+  transition: opacity 0.12s ease;
+}
+
+.tabs-group.is-lifting {
+  outline: 1px dashed var(--line-hi);
+  outline-offset: -3px;
+}
+
+/*
+ * 跟着指针的那块吊牌：做成**面板自己的样子**（一块板子 + 一条标题条），
+ * 而不是一个小药丸 —— 眼睛看到的是"面板在跟着走"，这才是要的手感。
+ *
+ * 它只是画出来的，布局树没动，所以底下的分栏 / 贴边 / 嵌入落点照样判得出来。
+ * pointer-events: none 也是这个原因：elementFromPoint 会跳过它，不挡命中判定。
+ */
+.drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 50;
+  pointer-events: none;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: rgba(var(--accent-rgb), 0.09);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  backdrop-filter: var(--glass-blur);
+  overflow: hidden;
+  will-change: transform;
+}
+
+.drag-ghost-bar {
+  padding: 5px 12px;
+  background: linear-gradient(140deg, var(--accent-hi), var(--accent));
+  color: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drag-hint {
+  position: fixed;
+  z-index: 50;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  padding: 8px 16px;
+  background: var(--pop);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 12px;
+  box-shadow: var(--shadow), var(--edge);
+  backdrop-filter: var(--glass-blur);
+}
+
+/*
+ * 监视台里抓出来的会话：跟手一张半透明影子卡（便签那张是浏览器 drag image，
+ * 自绘指针管线没有，得自己画）。同 .drag-ghost 一族：
+ * pointer-events:none —— elementFromPoint 跳过它，不挡虚线框的命中判定。
+ */
+.drag-session-ghost {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 220px;
+  padding: 7px 14px 7px 8px;
+  pointer-events: none;
+  background: var(--pop);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
+  backdrop-filter: var(--glass-blur);
+  opacity: 0.92;
+  /* 锚定抓取点：让光标直接捏在卡片的左上/头像位置，绝不悬在远处产生脱节错位感 */
+  transform: translate(-20px, -18px) rotate(-1.5deg);
+  transform-origin: 20px 18px;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.drag-session-ghost .dsg-avatar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.drag-session-ghost .dsg-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.drag-session-ghost .dsg-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

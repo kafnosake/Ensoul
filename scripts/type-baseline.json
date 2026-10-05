@@ -1,0 +1,23 @@
+{
+  "plugins/browser/panel.tsx|TS2578": 1,
+  "plugins/canvas/panel.tsx|TS2322": 1,
+  "plugins/canvas/panel.tsx|TS7006": 1,
+  "plugins/dispatch/panel.tsx|TS18047": 4,
+  "plugins/dispatch/panel.tsx|TS2322": 1,
+  "plugins/dispatch/panel.tsx|TS2339": 1,
+  "plugins/schedule/panel.tsx|TS2322": 1,
+  "plugins/star-chart/panel.tsx|TS2345": 2,
+  "plugins/tickets/panel.tsx|TS2339": 1,
+  "src/renderer/dock/DockPreview.tsx|TS2345": 1,
+  "src/renderer/panel/ChatDock.tsx|TS2339": 2,
+  "src/renderer/panel/ChatDock.tsx|TS2741": 1,
+  "src/renderer/panel/registry.tsx|TS2739": 1,
+  "src/renderer/shell/FloatingShell.tsx|TS2322": 2,
+  "src/renderer/shell/FloatingShell.tsx|TS2345": 1,
+  "src/renderer/shell/MainShell.tsx|TS2322": 1,
+  "src/renderer/shell/MainShell.tsx|TS2345": 1,
+  "src/renderer/shell/SettingsDialog.tsx|TS2339": 2,
+  "src/renderer/shell/SettingsDialog.tsx|TS2459": 2,
+  "src/renderer/shell/SettingsDialog.tsx|TS2551": 4,
+  "src/renderer/shell/SettingsDialog.tsx|TS7006": 3
+}

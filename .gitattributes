@@ -1,0 +1,3 @@
+*.command text eol=lf
+scripts/bootstrap.sh text eol=lf
+*.cmd text eol=crlf

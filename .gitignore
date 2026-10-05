@@ -1,0 +1,160 @@
+# ─────────────────────────────────────────────────────────────
+# 这个目录在 Mac 和 Windows 之间共用同一份 git 仓库。
+# 凡是「每跑一次就变」或「各平台各一份」的文件都不该提交 ——
+# 它们在两台机器上永远不相等，同步过去的结果只有冲突。
+# 真正的源码就 src/ plugins/ skills/ scripts/ 那几个目录。
+# ─────────────────────────────────────────────────────────────
+
+# 依赖与构建产物（各自 install / build 出来的）
+node_modules/
+.runtime/
+dist/
+.anycode/
+
+# Electron 本体：各平台各一份，几百 MB，缺了由 scripts/ensure-electron.js 自己补
+.electron/
+
+# 运行时状态：对话、便签、看板、画布、宠物……每跑一次就变
+.ensoul/state/*.json
+.ensoul/tmp/
+
+# 可分发做法：**一个组件一个文件**（.ensoul/library/components/<面板 id>.json）——
+# 这一份要进仓库：别人 clone 下来就能开同款面板，单独开源一个组件也就是拷走那一个文件。
+# 只有写文件时那半截临时文件不提交。
+.ensoul/library/**/*.tmp
+
+# AI 员工角色卡与组织 —— 不随仓库分发：卡里带着本机的模型 id、面板 id，
+# 还存着当时派下去的任务原话，开源出去既没用也不该外传。
+# 要跨机器搬，走私有备份（拷 .ensoul/state/agents 和 companies 两个目录）。
+.ensoul/state/agents/
+.ensoul/state/companies/
+
+# 面板缓存：web_fetch 抓下来的正文，文件名带毫秒时间戳，两边永远对不上
+.ensoul/panels/
+
+# 出图产物、过程图、ComfyUI 日志
+.ensoul/comfyui/out/
+.ensoul/comfyui/preview/
+.ensoul/comfyui/*.log
+
+# 改文件之前自动留的备份：每次编辑都会多出一批带毫秒时间戳的 .bak
+.ensoul/backups/
+
+# 草稿、临时脚本、抓取/探针产生的一次性文件
+_scratch/
+.tmp-*
+*.log
+
+# 后台任务日志（job_start 产生的，每跑一条多一个）
+.ensoul/jobs/
+.ensoul/state/thinking/
+.ensoul/logs/
+
+# 剩下的 .ensoul/ 也全是运行时状态，一样不进仓库 —— 但**可分发组件是例外**：
+# 上面第 20 行那段说了它要跟着仓库走（一个组件一个文件、clone 下来就能开同款面板），
+# 所以这里写 `.ensoul/*` 而不是 `.ensoul/`：后者连 library/ 一起吞掉，
+# 于是在另一台机器上新建的组件根本进不了版本管理，那一段就白写了。
+.ensoul/*
+!.ensoul/library/
+*.bak
+.tmp/
+tmp-*
+\{await
+
+# work/ = 各员工自己的工作区（回执、成功案例、demo 工程……）—— 按用户要求整个不进仓库，
+# 上面第 5 行那句「真正的源码就 src/ plugins/ skills/ scripts/」本来就是这个意思。
+work/
+
+# <<< ENSOUL_PACKAGER_EXCLUDES_START >>>
+# 由 Git 打包台自动维护的开源排除列表（以下资产不提交至公共仓库）
+.ensoul/library/components/panel-mufawft7-z.json
+.ensoul/library/components/panel-mufbufpi-3.json
+.ensoul/library/components/panel-mumb1g7m-3f.json
+.ensoul/library/components/panel-muu5i197-2d.json
+.ensoul/skills/i18n-t-shadowing/
+.ensoul/state/agents/emp-mugjx4z5-3o3e.json
+.ensoul/state/agents/emp-mugjx4z7-ee0e.json
+.ensoul/state/agents/emp-mugjx4z7-jlgw.json
+.ensoul/state/agents/emp-mugjx4z7-ww8j.json
+.ensoul/state/agents/emp-muj9j56x-dw0z.json
+.ensoul/state/agents/emp-muj9n728-e2jz.json
+.ensoul/state/agents/emp-muj9sbsq-eccr.json
+.ensoul/state/agents/emp-muj9y7tt-tot2.json
+.ensoul/state/agents/emp-mujaw3rm-iu6a.json
+.ensoul/state/agents/emp-mujwe51g-6ewr.json
+.ensoul/state/agents/emp-mujwlfod-em50.json
+.ensoul/state/agents/emp-munvglr9-4i54.json
+.ensoul/state/agents/emp-munyyaw7-dk7k.json
+.ensoul/state/agents/emp-mur16fne-va66.json
+.ensoul/state/agents/emp-mutmfp61-by1i.json
+plugins/bridge-guard/
+plugins/canvas/
+plugins/codex-radar/
+plugins/computer-control/
+plugins/dsh-compat/
+plugins/git/
+plugins/git-packager/
+plugins/mcp/
+plugins/our-free-model/
+plugins/pelican-bike/
+plugins/pixel-canvas/
+plugins/prompt-manager/
+plugins/remote/
+plugins/schedule/
+plugins/voice-input/
+plugins/whale-pet/
+plugins/widget-dock/
+# <<< ENSOUL_PACKAGER_EXCLUDES_END >>>
+providers.json
+plugin-state/
+.dsh-inspect/
+
+
+
+
+
+
+
+
+.ensoul/dsh-compat/
+
+
+workspace.json
+
+credentials.json
+providers.json.*.lock
+*.lock
+providers.json.*.tmp
+credentials.json.*.tmp
+
+
+
+
+
+
+.scratch/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*.zip
+
+
+
+
+
+
+assets/icon-concepts/
+assets/icon-refinement/
+dsh-plugin-survey.md
+*dsh*
