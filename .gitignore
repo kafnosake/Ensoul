@@ -158,3 +158,8 @@ assets/icon-concepts/
 assets/icon-refinement/
 dsh-plugin-survey.md
 *dsh*
+__pycache__/
+*.pyc
+.promo-work/__pycache__/
+.promo-work/**/__pycache__/
+.promo-work/

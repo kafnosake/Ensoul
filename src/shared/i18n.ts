@@ -16,7 +16,8 @@
  * 词典缺条目是**正常状态**（这是一个正在翻译中的工程）：`t()` 永远不抛错。
  */
 
-/* 英文词典已移出加载路径 —— 见下面 const EN 那段的说明 */
+/* 英文词典**在加载路径里** —— 两张表（CORE_EN 短词 + EN_PROMPTS 长文本）都并进 DICT.en，
+ *  见下面 const EN 那一段。曾经把长文本那张摘出去过一次，代价见 i18n.prompts.ts 顶部。 */
 
 export type Lang = 'zh' | 'en';
 
@@ -71,14 +72,21 @@ export const GLOSSARY: Record<string, string> = {
 };
 
 import { CORE_EN } from './locales/core.en';
+import { EN_PROMPTS } from './i18n.prompts';
 
 /**
  * 英文词典 —— 拆分治理架构：
- * 1. 核心渲染层词典：CORE_EN (src/shared/locales/core.en.ts)
- * 2. 插件词典：运行时按需注册或独立装载
+ * 1. 核心短词：CORE_EN (src/shared/locales/core.en.ts) —— 按钮、标题、提示、错误
+ * 2. 长文本：EN_PROMPTS (src/shared/i18n.prompts.ts) —— 系统提示、工具描述、插件写给模型的规矩
+ * 3. 插件词典：运行时按需注册（见 registerLocale）
+ *
+ * **两张表都要进 DICT**。少放一张，那张表里的词在英文下就整片回落中文 —— 而
+ * 长文本那张尤其致命：它是**给模型看的**。模型一旦读到满屏中文指令，就会照着中文
+ * 回话（这正是 2026-10-04 那次把 EN_PROMPTS 移出加载路径之后的表现）。
  */
 const EN: Record<string, string> = {
   ...CORE_EN,
+  ...EN_PROMPTS,
 };
 
 /**

@@ -13,8 +13,8 @@ import { planPluginPack } from '../shared/ensoulpack';
 import { matchPanelAvatarFamily } from '../shared/panel-avatars';
 import { executeRunCode, getRunCodeToolSpec, renderToolsSdk } from './ptc';
 import { commitPromptBaseline, consumePromptDeltas } from './prompt-composer';
-import { askOnce, buildPanelSnapshot, buildSystemPrompt, extractEditProposal, failLabel, modeSection, runAgent, summarizeSession, type SteerItem } from './chat-core';
-import { describeTool, runTool, runToolConfirmed, setExtensions, toolsFor } from './agent';
+import { askOnce, buildPanelSnapshot, buildSystemPrompt, extractEditProposal, failLabel, modeSection, runAgent, summarizeSession, conversationForSummary, type SteerItem } from './chat-core';
+import { archiveToolResult, describeTool, runTool, runToolConfirmed, setExtensions, toolsFor } from './agent';
 import { readSkill, scanSkills, skillRoots, skillsDir } from './skills';
 import { loadPlugins, pluginsDir, runSettingsAction, setAskHandler, setChatClearer, setChatCompressor, setChatSender, setChatSteerer, setLiveSink, setRunningProbe, setChatEnqueuer, setModelAsker, setModelCatalog, setPluginParam, setProviderUpserter, setCredentialReader, setCredentialWriter, setRefresher, setToolLister, settingsSectionView, settingsSections, type AskSpec, type SlashCommandReg, type StatusItem } from './plugins';
 import type { PluginPrompt, ToolContext } from './plugins';
@@ -1595,7 +1595,7 @@ function registerIpc() {
     if (!compactCfg.apiKey) return t('这块面板还没选模型（点对话框右下角那个模型 chip 选一个），压不了。');
     try {
       const summary = await summarizeSession(
-        older.map((m) => `${m.role === 'user' ? '用户' : '助手'}：${m.content}`).join('\n\n'),
+        conversationForSummary(older),
         p.compact?.summary ?? '',
         compactCfg,
         undefined,
@@ -3198,7 +3198,7 @@ function registerIpc() {
         const compactCfg = compactModelOf(extensions.compactPicks, ctx, cfg);
         try {
           const summary = await summarizeSession(
-            older.map((m) => `${m.role === 'user' ? '用户' : '助手'}：${m.content}`).join('\n\n'),
+            conversationForSummary(older),
             panel.compact?.summary ?? '',
             compactCfg,
             ctrl.signal,
@@ -3339,13 +3339,7 @@ function registerIpc() {
      * 只留前 1200 字常把 `build_project` 的报错整段切掉 —— 下一轮模型就"忘了"错在哪，
      * 于是重跑一遍。头留 800 认住命令本身，尾留 400 接住结局。
      */
-    const RESULT_HEAD = 800;
-    const RESULT_TAIL = 400;
-    const clipResult = (raw: string) => {
-      if (raw.length <= RESULT_HEAD + RESULT_TAIL) return raw;
-      const mid = raw.length - RESULT_HEAD - RESULT_TAIL;
-      return `${raw.slice(0, RESULT_HEAD)}\n\n…（中间 ${mid} 字没存，别猜。原文在工作区里有，要看就 read_file —— 这里已经留住了尾巴，报错和结论一般在尾部）\n\n${raw.slice(-RESULT_TAIL)}`;
-    };
+    const clipResult = (name: string, raw: string) => archiveToolResult(name, raw, ctx);
 
     /** agent 干活时，每调一次工具就在对话里留一条记录 */
     const noteTool = (name: string, args: any, result: string) => {
@@ -3362,7 +3356,7 @@ function registerIpc() {
         id: W.newId('c'),
         name,
         args: clipArgs(args),
-        result: clipResult(String(result)),
+        result: clipResult(name, String(result)),
       });
       const note: ChatMessage = {
         id: W.newId('m'),
@@ -3678,10 +3672,21 @@ function registerIpc() {
           try {
             const modelCfg = store.modelForPanel(panelId);
             if (!modelCfg.apiKey || !modelCfg.baseUrl) return;
-            const titleSys = '你是一个极简总结助手。请根据对话的第一轮内容，生成一个4到10个字的简短面板标题。直接输出标题文字，禁止带引号、书名号、标点符号或任何解释。\n'
-              + '只输出一行，格式：标题｜关键词1,关键词2\n'
-              + t('关键词是 2~3 个中文主题词（每个 2~4 字，说清这块面板在干什么），用于挑选面板图标；想不到就只输出标题、不写竖线。');
-            const userPrompt = `用户：${firstUserMsg}\n助手：${assistantSnippet}`;
+            /*
+             * 标题是**用户看得见**的那一行，所以它跟着界面语言走 —— 英文界面下再生成一个
+             * 中文标题，用户列表里就是一排中文字（这条自动起名的路以前就是这么漏的）。
+             * 关键词反过来：它只喂给 matchPanelAvatarFamily 的**中文词典**挑头像，用户永远
+             * 看不见，所以两种语言下都照样要中文主题词。
+             */
+            const zh = getLang() !== 'en';
+            const titleSys = zh
+              ? '你是一个极简总结助手。请根据对话的第一轮内容，生成一个4到10个字的简短面板标题。直接输出标题文字，禁止带引号、书名号、标点符号或任何解释。\n'
+                + '只输出一行，格式：标题｜关键词1,关键词2\n'
+                + t('关键词是 2~3 个中文主题词（每个 2~4 字，说清这块面板在干什么），用于挑选面板图标；想不到就只输出标题、不写竖线。')
+              : 'You are a minimal summarizer. From the first exchange of the conversation, produce a short panel title of 2 to 6 English words, in English. Output the title text only — no quotes, no punctuation, no explanation.\n'
+                + 'Output a single line, format: Title|keyword1,keyword2\n'
+                + 'The keywords must be 2~3 Chinese topic words (2~4 characters each, saying what this panel does) — they pick the panel icon and are never shown to the user. If you cannot think of any, output only the title and no separator.';
+            const userPrompt = zh ? `用户：${firstUserMsg}\n助手：${assistantSnippet}` : `User: ${firstUserMsg}\nAssistant: ${assistantSnippet}`;
             const generated = await askOnce(modelCfg, titleSys, userPrompt, { maxTokens: 32 });
             // 一行两段：`标题｜关键词1,关键词2`。关键词是**可选**的 —— 它没给就整块退到 kind/标题，
             // 所以绝不能因为解析不出来就丢掉标题（标题才是这一段真正要办的事）。

@@ -701,7 +701,7 @@ export interface Panel {
   /**
    * 提示词合并器与增量生效状态：
    * activeBase: 当前冻结在 systemPrompt / 前缀里的基底（只在压缩或新建会话时更新）。
-   * pendingDeltas: 热会话期间修改规则产生的增量变更（发 1 次后标记已消费，并在下次压缩时收敛进 activeBase）。
+   * pendingDeltas: 热会话期间修改规则产生的增量变更（每轮提供最新版本，并在下次压缩时收敛进 activeBase）。
    */
   promptState?: {
     activeBase?: string;

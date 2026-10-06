@@ -466,7 +466,9 @@ function runCommand(command: string, workdir?: string, signal?: AbortSignal): Pr
       cleanup();
       if (signal?.aborted) { reject(signal.reason); return; }
       if (failure) { reject(failure); return; }
-      resolve(`${output.trim()}${code ? `\n（退出码 ${code}）` : ''}`.slice(0, 20_000) || t('（没有输出）'));
+      const result = `${output.trim()}${code ? `\n（退出码 ${code}）` : ''}` || t('（没有输出）');
+      if (code) reject(new Error(result));
+      else resolve(result);
     });
   });
 }
@@ -676,7 +678,7 @@ async function grepWorkspace(
         const text = await fs.promises.readFile(full, 'utf8');
         // 二进制忽略
         if (text.slice(0, 1000).includes('\0')) continue;
-        const lines = text.split('\r\n');
+        const lines = text.split(/\r?\n/);
         for (let i = 0; i < lines.length && hits.length < limit; i += 1) {
           regex.lastIndex = 0;
           if (regex.test(lines[i])) {
@@ -839,17 +841,17 @@ const READ_MAX_LINE = 2_000;
 const READ_MAX_BYTES = 50 * 1024;
 const READ_MAX_FILE = 10 * 1024 * 1024;
 
-function spill(name: string, text: string, ctx: ToolContext | null): string {
+function spill(name: string, text: string, ctx: ToolContext | null, threshold = SPILL_AT, headLength = SPILL_HEAD, tailLength = SPILL_TAIL): string {
   const s = String(text ?? '');
-  if (s.length <= SPILL_AT || NO_SPILL.has(name)) return s;
+  if (s.length <= threshold || NO_SPILL.has(name)) return s;
   // 落进**这个面板自己的目录**：里面装的是它跑过的命令的原始输出，
   // 混在一个平铺目录里，别的面板 list_dir 一下就能读到。
   const mine = panelSpaceDir(ctx?.panelId || '') || path.join('.ensoul', 'spill');
-  const rel = path.join(mine, `${new Date().toISOString().replace(/[:.]/g, '-')}-${name}.txt`);
-  const head = s.slice(0, SPILL_HEAD);
-  const tailPart = s.slice(-SPILL_TAIL);
+  const rel = path.join(mine, `${new Date().toISOString().replace(/[:.]/g, '-')}-${name}-${randomUUID()}.txt`);
+  const head = s.slice(0, headLength);
+  const tailPart = s.slice(-tailLength);
   const note =
-    `\n\n…（中间 ${s.length - SPILL_HEAD - SPILL_TAIL} 字没显示。完整输出 ${s.length} 字已存到 ` +
+    `\n\n…（中间 ${s.length - headLength - tailLength} 字没显示。完整输出 ${s.length} 字已存到 ` +
     `${rel.split(path.sep).join('/')}；要中间那一段就用 read_file 带 offset/limit 去读，别整份读）\n\n`;
   try {
     const abs = path.join(workspaceRoot(), rel);
@@ -857,9 +859,13 @@ function spill(name: string, text: string, ctx: ToolContext | null): string {
     fs.writeFileSync(abs, s, 'utf8');
   } catch (e: any) {
     // 落不下来也绝不能把"成功"变成"失败"：原样给开头和结尾，说明中间没了
-    return `${head}${note}（落地失败：${e?.message ?? e}）\n${tailPart}`;
+    return `输出落盘失败：${e?.message ?? e}；中间内容未保存。\n\n${head}\n\n${tailPart}`;
   }
-  return `${head}${note}${tailPart}`;
+  return `${note.trim()}\n\n${head}\n\n${tailPart}`;
+}
+
+export function archiveToolResult(name: string, text: string, ctx: ToolContext | null): string {
+  return spill(name, text, ctx, 1_200, 800, 400);
 }
 
 /**
@@ -919,6 +925,8 @@ async function execTool(name: string, args: any, ctx: ToolContext | null, toolCa
   ctx?.signal?.addEventListener('abort', abort, { once: true });
   const callCtx = ctx ? { ...ctx, signal: ctrl.signal } : null;
   let out = '';
+  let status: 'ok' | 'error' = 'ok';
+  const startedAt = Date.now();
   const pluginMatch = pluginTools.find((p) => p.spec?.name === name);
   let timeoutMs = pluginMatch?.spec?.timeoutMs;
   if (!timeoutMs || timeoutMs <= 0) {
@@ -948,6 +956,7 @@ async function execTool(name: string, args: any, ctx: ToolContext | null, toolCa
       abortedPromise,
     ]);
   } catch (e: any) {
+    status = 'error';
     out = e instanceof FileConflict ? e.result() : `工具执行失败：${e?.message ?? e}`;
   } finally {
     if (timer) clearTimeout(timer);
@@ -959,7 +968,7 @@ async function execTool(name: string, args: any, ctx: ToolContext | null, toolCa
   // 钩子出错只记一笔就放行：它的活是"多一道加工"，不是"把结果变成报错"。
   for (const hook of afterHooks) {
     try {
-      const replaced = await hook({ name, args, ctx: callCtx, toolCallId, result: out });
+      const replaced = await hook({ name, args, ctx: callCtx, toolCallId, result: out, status, durationMs: Date.now() - startedAt });
       if (typeof replaced === 'string') out = replaced;
     } catch (e: any) {
       console.error('[插件钩子 onAfterTool] 出错：', e?.message ?? e);

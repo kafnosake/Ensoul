@@ -4,7 +4,7 @@ import type { ChatMessage, ModelConfig, Panel, PanelMode } from '../shared/types
 import { BUILTIN_KINDS } from '../shared/types';
 import { skillDigest } from './skills';
 import { getLang } from './lang';
-import { t } from '../shared/i18n';
+import { localeTag, t } from '../shared/i18n';
 
 /**
  * 对话内核 —— 每个浮窗的"大脑"。
@@ -114,6 +114,15 @@ export function buildSystemPrompt(
   // 普通面板走原路：下面这个数组一个字节不动，前缀不变，缓存才留得住。
   if (panel.noWorkspacePrompt) return buildAgentSystemPrompt(panel, disabledSkills, extraSection);
   return [
+    /**
+     * 第一行就是语言硬指令。
+     *
+     * 这一行曾经**漏接**：langDirective() 定义在上面却没人调用，于是切到英文也不会有人
+     * 告诉模型「说英文」—— 而下面整段规矩又都是中文（英文词典只覆盖了一部分），模型看到
+     * 满屏中文，很自然就用中文回话。越靠前越不容易被后面的大段规矩淹掉，所以放第一位。
+     */
+    langDirective(),
+    '',
     t('你运行在一个组件化、可自我进化的 Agent 编辑器运行时（Ensoul）中。'),
     t('你所在的面板本身既是交互工作台，也是一个可被重构的功能组件单元。'),
     t('面板此刻的实时状态每轮作为【运行时快照】附加在用户消息头部，动手操作前请先查阅快照。'),
@@ -141,10 +150,10 @@ export function buildSystemPrompt(
     t('· 命名规则：若当前面板快照中标题仍为「新面板」，首轮对话请在回答末尾附带提案更新 title（仅改名只需形如 {"title":"简明贴切的标题","keywords":["插件","调试"]}）。'),
     t('· 关键词：随首轮标题一并给出 **2~3 个中文主题词**（每个 2~4 字，说清"这块面板在干什么"，如 ["头像","出图"]、【"派单","调度"】），系统会拿它挑面板头像。**只说主题，不要写颜色/风格/形容词**；想不到就不给，留空即可，不会因此报错。'),
     t('· 功能重塑：若要将面板转变为特定功能，必须显式声明 kind。'),
-    `现有面板类型（内置）：${BUILTIN_KINDS.join('、')}`,
+    t('现有面板类型（内置）：') + BUILTIN_KINDS.join('、'),
     ...(pluginPanels.length
       ? [
-          `现有面板类型（插件自带）：${pluginPanels
+          t('现有面板类型（插件自带）：') + `${pluginPanels
             .map((p) => (p.label && p.label !== p.kind ? `${p.kind}（${p.label}）` : p.kind))
             .join('、')}`,
         ]
@@ -186,10 +195,14 @@ function buildAgentSystemPrompt(panel: Panel, disabledSkills: string[], extraSec
   const dig = skillDigest(disabledSkills);
   if (!own)
     return [
+      langDirective(),
+      '',
       t('你是这家 AI 游戏公司的一名员工，这块面板是你的工作面。'),
       ...(dig ? ['', t('【技能】'), dig] : []),
     ].join('\n');
   return [
+    langDirective(),
+    '',
     own,
     ...(extraSection ? ['', extraSection] : []),
     ...(dig
@@ -247,27 +260,32 @@ export function buildPanelSnapshot(panel: Panel, place: string): string {
     if (!isEmptySpecValue(v)) spec[k] = v;
   }
   if (cut) {
-    spec.text = `${text.slice(0, SNAPSHOT_TEXT_MAX)}…（只印了开头，全文共 ${text.length} 字。${
-      panel.file ? `要看全用 read_file 读 ${panel.file}（面板里没保存的改动不在文件里）` : '要看全得让用户贴出来，或打开对应文件'
-    }）`;
+    const tail = panel.file
+      ? ' ' + t('要看全用 read_file 读') + ' ' + panel.file + t('（面板里没保存的改动不在文件里）')
+      : ' ' + t('要看全得让用户贴出来，或打开对应文件');
+    spec.text = text.slice(0, SNAPSHOT_TEXT_MAX) + '…' + t('（只印了开头，全文共 {n} 字。）', { n: text.length }) + tail;
   }
   // systemPrompt 已经单独抄在系统提示的【本面板的额外要求】里，这儿再发一遍纯属重复。
-  if (raw.systemPrompt) spec.systemPrompt = `（${String(raw.systemPrompt).length} 字，已列在系统提示里，不在这儿重复）`;
+  if (raw.systemPrompt) spec.systemPrompt = t('（{n} 字，已列在系统提示里，不在这儿重复）', { n: String(raw.systemPrompt).length });
 
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
-  const days = [t('日'), t('一'), t('二'), t('三'), t('四'), t('五'), t('六')];
-  const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())} 星期${days[now.getDay()]}`;
+  /*
+   * 星期几交给 Intl，不手工拼「星期 + 日名」—— 英文下会拼出「星期Tue」这种东西。
+   * 中文下它照样给「星期二」，跟从前一字不差；英文下给 Tuesday。
+   */
+  const dd = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  const timeStr = `${dd} ${now.toLocaleDateString(localeTag(), { weekday: 'long' })}`;
 
   return [
-    `【运行时环境】系统时间：${timeStr}`,
+    t('【运行时环境】系统时间：') + timeStr,
     t('【当前面板】此刻的真实状态（每轮重新生成）'),
     `ID: ${panel.id}`,
-    `标题：${panel.title}`,
-    `种类：${panel.kind}`,
-    ...(panel.component ? [`组件：${panel.component}`] : []),
-    ...(panel.file ? [`绑定文件：${panel.file}`] : []),
-    `位置：${place}（由停靠树决定）`,
+    t('标题：') + panel.title,
+    t('种类：') + panel.kind,
+    ...(panel.component ? [t('组件：') + panel.component] : []),
+    ...(panel.file ? [t('绑定文件：') + panel.file] : []),
+    t('位置：') + place + t('（由停靠树决定）'),
     /**
      * 外观里 `avatarKey` **不给模型看**：它跟"配色、密度"不是一类东西 ——
      * 那是留给用户改的（甚至干脆是插件自报的），模型看见了只会学着往
@@ -276,7 +294,7 @@ export function buildPanelSnapshot(panel: Panel, place: string): string {
     ...(() => {
       if (!panel.look) return [];
       const { avatarKey: _hidden, ...visible } = panel.look as unknown as Record<string, unknown>;
-      return Object.keys(visible).length ? [`外观：${JSON.stringify(visible)}`] : [];
+      return Object.keys(visible).length ? [t('外观：') + JSON.stringify(visible)] : [];
     })(),
     t('规格：'),
     '```json',
@@ -547,6 +565,16 @@ function seePart(file: string): any | null {
  * 提示词里特意写死"丢掉的就是真的丢了"，是因为压缩之后那些原文确实不再送来 ——
  * 这一段摘要就是它们留下的全部痕迹，写漏了就没了。
  */
+export function conversationForSummary(messages: readonly ChatMessage[]): string {
+  return messages.filter((message) => message.role !== 'tool').map((message) => {
+    const evidence = (message.toolCalls || []).map((call) =>
+      `工具 ${call.name}\n参数：${call.args}\n结果：${call.result}`,
+    ).join('\n\n');
+    const role = message.role === 'user' ? '用户' : message.role === 'system' ? '系统' : '助手';
+    return [evidence, `${role}：${message.content}`].filter(Boolean).join('\n\n');
+  }).join('\n\n');
+}
+
 export async function summarizeSession(
   older: string,
   previous: string,
@@ -565,12 +593,12 @@ export async function summarizeSession(
     t('· 做过的决定，以及为什么这么做'),
     t('· 现在进行到哪一步、还剩什么没做完'),
     t('· 踩过的坑和结论'),
-    t('不要复述代码，不要客套，不要"好的""总结如下"这类废话。用简体中文的简洁条目。'),
+    t('不要复述代码，不要客套，不要"好的""总结如下"这类废话。摘要必须用**界面当前的语言**写，不要用别的语言。'),
   ].join('\n');
 
   const body = [
-    previous ? `【已有的摘要，接着往下写、不要重复】\n${previous}\n` : '',
-    notes ? `【必须原样保留的事实 —— 一条都不许丢、不许改写】\n${notes}\n` : '',
+    previous ? `${t('【已有的摘要，接着往下写、不要重复】')}\n${previous}\n` : '',
+    notes ? `${t('【必须原样保留的事实 —— 一条都不许丢、不许改写】')}\n${notes}\n` : '',
     t('【需要压缩的对话】'),
     older,
   ]

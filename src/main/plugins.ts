@@ -172,6 +172,8 @@ export interface ToolDone {
   args: any;
   ctx: ToolContext | null;
   result: string;
+  status?: 'ok' | 'error';
+  durationMs?: number;
 }
 
 /**

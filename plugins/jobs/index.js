@@ -125,6 +125,7 @@ module.exports = {
           properties: {
             command: { type: 'string', description: t('要跑的命令，在工作区目录下执行') },
             label: { type: 'string', description: t('给这件事起个短名字（列表里好看）') },
+            workdir: { type: 'string', description: t('执行子目录（相对工作区路径，可选）') },
           },
           required: ['command'],
         },
@@ -151,7 +152,7 @@ module.exports = {
 
         try {
           job.child = spawn(command, {
-            cwd: root(),
+            cwd: (args && args.workdir) ? path.resolve(root(), String(args.workdir)) : root(),
             shell: true,
             windowsHide: true,
             env: { ...process.env, FORCE_COLOR: '0' },
@@ -253,6 +254,39 @@ module.exports = {
         const body = text.trim() ? text.replace(/\s+$/, '') : t('（还没有新输出）');
         return `${ownerNote}${head}${body}\n\n${finishLine(job)}`;
       },
+    );
+
+    api.addTool(
+      {
+        name: 'job_send_input', kits: ['ops'],
+        description: t('向正在运行的后台任务标准输入 (stdin) 写入一段文本或按键交互（如 y/n、回车换行、控制指令）。'),
+        parameters: {
+          type: 'object',
+          properties: {
+            job_id: { type: 'string', description: t('任务 ID') },
+            input: { type: 'string', description: t('要输入的字符文本内容') },
+            enter: { type: 'boolean', description: t('是否自动在末尾追加回车换行 (默认 true)') },
+          },
+          required: ['job_id', 'input'],
+        },
+      },
+      (args, ctx) => {
+        const id = String((args && args.job_id) || '');
+        const job = jobs.get(id);
+        if (!job) return t('没有这个任务：') + id;
+        if (!job.child || !job.child.stdin || job.child.stdin.destroyed) {
+          return t('任务当前未在运行或 stdin 已关闭：') + id;
+        }
+        const text = String((args && args.input) ?? '');
+        const withEnter = args && args.enter === false ? text : (text + '\n');
+        try {
+          job.child.stdin.write(withEnter);
+          append(job, '\n[stdin] ' + text + (args && args.enter === false ? '' : '\n'));
+          return t('已向任务 ') + id + t(' 的 stdin 写入 ') + withEnter.length + t(' 字符。');
+        } catch (e) {
+          return t('写入 stdin 失败: ') + ((e && e.message) || e);
+        }
+      }
     );
 
     api.addTool(

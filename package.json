@@ -16,7 +16,7 @@
     "build:main": "tsc -p tsconfig.main.json",
     "check:types": "node scripts/check-types.js",
     "test:packs": "node scripts/test-ensoulpack.js",
-    "test:runtime": "npm run build:main && node --test scripts/test-runtime.js scripts/test-tasks.js scripts/test-file-writes.js",
+    "test:runtime": "npm run build:main && node --test scripts/test-runtime.js scripts/test-tasks.js scripts/test-file-writes.js scripts/test-agent-tooling.js",
     "build:renderer": "vite build",
     "build": "node scripts/check-types.js && npm run build:main && npm run build:renderer",
     "start": "node scripts/launch.js",

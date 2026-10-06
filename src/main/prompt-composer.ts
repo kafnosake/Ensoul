@@ -53,7 +53,7 @@ export function composePromptLayers(layers: PromptLayers): string {
  * 将提示词变动记录为增量（Delta）或直接更新：
  * 1. 如果面板从未有基准（新面板或空白），直接作为 activeBase 生效；
  * 2. 如果面板处于热会话中（已有 activeBase），绝不当场破坏 systemPrompt 前缀缓存，
- *    而是存入 pendingDeltas，在下一轮作为增量通知单次送给模型；
+ *    而是存入 pendingDeltas，每轮提供最新完整规则，直到固化到基底；
  * 3. pendingDeltas 将在随后的热压缩、冷压缩或手动压缩（以及 /clear）时被收拢编译进新基底。
  */
 export function recordPromptDelta(
@@ -64,7 +64,8 @@ export function recordPromptDelta(
   const currentBase = panel.promptState?.activeBase ?? (panel.spec?.systemPrompt || '');
 
   // 内容完全没变，直接返回
-  if (currentBase.trim() === newComposed.trim()) {
+  const currentEffective = panel.promptState?.pendingDeltas?.at(-1)?.text ?? currentBase;
+  if (currentEffective.trim() === newComposed.trim()) {
     return { changed: false, isDelta: false };
   }
 
@@ -100,25 +101,18 @@ export function recordPromptDelta(
 }
 
 /**
- * 消费待消费的增量变更说明（单次注入）：
- * 只在模型回答前的用户轮次中带上一次，带完即标记 appliedOnce。
+ * 提供尚未固化的最新规则：
+ * 当轮快照不进入历史，因此每轮继续提供；appliedOnce 仅记录已发送。
  */
 export function consumePromptDeltas(panel: Panel): string {
   if (!panel.promptState?.pendingDeltas || !panel.promptState.pendingDeltas.length) {
     return '';
   }
 
-  const unapplied = panel.promptState.pendingDeltas.filter((d) => !d.appliedOnce);
-  if (!unapplied.length) return '';
-
-  const texts: string[] = [];
-  for (const delta of unapplied) {
-    delta.appliedOnce = true;
-    const title = delta.title ? `【提示词与规则变动通知：${delta.title}】` : t('【提示词与规则变动通知】');
-    texts.push(`${title}\n请注意：从本轮开始，最新规则与规约已更新如下，后续指令请遵照执行：\n\n${delta.text}`);
-  }
-
-  return texts.join('\n\n');
+  const delta = panel.promptState.pendingDeltas.at(-1)!;
+  delta.appliedOnce = true;
+  const title = delta.title ? `【提示词与规则变动通知：${delta.title}】` : t('【提示词与规则变动通知】');
+  return `${title}\n当前有效规则如下，替代旧基底中的对应规则；以本轮提供的版本为准：\n\n${delta.text}`;
 }
 
 /**

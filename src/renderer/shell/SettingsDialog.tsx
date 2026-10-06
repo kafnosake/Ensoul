@@ -1045,10 +1045,10 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
               <section className="set-block">
                 <div className="set-title">{t('历史会话')}</div>
                 <div className="set-note">
-                  <strong>{t('没被声明成组件的面板')}</strong>关掉就落在这儿 —— 不管它是对话、表格还是番茄钟。
-                  关掉不是删掉：连同它那整段对话记录一起留着，本体在 <code>closed/&lt;id&gt;.json</code>，重启也还在。
-                  <strong>{t('不设条数上限、不会自动清理')}</strong> —— 想瘦身只能在这一页手动删除。
-                  （声明过的那些关闭时回组件库、不进这儿 —— 哪怕它没挂到顶栏。）
+                  <strong>{t('没被声明成组件的面板')}</strong>{t('关掉就落在这儿 —— 不管它是对话、表格还是番茄钟。')}
+                  {t('关掉不是删掉：连同它那整段对话记录一起留着，本体在')} <code>closed/&lt;id&gt;.json</code>{t('，重启也还在。')}
+                  <strong>{t('不设条数上限、不会自动清理')}</strong>{t(' —— 想瘦身只能在这一页手动删除。')}
+                  {t('（声明过的那些关闭时回组件库、不进这儿 —— 哪怕它没挂到顶栏。）')}
                 </div>
 
                 <div className="ext-list">
@@ -1445,14 +1445,12 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
               <section className="set-block">
                 <div className="set-title">{t('插件')}</div>
             <div className="set-note">
-              {t('给助手加工具的扩展：')}<code>plugins/&lt;名字&gt;/index.js</code>，CommonJS。
-              能注册新工具（todo / jobs / web 就是插件），也能挂在写文件之前 ——
-              内置的 file-backup 靠这一手，每次改写前自动留底。
-              插件改完不用重启：下一次对话就会用新代码。
+              {t('给助手加工具的扩展：')}<code>plugins/&lt;{t('名字')}&gt;/index.js</code>
+              {t('，CommonJS。能注册新工具（todo / jobs / web 就是插件），也能挂在写文件之前 —— 内置的 file-backup 靠这一手，每次改写前自动留底。插件改完不用重启：下一次对话就会用新代码。')}
             </div>
             <div className="plg-list">
               {tunable.length > 0 && (
-                <div className="plg-group">有参数可调 · {tunable.length}</div>
+                <div className="plg-group">{t('有参数可调 ·')} {tunable.length}</div>
               )}
               {tunable.map((p) => (
                 <PluginRow
