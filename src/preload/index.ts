@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webFrame } from 'electron';
+import type { ChatDeltaEvent, ChatProgressEvent, ChatRetractEvent } from '../shared/types';
 import type { WidgetEditRequest } from '../shared/widget-editor';
 const WIDGET_EDIT_CHANNEL: typeof import('../shared/widget-editor').WIDGET_EDIT_REQUEST = 'ui:editWidget';
 
@@ -365,9 +366,10 @@ const api = {
     /** 进行中那一块变了就推一份整快照过来（不是增量 —— 就这么点数据） */
     onLive: (cb: (p: { panelId: string; tasks: any[]; images: string[]; retry?: any }) => void) => on('chat:live', cb),
     /** 重连把上一次那半截草稿作废：给的是字数，界面自己把尾巴切掉 */
-    onRetract: (cb: (p: { panelId: string; id: string; text: number; think: number }) => void) => on('chat:retract', cb),
+    onRetract: (cb: (p: ChatRetractEvent) => void) => on('chat:retract', cb),
     onMessage: (cb: (p: { panelId: string; message: any }) => void) => on('chat:message', cb),
-    onDelta: (cb: (p: { panelId: string; id: string; delta: string }) => void) => on('chat:delta', cb),
+    onDelta: (cb: (p: ChatDeltaEvent) => void) => on('chat:delta', cb),
+    onProgress: (cb: (p: ChatProgressEvent) => void) => on('chat:progress', cb),
     /** 思维链：模型吐正文之前先吐的那一段 */
     onReasoning: (cb: (p: { panelId: string; id: string; delta: string }) => void) => on('chat:reasoning', cb),
   },

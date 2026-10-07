@@ -1,0 +1,199 @@
+/* 生态市场 —— 统合仓库那张脸。
+   尺寸按自然值写，不自己量容器：装不下时核心的 FitBox 会整块缩放。 */
+
+.eco-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  background: var(--bg, #fff);
+  color: var(--text, #1b212a);
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.eco-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line, #dbe1e8);
+  flex-shrink: 0;
+}
+
+.eco-tabs { display: flex; gap: 4px; }
+
+.eco-tab {
+  background: var(--card-2, #e9edf3);
+  border: 1px solid var(--line-soft, #e9edf2);
+  color: var(--dim, #5a6472);
+  padding: 5px 12px;
+  border-radius: var(--r-sm, 6px);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.eco-tab:hover { color: var(--text, #1b212a); background: var(--card, #f4f7fa); }
+
+.eco-tab.is-active {
+  color: var(--accent-fg, #2b5fdb);
+  background: var(--panel, #fff);
+  border-color: var(--accent, #5b8cff);
+  font-weight: 600;
+}
+
+.eco-actions { display: flex; align-items: center; gap: 8px; }
+.eco-stamp { color: var(--dim, #5a6472); font-size: 11px; }
+
+.eco-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--dim, #5a6472);
+  cursor: pointer;
+  user-select: none;
+}
+
+.eco-switch input { cursor: pointer; }
+
+.eco-btn {
+  background: var(--card-2, #e9edf3);
+  border: 1px solid var(--line, #dbe1e8);
+  color: var(--text, #1b212a);
+  padding: 4px 10px;
+  border-radius: var(--r-sm, 6px);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.eco-btn:hover { background: var(--card, #f4f7fa); }
+.eco-btn:disabled { opacity: 0.45; cursor: default; }
+.eco-btn.eco-btn-xs { padding: 1px 6px; font-size: 10px; font-weight: 400; }
+.eco-btn.is-primary { background: var(--accent, #5b8cff); border-color: var(--accent, #5b8cff); color: #fff; }
+.eco-btn.is-danger { color: #b42318; border-color: #f0c2bd; background: #fff5f4; }
+
+.eco-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  flex-shrink: 0;
+}
+
+.eco-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel, #fff);
+  border: 1px solid var(--line, #dbe1e8);
+  border-radius: var(--r-sm, 6px);
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--text, #1b212a);
+}
+
+.eco-input-sm { flex: 0 0 240px; }
+.eco-addsrc { display: flex; gap: 6px; align-items: center; }
+
+.eco-note {
+  flex-shrink: 0;
+  margin-bottom: 6px;
+  padding: 5px 8px;
+  border-radius: var(--r-sm, 6px);
+  background: var(--card-2, #eef3fb);
+  color: var(--accent-fg, #2b5fdb);
+  font-size: 11px;
+}
+
+.eco-body { flex: 1; min-height: 0; overflow: auto; }
+.eco-pane { display: flex; flex-direction: column; gap: 10px; }
+
+.eco-sources { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.eco-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--card-2, #e9edf3);
+  border: 1px solid var(--line-soft, #e9edf2);
+  color: var(--dim, #5a6472);
+  font-size: 11px;
+}
+
+.eco-chip.is-user { background: #eef7ee; border-color: #cfe6cf; color: #2f6b34; }
+.eco-chip-x { border: none; background: none; color: inherit; cursor: pointer; font-size: 13px; line-height: 1; padding: 0 1px; }
+
+.eco-block {
+  border: 1px solid var(--line-soft, #e9edf2);
+  border-radius: var(--r-md, 8px);
+  padding: 6px 8px 8px;
+  background: var(--panel, #fff);
+}
+
+.eco-block-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0 6px;
+  border-bottom: 1px dashed var(--line-soft, #e9edf2);
+  margin-bottom: 4px;
+}
+
+.eco-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--line-soft, #f1f4f7);
+}
+
+.eco-row:last-child { border-bottom: none; }
+.eco-row.is-open { background: var(--card, #f7f9fc); border-radius: var(--r-sm, 6px); }
+.eco-row-main { min-width: 0; cursor: default; }
+.eco-row-title { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.eco-row-desc { color: var(--dim, #5a6472); font-size: 11px; margin-top: 2px; line-height: 1.45; }
+.eco-row-when { color: var(--dim, #5a6472); font-size: 11px; margin-top: 3px; opacity: 0.85; }
+.eco-row-side { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+.eco-tag {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--card-2, #e9edf3);
+  color: var(--dim, #5a6472);
+}
+
+.eco-tag.is-ok { background: #e6f5ea; color: #2f6b34; }
+.eco-tag.is-warn { background: #fdf3e2; color: #8a5a12; }
+.eco-dim { color: var(--dim, #5a6472); font-size: 11px; font-weight: 400; }
+.eco-link { color: var(--accent, #3a6fe8); font-size: 11px; text-decoration: none; }
+.eco-link:hover { text-decoration: underline; }
+
+.eco-err {
+  margin: 4px 0;
+  padding: 5px 8px;
+  border-radius: var(--r-sm, 6px);
+  background: #fff5f4;
+  color: #b42318;
+  font-size: 11px;
+}
+
+.eco-empty {
+  padding: 18px 8px;
+  text-align: center;
+  color: var(--dim, #5a6472);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.eco-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; background: #c2cad4; }
+.eco-dot.dot-connected { background: #2f9e44; }
+.eco-dot.dot-connecting { background: #f0a020; }
+.eco-dot.dot-error { background: #d94b3f; }

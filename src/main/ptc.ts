@@ -57,6 +57,7 @@ export function renderToolsSdk(tools: ToolSpec[]): string {
   const lines: string[] = [
     t('// ── PTC 模式：已注册的可用工具 SDK 声明 ──'),
     t('// 大模型无需直接发出原生 tool call，只需在 run_code 中通过 `await tools.<工具名>(参数)` 调用。'),
+    t('// 原生 tools 列表只有 run_code；以下 SDK 才是当前面板实际获授权的工具清单。清单内工具可通过 run_code 调用，不能因原生列表未单列它们就声称没有工具或权限。'),
     'declare const tools: {',
   ];
 

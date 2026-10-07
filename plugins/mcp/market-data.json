@@ -1,0 +1,1816 @@
+{
+  "mcpMarket": [
+    {
+      "id": "mcp-filesystem",
+      "name": "filesystem",
+      "category": "系统与文件",
+      "official": true,
+      "description": "官方安全沙箱文件系统，支持受控读取与编写工作区文件",
+      "keywords": [
+        "file",
+        "io",
+        "read",
+        "write",
+        "disk",
+        "文件",
+        "读写",
+        "磁盘"
+      ],
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "."
+      ]
+    },
+    {
+      "id": "mcp-fetch",
+      "name": "fetch",
+      "category": "网络工具",
+      "official": true,
+      "description": "网页内容爬取与 HTML/Markdown 正文提取工具",
+      "keywords": [
+        "http",
+        "web",
+        "fetch",
+        "crawl",
+        "html",
+        "网页",
+        "抓取",
+        "正文"
+      ],
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-fetch"
+      ]
+    },
+    {
+      "id": "mcp-sqlite",
+      "name": "sqlite",
+      "category": "数据存储",
+      "official": true,
+      "description": "轻量级 SQLite 本地数据库查询与数据结构分析工具",
+      "keywords": [
+        "db",
+        "sql",
+        "database",
+        "table",
+        "数据库",
+        "查询",
+        "表结构"
+      ],
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sqlite",
+        "--db-path",
+        ".ensoul/db.sqlite"
+      ]
+    },
+    {
+      "id": "mcp-puppeteer",
+      "name": "puppeteer",
+      "category": "浏览器与自动化",
+      "official": true,
+      "description": "通过无头 Chromium 浏览器进行真实网页渲染、交互与截图",
+      "keywords": [
+        "browser",
+        "headless",
+        "chrome",
+        "screenshot",
+        "render",
+        "浏览器",
+        "无头",
+        "截图",
+        "渲染"
+      ],
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-puppeteer"
+      ]
+    },
+    {
+      "id": "mcp-github",
+      "name": "github",
+      "category": "协同与代码",
+      "official": true,
+      "description": "GitHub 仓库读写、Issues、Pull Requests 与分支管理",
+      "keywords": [
+        "git",
+        "repo",
+        "pr",
+        "issue",
+        "code",
+        "仓库",
+        "提交",
+        "协同"
+      ],
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ]
+    },
+    {
+      "id": "mcp-postgres",
+      "name": "postgres",
+      "category": "数据存储",
+      "official": true,
+      "description": "PostgreSQL 数据库只读/读写访问与 Schema 结构探查",
+      "keywords": [
+        "database",
+        "pg",
+        "sql",
+        "query",
+        "数据库",
+        "后端"
+      ],
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://localhost/mydb"
+      ]
+    },
+    {
+      "id": "mcp-memory",
+      "name": "memory",
+      "category": "记忆与知识",
+      "official": true,
+      "description": "基于图结构的持久化记忆中心，用于长效知识维护",
+      "keywords": [
+        "knowledge",
+        "graph",
+        "long-term",
+        "recall",
+        "记忆",
+        "知识图谱",
+        "长效"
+      ],
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ]
+    },
+    {
+      "id": "mcp-brave-search",
+      "name": "brave-search",
+      "category": "网络工具",
+      "official": false,
+      "description": "Brave 搜索引擎 API，提供快速网页与新闻搜索",
+      "keywords": [
+        "search",
+        "google",
+        "bing",
+        "query",
+        "搜索",
+        "网页",
+        "新闻",
+        "联网"
+      ],
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-brave-search"
+      ]
+    },
+    {
+      "id": "mcp-docker",
+      "name": "docker",
+      "category": "开发协同",
+      "official": false,
+      "description": "管理本地容器、镜像、容器日志查看与生命周期控制",
+      "keywords": [
+        "container",
+        "image",
+        "compose",
+        "k8s",
+        "容器",
+        "镜像",
+        "运维"
+      ],
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-server-docker"
+      ]
+    },
+    {
+      "id": "mcp-git",
+      "name": "git-cli",
+      "category": "协同与代码",
+      "official": false,
+      "description": "本地 Git 仓库差异比对、日志审查与分支快速调度",
+      "keywords": [
+        "git",
+        "diff",
+        "commit",
+        "branch",
+        "log",
+        "版本控制",
+        "分支",
+        "差异"
+      ],
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-server-git"
+      ]
+    }
+  ],
+  "skillsMarket": [
+    {
+      "id": "fabric-agility_story",
+      "name": "agility_story",
+      "description": "开源标准任务规程 (agility_story)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/agility_story/system.md"
+    },
+    {
+      "id": "fabric-ai",
+      "name": "ai",
+      "description": "开源标准任务规程 (ai)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/ai/system.md"
+    },
+    {
+      "id": "fabric-analyze_answers",
+      "name": "analyze_answers",
+      "description": "开源标准任务规程 (analyze_answers)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_answers/system.md"
+    },
+    {
+      "id": "fabric-analyze_bill",
+      "name": "analyze_bill",
+      "description": "开源标准任务规程 (analyze_bill)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_bill/system.md"
+    },
+    {
+      "id": "fabric-analyze_bill_short",
+      "name": "analyze_bill_short",
+      "description": "开源标准任务规程 (analyze_bill_short)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_bill_short/system.md"
+    },
+    {
+      "id": "fabric-analyze_candidates",
+      "name": "analyze_candidates",
+      "description": "开源标准任务规程 (analyze_candidates)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_candidates/system.md"
+    },
+    {
+      "id": "fabric-analyze_cfp_submission",
+      "name": "analyze_cfp_submission",
+      "description": "开源标准任务规程 (analyze_cfp_submission)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_cfp_submission/system.md"
+    },
+    {
+      "id": "fabric-analyze_claims",
+      "name": "analyze_claims",
+      "description": "开源标准任务规程 (analyze_claims)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_claims/system.md"
+    },
+    {
+      "id": "fabric-analyze_comments",
+      "name": "analyze_comments",
+      "description": "开源标准任务规程 (analyze_comments)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_comments/system.md"
+    },
+    {
+      "id": "fabric-analyze_debate",
+      "name": "analyze_debate",
+      "description": "开源标准任务规程 (analyze_debate)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_debate/system.md"
+    },
+    {
+      "id": "fabric-analyze_discord_structure",
+      "name": "analyze_discord_structure",
+      "description": "开源标准任务规程 (analyze_discord_structure)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_discord_structure/system.md"
+    },
+    {
+      "id": "fabric-analyze_email_headers",
+      "name": "analyze_email_headers",
+      "description": "开源标准任务规程 (analyze_email_headers)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_email_headers/system.md"
+    },
+    {
+      "id": "fabric-analyze_incident",
+      "name": "analyze_incident",
+      "description": "开源标准任务规程 (analyze_incident)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_incident/system.md"
+    },
+    {
+      "id": "fabric-analyze_interviewer_techniques",
+      "name": "analyze_interviewer_techniques",
+      "description": "开源标准任务规程 (analyze_interviewer_techniques)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_interviewer_techniques/system.md"
+    },
+    {
+      "id": "fabric-analyze_logs",
+      "name": "analyze_logs",
+      "description": "开源标准任务规程 (analyze_logs)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_logs/system.md"
+    },
+    {
+      "id": "fabric-analyze_malware",
+      "name": "analyze_malware",
+      "description": "开源标准任务规程 (analyze_malware)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_malware/system.md"
+    },
+    {
+      "id": "fabric-analyze_military_strategy",
+      "name": "analyze_military_strategy",
+      "description": "开源标准任务规程 (analyze_military_strategy)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_military_strategy/system.md"
+    },
+    {
+      "id": "fabric-analyze_mistakes",
+      "name": "analyze_mistakes",
+      "description": "开源标准任务规程 (analyze_mistakes)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_mistakes/system.md"
+    },
+    {
+      "id": "fabric-analyze_monetization_opportunities",
+      "name": "analyze_monetization_opportunities",
+      "description": "开源标准任务规程 (analyze_monetization_opportunities)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_monetization_opportunities/system.md"
+    },
+    {
+      "id": "fabric-analyze_paper",
+      "name": "analyze_paper",
+      "description": "开源标准任务规程 (analyze_paper)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_paper/system.md"
+    },
+    {
+      "id": "fabric-analyze_paper_simple",
+      "name": "analyze_paper_simple",
+      "description": "开源标准任务规程 (analyze_paper_simple)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_paper_simple/system.md"
+    },
+    {
+      "id": "fabric-analyze_patent",
+      "name": "analyze_patent",
+      "description": "开源标准任务规程 (analyze_patent)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_patent/system.md"
+    },
+    {
+      "id": "fabric-analyze_personality",
+      "name": "analyze_personality",
+      "description": "开源标准任务规程 (analyze_personality)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_personality/system.md"
+    },
+    {
+      "id": "fabric-analyze_presentation",
+      "name": "analyze_presentation",
+      "description": "开源标准任务规程 (analyze_presentation)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_presentation/system.md"
+    },
+    {
+      "id": "fabric-analyze_product_feedback",
+      "name": "analyze_product_feedback",
+      "description": "开源标准任务规程 (analyze_product_feedback)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_product_feedback/system.md"
+    },
+    {
+      "id": "fabric-analyze_proposition",
+      "name": "analyze_proposition",
+      "description": "开源标准任务规程 (analyze_proposition)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_proposition/system.md"
+    },
+    {
+      "id": "fabric-analyze_prose",
+      "name": "analyze_prose",
+      "description": "开源标准任务规程 (analyze_prose)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_prose/system.md"
+    },
+    {
+      "id": "fabric-analyze_prose_json",
+      "name": "analyze_prose_json",
+      "description": "开源标准任务规程 (analyze_prose_json)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_prose_json/system.md"
+    },
+    {
+      "id": "fabric-analyze_prose_pinker",
+      "name": "analyze_prose_pinker",
+      "description": "开源标准任务规程 (analyze_prose_pinker)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_prose_pinker/system.md"
+    },
+    {
+      "id": "fabric-analyze_risk",
+      "name": "analyze_risk",
+      "description": "开源标准任务规程 (analyze_risk)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_risk/system.md"
+    },
+    {
+      "id": "fabric-analyze_sales_call",
+      "name": "analyze_sales_call",
+      "description": "开源标准任务规程 (analyze_sales_call)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_sales_call/system.md"
+    },
+    {
+      "id": "fabric-analyze_spiritual_text",
+      "name": "analyze_spiritual_text",
+      "description": "开源标准任务规程 (analyze_spiritual_text)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_spiritual_text/system.md"
+    },
+    {
+      "id": "fabric-analyze_tech_impact",
+      "name": "analyze_tech_impact",
+      "description": "开源标准任务规程 (analyze_tech_impact)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_tech_impact/system.md"
+    },
+    {
+      "id": "fabric-analyze_terraform_plan",
+      "name": "analyze_terraform_plan",
+      "description": "开源标准任务规程 (analyze_terraform_plan)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_terraform_plan/system.md"
+    },
+    {
+      "id": "fabric-analyze_threat_report",
+      "name": "analyze_threat_report",
+      "description": "开源标准任务规程 (analyze_threat_report)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_threat_report/system.md"
+    },
+    {
+      "id": "fabric-analyze_threat_report_cmds",
+      "name": "analyze_threat_report_cmds",
+      "description": "开源标准任务规程 (analyze_threat_report_cmds)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_threat_report_cmds/system.md"
+    },
+    {
+      "id": "fabric-analyze_threat_report_trends",
+      "name": "analyze_threat_report_trends",
+      "description": "开源标准任务规程 (analyze_threat_report_trends)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/analyze_threat_report_trends/system.md"
+    },
+    {
+      "id": "fabric-answer_interview_question",
+      "name": "answer_interview_question",
+      "description": "开源标准任务规程 (answer_interview_question)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/answer_interview_question/system.md"
+    },
+    {
+      "id": "fabric-apply_ul_tags",
+      "name": "apply_ul_tags",
+      "description": "开源标准任务规程 (apply_ul_tags)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/apply_ul_tags/system.md"
+    },
+    {
+      "id": "fabric-ask_secure_by_design_questions",
+      "name": "ask_secure_by_design_questions",
+      "description": "开源标准任务规程 (ask_secure_by_design_questions)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/ask_secure_by_design_questions/system.md"
+    },
+    {
+      "id": "fabric-ask_uncle_duke",
+      "name": "ask_uncle_duke",
+      "description": "开源标准任务规程 (ask_uncle_duke)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/ask_uncle_duke/system.md"
+    },
+    {
+      "id": "fabric-audit_consent",
+      "name": "audit_consent",
+      "description": "开源标准任务规程 (audit_consent)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/audit_consent/system.md"
+    },
+    {
+      "id": "fabric-audit_transparency",
+      "name": "audit_transparency",
+      "description": "开源标准任务规程 (audit_transparency)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/audit_transparency/system.md"
+    },
+    {
+      "id": "fabric-capture_thinkers_work",
+      "name": "capture_thinkers_work",
+      "description": "开源标准任务规程 (capture_thinkers_work)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/capture_thinkers_work/system.md"
+    },
+    {
+      "id": "fabric-check_agreement",
+      "name": "check_agreement",
+      "description": "开源标准任务规程 (check_agreement)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/check_agreement/system.md"
+    },
+    {
+      "id": "fabric-check_falsifiability",
+      "name": "check_falsifiability",
+      "description": "开源标准任务规程 (check_falsifiability)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/check_falsifiability/system.md"
+    },
+    {
+      "id": "fabric-chinese_article_summary",
+      "name": "chinese_article_summary",
+      "description": "开源标准任务规程 (chinese_article_summary)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/chinese_article_summary/system.md"
+    },
+    {
+      "id": "fabric-chinese_code_review",
+      "name": "chinese_code_review",
+      "description": "开源标准任务规程 (chinese_code_review)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/chinese_code_review/system.md"
+    },
+    {
+      "id": "fabric-chinese_contract_review",
+      "name": "chinese_contract_review",
+      "description": "开源标准任务规程 (chinese_contract_review)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/chinese_contract_review/system.md"
+    },
+    {
+      "id": "fabric-chinese_news_translate",
+      "name": "chinese_news_translate",
+      "description": "开源标准任务规程 (chinese_news_translate)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/chinese_news_translate/system.md"
+    },
+    {
+      "id": "fabric-chinese_poetry_analysis",
+      "name": "chinese_poetry_analysis",
+      "description": "开源标准任务规程 (chinese_poetry_analysis)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/chinese_poetry_analysis/system.md"
+    },
+    {
+      "id": "fabric-clean_text",
+      "name": "clean_text",
+      "description": "开源标准任务规程 (clean_text)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/clean_text/system.md"
+    },
+    {
+      "id": "fabric-coding_master",
+      "name": "coding_master",
+      "description": "开源标准任务规程 (coding_master)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/coding_master/system.md"
+    },
+    {
+      "id": "fabric-compare_and_contrast",
+      "name": "compare_and_contrast",
+      "description": "开源标准任务规程 (compare_and_contrast)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/compare_and_contrast/system.md"
+    },
+    {
+      "id": "fabric-concall_summary",
+      "name": "concall_summary",
+      "description": "开源标准任务规程 (concall_summary)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/concall_summary/system.md"
+    },
+    {
+      "id": "fabric-convert_to_markdown",
+      "name": "convert_to_markdown",
+      "description": "开源标准任务规程 (convert_to_markdown)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/convert_to_markdown/system.md"
+    },
+    {
+      "id": "fabric-create_5_sentence_summary",
+      "name": "create_5_sentence_summary",
+      "description": "开源标准任务规程 (create_5_sentence_summary)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_5_sentence_summary/system.md"
+    },
+    {
+      "id": "fabric-create_academic_paper",
+      "name": "create_academic_paper",
+      "description": "开源标准任务规程 (create_academic_paper)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_academic_paper/system.md"
+    },
+    {
+      "id": "fabric-create_ai_jobs_analysis",
+      "name": "create_ai_jobs_analysis",
+      "description": "开源标准任务规程 (create_ai_jobs_analysis)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_ai_jobs_analysis/system.md"
+    },
+    {
+      "id": "fabric-create_aphorisms",
+      "name": "create_aphorisms",
+      "description": "开源标准任务规程 (create_aphorisms)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_aphorisms/system.md"
+    },
+    {
+      "id": "fabric-create_art_prompt",
+      "name": "create_art_prompt",
+      "description": "开源标准任务规程 (create_art_prompt)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_art_prompt/system.md"
+    },
+    {
+      "id": "fabric-create_bd_issue",
+      "name": "create_bd_issue",
+      "description": "开源标准任务规程 (create_bd_issue)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_bd_issue/system.md"
+    },
+    {
+      "id": "fabric-create_better_frame",
+      "name": "create_better_frame",
+      "description": "开源标准任务规程 (create_better_frame)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_better_frame/system.md"
+    },
+    {
+      "id": "fabric-create_coding_feature",
+      "name": "create_coding_feature",
+      "description": "开源标准任务规程 (create_coding_feature)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_coding_feature/system.md"
+    },
+    {
+      "id": "fabric-create_coding_project",
+      "name": "create_coding_project",
+      "description": "开源标准任务规程 (create_coding_project)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_coding_project/system.md"
+    },
+    {
+      "id": "fabric-create_command",
+      "name": "create_command",
+      "description": "开源标准任务规程 (create_command)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_command/system.md"
+    },
+    {
+      "id": "fabric-create_conceptmap",
+      "name": "create_conceptmap",
+      "description": "开源标准任务规程 (create_conceptmap)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_conceptmap/system.md"
+    },
+    {
+      "id": "fabric-create_cyber_summary",
+      "name": "create_cyber_summary",
+      "description": "开源标准任务规程 (create_cyber_summary)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_cyber_summary/system.md"
+    },
+    {
+      "id": "fabric-create_design_document",
+      "name": "create_design_document",
+      "description": "开源标准任务规程 (create_design_document)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_design_document/system.md"
+    },
+    {
+      "id": "fabric-create_design_system",
+      "name": "create_design_system",
+      "description": "开源标准任务规程 (create_design_system)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_design_system/system.md"
+    },
+    {
+      "id": "fabric-create_diy",
+      "name": "create_diy",
+      "description": "开源标准任务规程 (create_diy)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_diy/system.md"
+    },
+    {
+      "id": "fabric-create_excalidraw_visualization",
+      "name": "create_excalidraw_visualization",
+      "description": "开源标准任务规程 (create_excalidraw_visualization)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_excalidraw_visualization/system.md"
+    },
+    {
+      "id": "fabric-create_flash_cards",
+      "name": "create_flash_cards",
+      "description": "开源标准任务规程 (create_flash_cards)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_flash_cards/system.md"
+    },
+    {
+      "id": "fabric-create_formal_email",
+      "name": "create_formal_email",
+      "description": "开源标准任务规程 (create_formal_email)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_formal_email/system.md"
+    },
+    {
+      "id": "fabric-create_git_diff_commit",
+      "name": "create_git_diff_commit",
+      "description": "开源标准任务规程 (create_git_diff_commit)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_git_diff_commit/system.md"
+    },
+    {
+      "id": "fabric-create_golden_rules",
+      "name": "create_golden_rules",
+      "description": "开源标准任务规程 (create_golden_rules)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_golden_rules/system.md"
+    },
+    {
+      "id": "fabric-create_graph_from_input",
+      "name": "create_graph_from_input",
+      "description": "开源标准任务规程 (create_graph_from_input)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_graph_from_input/system.md"
+    },
+    {
+      "id": "fabric-create_hormozi_offer",
+      "name": "create_hormozi_offer",
+      "description": "开源标准任务规程 (create_hormozi_offer)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_hormozi_offer/system.md"
+    },
+    {
+      "id": "fabric-create_idea_compass",
+      "name": "create_idea_compass",
+      "description": "开源标准任务规程 (create_idea_compass)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_idea_compass/system.md"
+    },
+    {
+      "id": "fabric-create_investigation_visualization",
+      "name": "create_investigation_visualization",
+      "description": "开源标准任务规程 (create_investigation_visualization)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_investigation_visualization/system.md"
+    },
+    {
+      "id": "fabric-create_keynote",
+      "name": "create_keynote",
+      "description": "开源标准任务规程 (create_keynote)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_keynote/system.md"
+    },
+    {
+      "id": "fabric-create_loe_document",
+      "name": "create_loe_document",
+      "description": "开源标准任务规程 (create_loe_document)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_loe_document/system.md"
+    },
+    {
+      "id": "fabric-create_logo",
+      "name": "create_logo",
+      "description": "开源标准任务规程 (create_logo)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_logo/system.md"
+    },
+    {
+      "id": "fabric-create_markmap_visualization",
+      "name": "create_markmap_visualization",
+      "description": "开源标准任务规程 (create_markmap_visualization)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_markmap_visualization/system.md"
+    },
+    {
+      "id": "fabric-create_mermaid_visualization",
+      "name": "create_mermaid_visualization",
+      "description": "开源标准任务规程 (create_mermaid_visualization)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_mermaid_visualization/system.md"
+    },
+    {
+      "id": "fabric-create_mermaid_visualization_for_github",
+      "name": "create_mermaid_visualization_for_github",
+      "description": "开源标准任务规程 (create_mermaid_visualization_for_github)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_mermaid_visualization_for_github/system.md"
+    },
+    {
+      "id": "fabric-create_micro_summary",
+      "name": "create_micro_summary",
+      "description": "开源标准任务规程 (create_micro_summary)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_micro_summary/system.md"
+    },
+    {
+      "id": "fabric-create_mnemonic_phrases",
+      "name": "create_mnemonic_phrases",
+      "description": "开源标准任务规程 (create_mnemonic_phrases)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_mnemonic_phrases/system.md"
+    },
+    {
+      "id": "fabric-create_network_threat_landscape",
+      "name": "create_network_threat_landscape",
+      "description": "开源标准任务规程 (create_network_threat_landscape)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_network_threat_landscape/system.md"
+    },
+    {
+      "id": "fabric-create_newsletter_entry",
+      "name": "create_newsletter_entry",
+      "description": "开源标准任务规程 (create_newsletter_entry)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_newsletter_entry/system.md"
+    },
+    {
+      "id": "fabric-create_npc",
+      "name": "create_npc",
+      "description": "开源标准任务规程 (create_npc)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_npc/system.md"
+    },
+    {
+      "id": "fabric-create_pattern",
+      "name": "create_pattern",
+      "description": "开源标准任务规程 (create_pattern)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_pattern/system.md"
+    },
+    {
+      "id": "fabric-create_prd",
+      "name": "create_prd",
+      "description": "开源标准任务规程 (create_prd)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_prd/system.md"
+    },
+    {
+      "id": "fabric-create_prediction_block",
+      "name": "create_prediction_block",
+      "description": "开源标准任务规程 (create_prediction_block)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_prediction_block/system.md"
+    },
+    {
+      "id": "fabric-create_quiz",
+      "name": "create_quiz",
+      "description": "开源标准任务规程 (create_quiz)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_quiz/system.md"
+    },
+    {
+      "id": "fabric-create_reading_plan",
+      "name": "create_reading_plan",
+      "description": "开源标准任务规程 (create_reading_plan)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_reading_plan/system.md"
+    },
+    {
+      "id": "fabric-create_recursive_outline",
+      "name": "create_recursive_outline",
+      "description": "开源标准任务规程 (create_recursive_outline)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_recursive_outline/system.md"
+    },
+    {
+      "id": "fabric-create_report_finding",
+      "name": "create_report_finding",
+      "description": "开源标准任务规程 (create_report_finding)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_report_finding/system.md"
+    },
+    {
+      "id": "fabric-create_rpg_summary",
+      "name": "create_rpg_summary",
+      "description": "开源标准任务规程 (create_rpg_summary)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_rpg_summary/system.md"
+    },
+    {
+      "id": "fabric-create_security_update",
+      "name": "create_security_update",
+      "description": "开源标准任务规程 (create_security_update)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_security_update/system.md"
+    },
+    {
+      "id": "fabric-create_show_intro",
+      "name": "create_show_intro",
+      "description": "开源标准任务规程 (create_show_intro)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_show_intro/system.md"
+    },
+    {
+      "id": "fabric-create_sigma_rules",
+      "name": "create_sigma_rules",
+      "description": "开源标准任务规程 (create_sigma_rules)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_sigma_rules/system.md"
+    },
+    {
+      "id": "fabric-create_slides",
+      "name": "create_slides",
+      "description": "开源标准任务规程 (create_slides)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_slides/system.md"
+    },
+    {
+      "id": "fabric-create_story_about_people_interaction",
+      "name": "create_story_about_people_interaction",
+      "description": "开源标准任务规程 (create_story_about_people_interaction)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_story_about_people_interaction/system.md"
+    },
+    {
+      "id": "fabric-create_story_about_person",
+      "name": "create_story_about_person",
+      "description": "开源标准任务规程 (create_story_about_person)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_story_about_person/system.md"
+    },
+    {
+      "id": "fabric-create_story_explanation",
+      "name": "create_story_explanation",
+      "description": "开源标准任务规程 (create_story_explanation)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_story_explanation/system.md"
+    },
+    {
+      "id": "fabric-create_stride_threat_model",
+      "name": "create_stride_threat_model",
+      "description": "开源标准任务规程 (create_stride_threat_model)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_stride_threat_model/system.md"
+    },
+    {
+      "id": "fabric-create_summary",
+      "name": "create_summary",
+      "description": "开源标准任务规程 (create_summary)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_summary/system.md"
+    },
+    {
+      "id": "fabric-create_tags",
+      "name": "create_tags",
+      "description": "开源标准任务规程 (create_tags)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_tags/system.md"
+    },
+    {
+      "id": "fabric-create_threat_scenarios",
+      "name": "create_threat_scenarios",
+      "description": "开源标准任务规程 (create_threat_scenarios)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_threat_scenarios/system.md"
+    },
+    {
+      "id": "fabric-create_ttrc_graph",
+      "name": "create_ttrc_graph",
+      "description": "开源标准任务规程 (create_ttrc_graph)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_ttrc_graph/system.md"
+    },
+    {
+      "id": "fabric-create_ttrc_narrative",
+      "name": "create_ttrc_narrative",
+      "description": "开源标准任务规程 (create_ttrc_narrative)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_ttrc_narrative/system.md"
+    },
+    {
+      "id": "fabric-create_upgrade_pack",
+      "name": "create_upgrade_pack",
+      "description": "开源标准任务规程 (create_upgrade_pack)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_upgrade_pack/system.md"
+    },
+    {
+      "id": "fabric-create_user_story",
+      "name": "create_user_story",
+      "description": "开源标准任务规程 (create_user_story)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_user_story/system.md"
+    },
+    {
+      "id": "fabric-create_video_chapters",
+      "name": "create_video_chapters",
+      "description": "开源标准任务规程 (create_video_chapters)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_video_chapters/system.md"
+    },
+    {
+      "id": "fabric-create_visualization",
+      "name": "create_visualization",
+      "description": "开源标准任务规程 (create_visualization)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/create_visualization/system.md"
+    },
+    {
+      "id": "fabric-detect_mind_virus",
+      "name": "detect_mind_virus",
+      "description": "开源标准任务规程 (detect_mind_virus)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/detect_mind_virus/system.md"
+    },
+    {
+      "id": "fabric-detect_silent_victims",
+      "name": "detect_silent_victims",
+      "description": "开源标准任务规程 (detect_silent_victims)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/detect_silent_victims/system.md"
+    },
+    {
+      "id": "fabric-dialog_with_socrates",
+      "name": "dialog_with_socrates",
+      "description": "开源标准任务规程 (dialog_with_socrates)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/dialog_with_socrates/system.md"
+    },
+    {
+      "id": "fabric-eisenhower_matrix",
+      "name": "eisenhower_matrix",
+      "description": "开源标准任务规程 (eisenhower_matrix)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/eisenhower_matrix/system.md"
+    },
+    {
+      "id": "fabric-enrich_blog_post",
+      "name": "enrich_blog_post",
+      "description": "开源标准任务规程 (enrich_blog_post)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/enrich_blog_post/system.md"
+    },
+    {
+      "id": "fabric-explain_code",
+      "name": "explain_code",
+      "description": "开源标准任务规程 (explain_code)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/explain_code/system.md"
+    },
+    {
+      "id": "fabric-explain_docs",
+      "name": "explain_docs",
+      "description": "开源标准任务规程 (explain_docs)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/explain_docs/system.md"
+    },
+    {
+      "id": "fabric-explain_math",
+      "name": "explain_math",
+      "description": "开源标准任务规程 (explain_math)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/explain_math/system.md"
+    },
+    {
+      "id": "fabric-explain_project",
+      "name": "explain_project",
+      "description": "开源标准任务规程 (explain_project)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/explain_project/system.md"
+    },
+    {
+      "id": "fabric-explain_terms",
+      "name": "explain_terms",
+      "description": "开源标准任务规程 (explain_terms)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/explain_terms/system.md"
+    },
+    {
+      "id": "fabric-explain_terms_and_conditions",
+      "name": "explain_terms_and_conditions",
+      "description": "开源标准任务规程 (explain_terms_and_conditions)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/explain_terms_and_conditions/system.md"
+    },
+    {
+      "id": "fabric-export_data_as_csv",
+      "name": "export_data_as_csv",
+      "description": "开源标准任务规程 (export_data_as_csv)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/export_data_as_csv/system.md"
+    },
+    {
+      "id": "fabric-extract_affiliate_products",
+      "name": "extract_affiliate_products",
+      "description": "开源标准任务规程 (extract_affiliate_products)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_affiliate_products/system.md"
+    },
+    {
+      "id": "fabric-extract_algorithm_update_recommendations",
+      "name": "extract_algorithm_update_recommendations",
+      "description": "开源标准任务规程 (extract_algorithm_update_recommendations)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_algorithm_update_recommendations/system.md"
+    },
+    {
+      "id": "fabric-extract_all_quotes",
+      "name": "extract_all_quotes",
+      "description": "开源标准任务规程 (extract_all_quotes)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_all_quotes/system.md"
+    },
+    {
+      "id": "fabric-extract_alpha",
+      "name": "extract_alpha",
+      "description": "开源标准任务规程 (extract_alpha)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_alpha/system.md"
+    },
+    {
+      "id": "fabric-extract_article_wisdom",
+      "name": "extract_article_wisdom",
+      "description": "开源标准任务规程 (extract_article_wisdom)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_article_wisdom/system.md"
+    },
+    {
+      "id": "fabric-extract_bd_ideas",
+      "name": "extract_bd_ideas",
+      "description": "开源标准任务规程 (extract_bd_ideas)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_bd_ideas/system.md"
+    },
+    {
+      "id": "fabric-extract_book_ideas",
+      "name": "extract_book_ideas",
+      "description": "开源标准任务规程 (extract_book_ideas)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_book_ideas/system.md"
+    },
+    {
+      "id": "fabric-extract_book_recommendations",
+      "name": "extract_book_recommendations",
+      "description": "开源标准任务规程 (extract_book_recommendations)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_book_recommendations/system.md"
+    },
+    {
+      "id": "fabric-extract_business_ideas",
+      "name": "extract_business_ideas",
+      "description": "开源标准任务规程 (extract_business_ideas)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_business_ideas/system.md"
+    },
+    {
+      "id": "fabric-extract_characters",
+      "name": "extract_characters",
+      "description": "开源标准任务规程 (extract_characters)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_characters/system.md"
+    },
+    {
+      "id": "fabric-extract_controversial_ideas",
+      "name": "extract_controversial_ideas",
+      "description": "开源标准任务规程 (extract_controversial_ideas)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_controversial_ideas/system.md"
+    },
+    {
+      "id": "fabric-extract_core_message",
+      "name": "extract_core_message",
+      "description": "开源标准任务规程 (extract_core_message)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_core_message/system.md"
+    },
+    {
+      "id": "fabric-extract_ctf_writeup",
+      "name": "extract_ctf_writeup",
+      "description": "开源标准任务规程 (extract_ctf_writeup)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_ctf_writeup/system.md"
+    },
+    {
+      "id": "fabric-extract_domains",
+      "name": "extract_domains",
+      "description": "开源标准任务规程 (extract_domains)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_domains/system.md"
+    },
+    {
+      "id": "fabric-extract_ethical_framework",
+      "name": "extract_ethical_framework",
+      "description": "开源标准任务规程 (extract_ethical_framework)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_ethical_framework/system.md"
+    },
+    {
+      "id": "fabric-extract_extraordinary_claims",
+      "name": "extract_extraordinary_claims",
+      "description": "开源标准任务规程 (extract_extraordinary_claims)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_extraordinary_claims/system.md"
+    },
+    {
+      "id": "fabric-extract_ideas",
+      "name": "extract_ideas",
+      "description": "开源标准任务规程 (extract_ideas)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_ideas/system.md"
+    },
+    {
+      "id": "fabric-extract_insights",
+      "name": "extract_insights",
+      "description": "开源标准任务规程 (extract_insights)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_insights/system.md"
+    },
+    {
+      "id": "fabric-extract_insights_dm",
+      "name": "extract_insights_dm",
+      "description": "开源标准任务规程 (extract_insights_dm)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_insights_dm/system.md"
+    },
+    {
+      "id": "fabric-extract_instructions",
+      "name": "extract_instructions",
+      "description": "开源标准任务规程 (extract_instructions)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_instructions/system.md"
+    },
+    {
+      "id": "fabric-extract_jokes",
+      "name": "extract_jokes",
+      "description": "开源标准任务规程 (extract_jokes)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_jokes/system.md"
+    },
+    {
+      "id": "fabric-extract_latest_video",
+      "name": "extract_latest_video",
+      "description": "开源标准任务规程 (extract_latest_video)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_latest_video/system.md"
+    },
+    {
+      "id": "fabric-extract_main_activities",
+      "name": "extract_main_activities",
+      "description": "开源标准任务规程 (extract_main_activities)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_main_activities/system.md"
+    },
+    {
+      "id": "fabric-extract_main_idea",
+      "name": "extract_main_idea",
+      "description": "开源标准任务规程 (extract_main_idea)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_main_idea/system.md"
+    },
+    {
+      "id": "fabric-extract_mcp_servers",
+      "name": "extract_mcp_servers",
+      "description": "开源标准任务规程 (extract_mcp_servers)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_mcp_servers/system.md"
+    },
+    {
+      "id": "fabric-extract_most_redeeming_thing",
+      "name": "extract_most_redeeming_thing",
+      "description": "开源标准任务规程 (extract_most_redeeming_thing)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_most_redeeming_thing/system.md"
+    },
+    {
+      "id": "fabric-extract_patterns",
+      "name": "extract_patterns",
+      "description": "开源标准任务规程 (extract_patterns)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_patterns/system.md"
+    },
+    {
+      "id": "fabric-extract_poc",
+      "name": "extract_poc",
+      "description": "开源标准任务规程 (extract_poc)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_poc/system.md"
+    },
+    {
+      "id": "fabric-extract_predictions",
+      "name": "extract_predictions",
+      "description": "开源标准任务规程 (extract_predictions)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_predictions/system.md"
+    },
+    {
+      "id": "fabric-extract_primary_problem",
+      "name": "extract_primary_problem",
+      "description": "开源标准任务规程 (extract_primary_problem)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_primary_problem/system.md"
+    },
+    {
+      "id": "fabric-extract_primary_solution",
+      "name": "extract_primary_solution",
+      "description": "开源标准任务规程 (extract_primary_solution)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_primary_solution/system.md"
+    },
+    {
+      "id": "fabric-extract_product_features",
+      "name": "extract_product_features",
+      "description": "开源标准任务规程 (extract_product_features)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_product_features/system.md"
+    },
+    {
+      "id": "fabric-extract_questions",
+      "name": "extract_questions",
+      "description": "开源标准任务规程 (extract_questions)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_questions/system.md"
+    },
+    {
+      "id": "fabric-extract_recipe",
+      "name": "extract_recipe",
+      "description": "开源标准任务规程 (extract_recipe)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_recipe/system.md"
+    },
+    {
+      "id": "fabric-extract_recommendations",
+      "name": "extract_recommendations",
+      "description": "开源标准任务规程 (extract_recommendations)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_recommendations/system.md"
+    },
+    {
+      "id": "fabric-extract_references",
+      "name": "extract_references",
+      "description": "开源标准任务规程 (extract_references)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_references/system.md"
+    },
+    {
+      "id": "fabric-extract_skills",
+      "name": "extract_skills",
+      "description": "开源标准任务规程 (extract_skills)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_skills/system.md"
+    },
+    {
+      "id": "fabric-extract_song_meaning",
+      "name": "extract_song_meaning",
+      "description": "开源标准任务规程 (extract_song_meaning)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_song_meaning/system.md"
+    },
+    {
+      "id": "fabric-extract_sponsors",
+      "name": "extract_sponsors",
+      "description": "开源标准任务规程 (extract_sponsors)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_sponsors/system.md"
+    },
+    {
+      "id": "fabric-extract_video_commerce_entities",
+      "name": "extract_video_commerce_entities",
+      "description": "开源标准任务规程 (extract_video_commerce_entities)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_video_commerce_entities/system.md"
+    },
+    {
+      "id": "fabric-extract_videoid",
+      "name": "extract_videoid",
+      "description": "开源标准任务规程 (extract_videoid)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_videoid/system.md"
+    },
+    {
+      "id": "fabric-extract_wisdom",
+      "name": "extract_wisdom",
+      "description": "开源标准任务规程 (extract_wisdom)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_wisdom/system.md"
+    },
+    {
+      "id": "fabric-extract_wisdom_agents",
+      "name": "extract_wisdom_agents",
+      "description": "开源标准任务规程 (extract_wisdom_agents)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_wisdom_agents/system.md"
+    },
+    {
+      "id": "fabric-extract_wisdom_dm",
+      "name": "extract_wisdom_dm",
+      "description": "开源标准任务规程 (extract_wisdom_dm)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_wisdom_dm/system.md"
+    },
+    {
+      "id": "fabric-extract_wisdom_nometa",
+      "name": "extract_wisdom_nometa",
+      "description": "开源标准任务规程 (extract_wisdom_nometa)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_wisdom_nometa/system.md"
+    },
+    {
+      "id": "fabric-extract_wisdom_with_attribution",
+      "name": "extract_wisdom_with_attribution",
+      "description": "开源标准任务规程 (extract_wisdom_with_attribution)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/extract_wisdom_with_attribution/system.md"
+    },
+    {
+      "id": "fabric-find_female_life_partner",
+      "name": "find_female_life_partner",
+      "description": "开源标准任务规程 (find_female_life_partner)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/find_female_life_partner/system.md"
+    },
+    {
+      "id": "fabric-find_hidden_message",
+      "name": "find_hidden_message",
+      "description": "开源标准任务规程 (find_hidden_message)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/find_hidden_message/system.md"
+    },
+    {
+      "id": "fabric-find_logical_fallacies",
+      "name": "find_logical_fallacies",
+      "description": "开源标准任务规程 (find_logical_fallacies)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/find_logical_fallacies/system.md"
+    },
+    {
+      "id": "fabric-fix_typos",
+      "name": "fix_typos",
+      "description": "开源标准任务规程 (fix_typos)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/fix_typos/system.md"
+    },
+    {
+      "id": "fabric-generate_code_rules",
+      "name": "generate_code_rules",
+      "description": "开源标准任务规程 (generate_code_rules)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/generate_code_rules/system.md"
+    },
+    {
+      "id": "fabric-generate_frontmatter",
+      "name": "generate_frontmatter",
+      "description": "开源标准任务规程 (generate_frontmatter)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/generate_frontmatter/system.md"
+    },
+    {
+      "id": "fabric-get_wow_per_minute",
+      "name": "get_wow_per_minute",
+      "description": "开源标准任务规程 (get_wow_per_minute)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/get_wow_per_minute/system.md"
+    },
+    {
+      "id": "fabric-greybeard_secure_prompt_engineer",
+      "name": "greybeard_secure_prompt_engineer",
+      "description": "开源标准任务规程 (greybeard_secure_prompt_engineer)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/greybeard_secure_prompt_engineer/system.md"
+    },
+    {
+      "id": "fabric-heal_person",
+      "name": "heal_person",
+      "description": "开源标准任务规程 (heal_person)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/heal_person/system.md"
+    },
+    {
+      "id": "fabric-humanize",
+      "name": "humanize",
+      "description": "开源标准任务规程 (humanize)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/humanize/system.md"
+    },
+    {
+      "id": "fabric-identify_dsrp_distinctions",
+      "name": "identify_dsrp_distinctions",
+      "description": "开源标准任务规程 (identify_dsrp_distinctions)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/identify_dsrp_distinctions/system.md"
+    },
+    {
+      "id": "fabric-identify_dsrp_perspectives",
+      "name": "identify_dsrp_perspectives",
+      "description": "开源标准任务规程 (identify_dsrp_perspectives)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/identify_dsrp_perspectives/system.md"
+    },
+    {
+      "id": "fabric-identify_dsrp_relationships",
+      "name": "identify_dsrp_relationships",
+      "description": "开源标准任务规程 (identify_dsrp_relationships)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/identify_dsrp_relationships/system.md"
+    },
+    {
+      "id": "fabric-identify_dsrp_systems",
+      "name": "identify_dsrp_systems",
+      "description": "开源标准任务规程 (identify_dsrp_systems)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/identify_dsrp_systems/system.md"
+    },
+    {
+      "id": "fabric-identify_job_stories",
+      "name": "identify_job_stories",
+      "description": "开源标准任务规程 (identify_job_stories)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/identify_job_stories/system.md"
+    },
+    {
+      "id": "fabric-improve_academic_writing",
+      "name": "improve_academic_writing",
+      "description": "开源标准任务规程 (improve_academic_writing)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/improve_academic_writing/system.md"
+    },
+    {
+      "id": "fabric-improve_prompt",
+      "name": "improve_prompt",
+      "description": "开源标准任务规程 (improve_prompt)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/improve_prompt/system.md"
+    },
+    {
+      "id": "fabric-improve_report_finding",
+      "name": "improve_report_finding",
+      "description": "开源标准任务规程 (improve_report_finding)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/improve_report_finding/system.md"
+    },
+    {
+      "id": "fabric-improve_writing",
+      "name": "improve_writing",
+      "description": "开源标准任务规程 (improve_writing)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/improve_writing/system.md"
+    },
+    {
+      "id": "fabric-judge_output",
+      "name": "judge_output",
+      "description": "开源标准任务规程 (judge_output)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/judge_output/system.md"
+    },
+    {
+      "id": "fabric-judge_ultimate_law",
+      "name": "judge_ultimate_law",
+      "description": "开源标准任务规程 (judge_ultimate_law)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/judge_ultimate_law/system.md"
+    },
+    {
+      "id": "fabric-label_and_rate",
+      "name": "label_and_rate",
+      "description": "开源标准任务规程 (label_and_rate)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/label_and_rate/system.md"
+    },
+    {
+      "id": "fabric-lens_deconstructive",
+      "name": "lens_deconstructive",
+      "description": "开源标准任务规程 (lens_deconstructive)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/lens_deconstructive/system.md"
+    },
+    {
+      "id": "fabric-lens_rhetorical",
+      "name": "lens_rhetorical",
+      "description": "开源标准任务规程 (lens_rhetorical)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/lens_rhetorical/system.md"
+    },
+    {
+      "id": "fabric-lens_stoic",
+      "name": "lens_stoic",
+      "description": "开源标准任务规程 (lens_stoic)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/lens_stoic/system.md"
+    },
+    {
+      "id": "fabric-md_callout",
+      "name": "md_callout",
+      "description": "开源标准任务规程 (md_callout)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/md_callout/system.md"
+    },
+    {
+      "id": "fabric-model_as_sherlock_freud",
+      "name": "model_as_sherlock_freud",
+      "description": "开源标准任务规程 (model_as_sherlock_freud)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/model_as_sherlock_freud/system.md"
+    },
+    {
+      "id": "fabric-official_pattern_template",
+      "name": "official_pattern_template",
+      "description": "开源标准任务规程 (official_pattern_template)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/official_pattern_template/system.md"
+    },
+    {
+      "id": "fabric-predict_person_actions",
+      "name": "predict_person_actions",
+      "description": "开源标准任务规程 (predict_person_actions)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/predict_person_actions/system.md"
+    },
+    {
+      "id": "fabric-prepare_7s_strategy",
+      "name": "prepare_7s_strategy",
+      "description": "开源标准任务规程 (prepare_7s_strategy)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/prepare_7s_strategy/system.md"
+    },
+    {
+      "id": "fabric-provide_guidance",
+      "name": "provide_guidance",
+      "description": "开源标准任务规程 (provide_guidance)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/provide_guidance/system.md"
+    },
+    {
+      "id": "fabric-rate_ai_response",
+      "name": "rate_ai_response",
+      "description": "开源标准任务规程 (rate_ai_response)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/rate_ai_response/system.md"
+    },
+    {
+      "id": "fabric-rate_ai_result",
+      "name": "rate_ai_result",
+      "description": "开源标准任务规程 (rate_ai_result)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/rate_ai_result/system.md"
+    },
+    {
+      "id": "fabric-rate_content",
+      "name": "rate_content",
+      "description": "开源标准任务规程 (rate_content)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/rate_content/system.md"
+    },
+    {
+      "id": "fabric-rate_value",
+      "name": "rate_value",
+      "description": "开源标准任务规程 (rate_value)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/rate_value/system.md"
+    },
+    {
+      "id": "fabric-raw_query",
+      "name": "raw_query",
+      "description": "开源标准任务规程 (raw_query)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/raw_query/system.md"
+    },
+    {
+      "id": "fabric-recommend_artists",
+      "name": "recommend_artists",
+      "description": "开源标准任务规程 (recommend_artists)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/recommend_artists/system.md"
+    },
+    {
+      "id": "fabric-recommend_pipeline_upgrades",
+      "name": "recommend_pipeline_upgrades",
+      "description": "开源标准任务规程 (recommend_pipeline_upgrades)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/recommend_pipeline_upgrades/system.md"
+    },
+    {
+      "id": "fabric-recommend_talkpanel_topics",
+      "name": "recommend_talkpanel_topics",
+      "description": "开源标准任务规程 (recommend_talkpanel_topics)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/recommend_talkpanel_topics/system.md"
+    },
+    {
+      "id": "fabric-recommend_yoga_practice",
+      "name": "recommend_yoga_practice",
+      "description": "开源标准任务规程 (recommend_yoga_practice)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/recommend_yoga_practice/system.md"
+    },
+    {
+      "id": "fabric-refine_design_document",
+      "name": "refine_design_document",
+      "description": "开源标准任务规程 (refine_design_document)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/refine_design_document/system.md"
+    },
+    {
+      "id": "fabric-review_code",
+      "name": "review_code",
+      "description": "开源标准任务规程 (review_code)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/review_code/system.md"
+    },
+    {
+      "id": "fabric-review_design",
+      "name": "review_design",
+      "description": "开源标准任务规程 (review_design)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/review_design/system.md"
+    },
+    {
+      "id": "fabric-sanitize_broken_html_to_markdown",
+      "name": "sanitize_broken_html_to_markdown",
+      "description": "开源标准任务规程 (sanitize_broken_html_to_markdown)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/sanitize_broken_html_to_markdown/system.md"
+    },
+    {
+      "id": "fabric-suggest_gt_command",
+      "name": "suggest_gt_command",
+      "description": "开源标准任务规程 (suggest_gt_command)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/suggest_gt_command/system.md"
+    },
+    {
+      "id": "fabric-suggest_openclaw_pattern",
+      "name": "suggest_openclaw_pattern",
+      "description": "开源标准任务规程 (suggest_openclaw_pattern)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/suggest_openclaw_pattern/system.md"
+    },
+    {
+      "id": "fabric-suggest_pattern",
+      "name": "suggest_pattern",
+      "description": "开源标准任务规程 (suggest_pattern)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/suggest_pattern/system.md"
+    },
+    {
+      "id": "fabric-summarize",
+      "name": "summarize",
+      "description": "开源标准任务规程 (summarize)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/summarize/system.md"
+    },
+    {
+      "id": "fabric-summarize_board_meeting",
+      "name": "summarize_board_meeting",
+      "description": "开源标准任务规程 (summarize_board_meeting)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/summarize_board_meeting/system.md"
+    },
+    {
+      "id": "fabric-summarize_debate",
+      "name": "summarize_debate",
+      "description": "开源标准任务规程 (summarize_debate)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/summarize_debate/system.md"
+    },
+    {
+      "id": "fabric-summarize_git_changes",
+      "name": "summarize_git_changes",
+      "description": "开源标准任务规程 (summarize_git_changes)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/summarize_git_changes/system.md"
+    },
+    {
+      "id": "fabric-summarize_git_diff",
+      "name": "summarize_git_diff",
+      "description": "开源标准任务规程 (summarize_git_diff)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/summarize_git_diff/system.md"
+    },
+    {
+      "id": "fabric-summarize_lecture",
+      "name": "summarize_lecture",
+      "description": "开源标准任务规程 (summarize_lecture)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/summarize_lecture/system.md"
+    },
+    {
+      "id": "fabric-summarize_legislation",
+      "name": "summarize_legislation",
+      "description": "开源标准任务规程 (summarize_legislation)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/summarize_legislation/system.md"
+    },
+    {
+      "id": "fabric-summarize_meeting",
+      "name": "summarize_meeting",
+      "description": "开源标准任务规程 (summarize_meeting)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/summarize_meeting/system.md"
+    },
+    {
+      "id": "fabric-summarize_micro",
+      "name": "summarize_micro",
+      "description": "开源标准任务规程 (summarize_micro)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/summarize_micro/system.md"
+    },
+    {
+      "id": "fabric-summarize_newsletter",
+      "name": "summarize_newsletter",
+      "description": "开源标准任务规程 (summarize_newsletter)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/summarize_newsletter/system.md"
+    },
+    {
+      "id": "fabric-summarize_paper",
+      "name": "summarize_paper",
+      "description": "开源标准任务规程 (summarize_paper)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/summarize_paper/system.md"
+    },
+    {
+      "id": "fabric-summarize_prompt",
+      "name": "summarize_prompt",
+      "description": "开源标准任务规程 (summarize_prompt)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/summarize_prompt/system.md"
+    },
+    {
+      "id": "fabric-summarize_pull-requests",
+      "name": "summarize_pull-requests",
+      "description": "开源标准任务规程 (summarize_pull-requests)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/summarize_pull-requests/system.md"
+    },
+    {
+      "id": "fabric-summarize_rpg_session",
+      "name": "summarize_rpg_session",
+      "description": "开源标准任务规程 (summarize_rpg_session)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/summarize_rpg_session/system.md"
+    },
+    {
+      "id": "fabric-t_analyze_challenge_handling",
+      "name": "t_analyze_challenge_handling",
+      "description": "开源标准任务规程 (t_analyze_challenge_handling)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/t_analyze_challenge_handling/system.md"
+    },
+    {
+      "id": "fabric-t_check_dunning_kruger",
+      "name": "t_check_dunning_kruger",
+      "description": "开源标准任务规程 (t_check_dunning_kruger)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/t_check_dunning_kruger/system.md"
+    },
+    {
+      "id": "fabric-t_check_metrics",
+      "name": "t_check_metrics",
+      "description": "开源标准任务规程 (t_check_metrics)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/t_check_metrics/system.md"
+    },
+    {
+      "id": "fabric-t_create_h3_career",
+      "name": "t_create_h3_career",
+      "description": "开源标准任务规程 (t_create_h3_career)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/t_create_h3_career/system.md"
+    },
+    {
+      "id": "fabric-t_create_opening_sentences",
+      "name": "t_create_opening_sentences",
+      "description": "开源标准任务规程 (t_create_opening_sentences)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/t_create_opening_sentences/system.md"
+    },
+    {
+      "id": "fabric-t_describe_life_outlook",
+      "name": "t_describe_life_outlook",
+      "description": "开源标准任务规程 (t_describe_life_outlook)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/t_describe_life_outlook/system.md"
+    },
+    {
+      "id": "fabric-t_extract_intro_sentences",
+      "name": "t_extract_intro_sentences",
+      "description": "开源标准任务规程 (t_extract_intro_sentences)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/t_extract_intro_sentences/system.md"
+    },
+    {
+      "id": "fabric-t_extract_panel_topics",
+      "name": "t_extract_panel_topics",
+      "description": "开源标准任务规程 (t_extract_panel_topics)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/t_extract_panel_topics/system.md"
+    },
+    {
+      "id": "fabric-t_find_blindspots",
+      "name": "t_find_blindspots",
+      "description": "开源标准任务规程 (t_find_blindspots)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/t_find_blindspots/system.md"
+    },
+    {
+      "id": "fabric-t_find_negative_thinking",
+      "name": "t_find_negative_thinking",
+      "description": "开源标准任务规程 (t_find_negative_thinking)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/t_find_negative_thinking/system.md"
+    },
+    {
+      "id": "fabric-t_find_neglected_goals",
+      "name": "t_find_neglected_goals",
+      "description": "开源标准任务规程 (t_find_neglected_goals)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/t_find_neglected_goals/system.md"
+    },
+    {
+      "id": "fabric-t_give_encouragement",
+      "name": "t_give_encouragement",
+      "description": "开源标准任务规程 (t_give_encouragement)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/t_give_encouragement/system.md"
+    },
+    {
+      "id": "fabric-t_red_team_thinking",
+      "name": "t_red_team_thinking",
+      "description": "开源标准任务规程 (t_red_team_thinking)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/t_red_team_thinking/system.md"
+    },
+    {
+      "id": "fabric-t_threat_model_plans",
+      "name": "t_threat_model_plans",
+      "description": "开源标准任务规程 (t_threat_model_plans)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/t_threat_model_plans/system.md"
+    },
+    {
+      "id": "fabric-t_visualize_mission_goals_projects",
+      "name": "t_visualize_mission_goals_projects",
+      "description": "开源标准任务规程 (t_visualize_mission_goals_projects)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/t_visualize_mission_goals_projects/system.md"
+    },
+    {
+      "id": "fabric-t_year_in_review",
+      "name": "t_year_in_review",
+      "description": "开源标准任务规程 (t_year_in_review)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/t_year_in_review/system.md"
+    },
+    {
+      "id": "fabric-to_flashcards",
+      "name": "to_flashcards",
+      "description": "开源标准任务规程 (to_flashcards)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/to_flashcards/system.md"
+    },
+    {
+      "id": "fabric-transcribe_minutes",
+      "name": "transcribe_minutes",
+      "description": "开源标准任务规程 (transcribe_minutes)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/transcribe_minutes/system.md"
+    },
+    {
+      "id": "fabric-translate",
+      "name": "translate",
+      "description": "开源标准任务规程 (translate)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/translate/system.md"
+    },
+    {
+      "id": "fabric-tweet",
+      "name": "tweet",
+      "description": "开源标准任务规程 (tweet)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/tweet/system.md"
+    },
+    {
+      "id": "fabric-ultimate_law_safety",
+      "name": "ultimate_law_safety",
+      "description": "开源标准任务规程 (ultimate_law_safety)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/ultimate_law_safety/system.md"
+    },
+    {
+      "id": "fabric-write_essay",
+      "name": "write_essay",
+      "description": "开源标准任务规程 (write_essay)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/write_essay/system.md"
+    },
+    {
+      "id": "fabric-write_essay_pg",
+      "name": "write_essay_pg",
+      "description": "开源标准任务规程 (write_essay_pg)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/write_essay_pg/system.md"
+    },
+    {
+      "id": "fabric-write_hackerone_report",
+      "name": "write_hackerone_report",
+      "description": "开源标准任务规程 (write_hackerone_report)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/write_hackerone_report/system.md"
+    },
+    {
+      "id": "fabric-write_latex",
+      "name": "write_latex",
+      "description": "开源标准任务规程 (write_latex)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/write_latex/system.md"
+    },
+    {
+      "id": "fabric-write_micro_essay",
+      "name": "write_micro_essay",
+      "description": "开源标准任务规程 (write_micro_essay)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/write_micro_essay/system.md"
+    },
+    {
+      "id": "fabric-write_nuclei_template_rule",
+      "name": "write_nuclei_template_rule",
+      "description": "开源标准任务规程 (write_nuclei_template_rule)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/write_nuclei_template_rule/system.md"
+    },
+    {
+      "id": "fabric-write_pull-request",
+      "name": "write_pull-request",
+      "description": "开源标准任务规程 (write_pull-request)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/write_pull-request/system.md"
+    },
+    {
+      "id": "fabric-write_semgrep_rule",
+      "name": "write_semgrep_rule",
+      "description": "开源标准任务规程 (write_semgrep_rule)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/write_semgrep_rule/system.md"
+    },
+    {
+      "id": "fabric-youtube_summary",
+      "name": "youtube_summary",
+      "description": "开源标准任务规程 (youtube_summary)",
+      "rawUrl": "https://raw.githubusercontent.com/danielmiessler/fabric/main/data/patterns/youtube_summary/system.md"
+    }
+  ]
+}

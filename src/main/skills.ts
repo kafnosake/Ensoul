@@ -136,8 +136,14 @@ export function parseFront(text: string): { meta: Record<string, string>; body: 
   return { meta, body: text.slice(m[0].length) };
 }
 
-/** 一个根里的一份技能：目录 + SKILL.md，或者根上的一个 .md 文件 */
-function readOne(file: string, dir: string, root: SkillRoot, fallbackName: string): SkillInfo | null {
+/** 一个根里的一份技能：目录 + SKILL.md，或者根上的一个 .md 文件，支持二级分类 */
+function readOne(
+  file: string,
+  dir: string,
+  root: SkillRoot,
+  fallbackName: string,
+  category?: string,
+): SkillInfo | null {
   let text = '';
   try {
     text = fs.readFileSync(file, 'utf8');
@@ -152,6 +158,7 @@ function readOne(file: string, dir: string, root: SkillRoot, fallbackName: strin
     description: meta.description || '',
     whenToUse: meta.whenToUse || '',
     dir,
+    category: meta.category || category,
     file,
     bytes: Buffer.byteLength(text, 'utf8'),
     enabled: true,
@@ -160,7 +167,7 @@ function readOne(file: string, dir: string, root: SkillRoot, fallbackName: strin
   };
 }
 
-/** 扫一遍所有技能根。每次重新读盘 —— 刚写好的技能立刻可见，不用重启 */
+/** 扫一遍所有技能根。每次重新读盘 —— 刚写好的技能立刻可见，不用重启。支持二级目录分类 */
 export function scanSkills(disabled: string[] = []): SkillInfo[] {
   const out: SkillInfo[] = [];
   const seen = new Set<string>();
@@ -178,19 +185,60 @@ export function scanSkills(disabled: string[] = []): SkillInfo[] {
 
     for (const e of entries) {
       if (e.name.startsWith('.')) continue;
-      let hit: SkillInfo | null = null;
+
       if (e.isDirectory()) {
-        hit = readOne(path.join(root.path, e.name, ENTRY), e.name, root, e.name);
+        // 1. 先看这个目录自身是不是一个技能（如 skills/troubleshoot/SKILL.md 或 skills/frontend/SKILL.md 领域导航）
+        const topHit = readOne(path.join(root.path, e.name, ENTRY), e.name, root, e.name);
+        if (topHit) {
+          const key = topHit.name.toLowerCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            topHit.enabled = !disabled.includes(topHit.name);
+            out.push(topHit);
+          }
+        }
+
+        // 2. 检查二级分类子目录（支持 skills/<领域>/<细则>/SKILL.md 或 skills/<领域>/<细则>.md）
+        try {
+          const subEntries = fs.readdirSync(path.join(root.path, e.name), { withFileTypes: true });
+          subEntries.sort((a, b) => a.name.localeCompare(b.name));
+          for (const sub of subEntries) {
+            if (sub.name.startsWith('.')) continue;
+            let subHit: SkillInfo | null = null;
+            if (sub.isDirectory()) {
+              const subSkillFile = path.join(root.path, e.name, sub.name, ENTRY);
+              subHit = readOne(subSkillFile, `${e.name}/${sub.name}`, root, `${e.name}/${sub.name}`, e.name);
+            } else if (sub.isFile() && sub.name.toLowerCase().endsWith('.md')) {
+              const baseName = sub.name.replace(/\.md$/i, '');
+              // 排除自身的根说明
+              if (baseName.toUpperCase() !== 'SKILL' && baseName.toUpperCase() !== 'README' && baseName.toUpperCase() !== 'INDEX') {
+                const subSkillFile = path.join(root.path, e.name, sub.name);
+                subHit = readOne(subSkillFile, `${e.name}/${baseName}`, root, `${e.name}/${baseName}`, e.name);
+              }
+            }
+            if (!subHit) continue;
+            const subKey = subHit.name.toLowerCase();
+            if (!seen.has(subKey)) {
+              seen.add(subKey);
+              subHit.enabled = !disabled.includes(subHit.name);
+              out.push(subHit);
+            }
+          }
+        } catch {
+          // 读取子目录失败忽略
+        }
       } else if (e.isFile() && e.name.toLowerCase().endsWith('.md')) {
-        hit = readOne(path.join(root.path, e.name), e.name.replace(/\.md$/i, ''), root, e.name.replace(/\.md$/i, ''));
+        const baseName = e.name.replace(/\.md$/i, '');
+        const hit = readOne(path.join(root.path, e.name), baseName, root, baseName);
+        if (hit) {
+          const key = hit.name.toLowerCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            hit.enabled = !disabled.includes(hit.name);
+            out.push(hit);
+          }
+        }
       }
-      if (!hit) continue;
-      // 重名：先出现的（rank 更小的）赢，后面的整条丢掉
-      const key = hit.name.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      hit.enabled = !disabled.includes(hit.name);
-      out.push(hit);
     }
   }
 
@@ -218,18 +266,29 @@ export function skillDigest(disabled: string[] = []): string {
     .join('\n');
 }
 
-/** 取正文。名字对不上时把现有的列出来，模型好自己纠正。 */
+/** 取正文。支持完整路径名或短名命中，名字对不上时把现有的列出来，模型好自己纠正。 */
 export function readSkill(name: string, disabled: string[] = []): string {
   const list = scanSkills(disabled);
-  const want = String(name ?? '').trim();
+  const rawWant = String(name ?? '').trim();
+  const want = rawWant.toLowerCase();
+
+  if (!want) {
+    const have = list.map((s) => s.name).join('、') || '（一个技能都没有）';
+    return `没有这个技能：${t('（没给名字）')}\n现有的：${have}`;
+  }
+
   const hit =
-    list.find((s) => s.name === want) ??
-    list.find((s) => s.dir === want) ??
-    list.find((s) => s.name.toLowerCase() === want.toLowerCase());
+    list.find((s) => s.name.toLowerCase() === want) ??
+    list.find((s) => s.dir.toLowerCase() === want) ??
+    // 二级技能容错：允许通过短名匹配，如 comfyui-draw 匹配 design/comfyui-draw
+    list.find((s) => s.name.split('/').pop()?.toLowerCase() === want) ??
+    list.find((s) => s.dir.split('/').pop()?.toLowerCase() === want) ??
+    list.find((s) => s.name.toLowerCase().endsWith('/' + want)) ??
+    list.find((s) => s.dir.toLowerCase().endsWith('/' + want));
 
   if (!hit) {
     const have = list.map((s) => s.name).join('、') || '（一个技能都没有）';
-    return `没有这个技能：${want || t('（没给名字）')}\n现有的：${have}`;
+    return `没有这个技能：${rawWant}\n现有的：${have}`;
   }
   try {
     return fs.readFileSync(hit.file, 'utf8');

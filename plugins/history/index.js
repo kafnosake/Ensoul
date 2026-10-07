@@ -48,8 +48,8 @@ function cut(s, n) {
   return s.length > n ? s.slice(0, n) + '…' : s;
 }
 
-function when(t) {
-  return t ? new Date(t).toLocaleString('zh-CN', { hour12: false }) : t('时间不详');
+function when(timestamp) {
+  return timestamp ? new Date(timestamp).toLocaleString('zh-CN', { hour12: false }) : t('时间不详');
 }
 
 /** 面板 → 会话；一条有字的都没有的空会话不进列表 */
@@ -74,7 +74,10 @@ function sessions() {
   if (!base) return out;
 
   const ws = readJson(path.join(base, 'workspace.json'));
-  if (ws && ws.panels) for (const p of Object.values(ws.panels)) take(out, p, t('开着'));
+  if (ws && ws.panels) for (const p of Object.values(ws.panels)) {
+    const body = typeof p?.id === 'string' && /^[\w.-]+$/.test(p.id) ? readJson(path.join(base, 'panels', `${p.id}.json`)) : null;
+    take(out, { ...p, ...(body || {}) }, t('开着'));
+  }
 
   for (const [dir, from] of [['closed', t('已关闭')], ['components', t('收纳区')]]) {
     let names = [];

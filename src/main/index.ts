@@ -4,17 +4,20 @@ import { rpcToken, startRpcServer } from './server';
 import { host as HOST, setHost } from './host';
 import { electronHost } from './host-electron';
 import { appDir, appVersion, userDataPath } from './paths';
+import { environmentConfigFile, environmentRoot, readEnvironmentConfig } from './environments';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ChatMessage, ChatStats, DockTarget, FloatingWindow, LiveTask, ModelConfig, OutboxItem, Panel, PanelMode, PanelRevision, RetryView } from '../shared/types';
 import { MAIN_HOST } from '../shared/types';
+import { ChatResponseBuffer } from '../shared/chat-responses';
+import { expandChatResponses } from '../shared/chat-history';
 import appIdentity from '../shared/app-identity.json';
 import { planPluginPack } from '../shared/ensoulpack';
 import { matchPanelAvatarFamily } from '../shared/panel-avatars';
 import { executeRunCode, getRunCodeToolSpec, renderToolsSdk } from './ptc';
 import { commitPromptBaseline, consumePromptDeltas } from './prompt-composer';
 import { askOnce, buildPanelSnapshot, buildSystemPrompt, extractEditProposal, failLabel, modeSection, runAgent, summarizeSession, conversationForSummary, type SteerItem } from './chat-core';
-import { archiveToolResult, describeTool, runTool, runToolConfirmed, setExtensions, toolsFor } from './agent';
+import { archiveToolResult, describeTool, runTool, runToolConfirmed, setExtensions, toolsForPanel } from './agent';
 import { readSkill, scanSkills, skillRoots, skillsDir } from './skills';
 import { loadPlugins, pluginsDir, runSettingsAction, setAskHandler, setChatClearer, setChatCompressor, setChatSender, setChatSteerer, setLiveSink, setRunningProbe, setChatEnqueuer, setModelAsker, setModelCatalog, setPluginParam, setProviderUpserter, setCredentialReader, setCredentialWriter, setRefresher, setToolLister, settingsSectionView, settingsSections, type AskSpec, type SlashCommandReg, type StatusItem } from './plugins';
 import type { PluginPrompt, ToolContext } from './plugins';
@@ -1626,7 +1629,7 @@ function registerIpc() {
   });
   setToolLister((panelId) => {
     const p = store.panel(panelId);
-    return toolsFor(p?.kind === 'chat' ? 'full' : 'write', p?.kind, p?.tools).map((t) => ({
+    return toolsForPanel(p).map((t) => ({
       name: t.function.name,
       description: t.function.description,
     }));
@@ -2181,7 +2184,7 @@ function registerIpc() {
 
 
   // ------------------------------------------------------------ 运行环境、多版本 Python 与网络镜像加速
-  const envConfigFile = () => path.join(workspaceRoot() || process.cwd(), '.ensoul', 'state', 'env-config.json');
+  const envConfigFile = () => environmentConfigFile();
 
   const MIRROR_MAP: Record<string, { pypi: string; npm: string }> = {
     official: { pypi: 'https://pypi.org/simple', npm: 'https://registry.npmjs.org/' },
@@ -2193,13 +2196,7 @@ function registerIpc() {
   };
 
   const readEnvConfig = () => {
-    try {
-      const file = envConfigFile();
-      if (fs.existsSync(file)) {
-        return JSON.parse(fs.readFileSync(file, 'utf8'));
-      }
-    } catch {}
-    return {};
+    return readEnvironmentConfig(workspaceRoot());
   };
 
 /**
@@ -2236,7 +2233,7 @@ function registerIpc() {
     try {
       const file = envConfigFile();
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(config || {}, null, 2), 'utf8');
+      fs.writeFileSync(file, JSON.stringify({ ...readEnvConfig(), ...config }, null, 2), 'utf8');
       return { ok: true };
     } catch (err: any) {
       return { ok: false, error: err?.message || String(err) };
@@ -2279,7 +2276,7 @@ function registerIpc() {
   // 几个文件、被谁占着摆出来，人点头了才真动。
   
   /** 下载来的解释器都落在这个根下面。**只有落在这儿的记录才允许物理删除** —— 用户自己挑的解释器永远只摘名单。 */
-  const envRootDir = () => path.join(workspaceRoot() || process.cwd(), '.ensoul', 'env');
+  const envRootDir = () => environmentRoot();
   
   /** 把任意拼法的路径拍平成小写、统一分隔符、去掉末尾斜杠，用来做安全比对 */
   const normPathKey = (p: string) => {
@@ -2628,7 +2625,7 @@ function registerIpc() {
 
     const ver = versionKey || '3.10.11';
     const downloadUrl = `https://cdn.npmmirror.com/binaries/python/${ver}/python-${ver}-embed-amd64.zip`;
-    const targetDir = path.join(workspaceRoot() || process.cwd(), '.ensoul', 'env', `python-${ver}`);
+    const targetDir = path.join(environmentRoot(), `python-${ver}`);
     fs.mkdirSync(targetDir, { recursive: true });
     const zipPath = path.join(targetDir, 'python.zip');
     const pyExe = path.join(targetDir, 'python.exe');
@@ -3231,7 +3228,7 @@ function registerIpc() {
     // 上一条上的标注就没了，等于每开一轮都改写一条历史消息，前缀从那句起全废。
     // 确定是否启用 PTC 模式 (可通过 panel.spec.ptcMode 或全局开关控制，默认为 true)
     const isPtc = panel.spec?.ptcMode !== false;
-    const baseTools = toolsFor(panel.kind === 'chat' ? 'full' : 'write', panel.kind, panel.tools);
+    const baseTools = toolsForPanel(panel);
     const ptcSdkDoc = isPtc ? renderToolsSdk(baseTools) : undefined;
 
     const apiMessages: any[] = [
@@ -3255,8 +3252,7 @@ function registerIpc() {
       // 历史里摆真结构，模型才会接着走工具通道；摆文字骨架它分不出真假，看着看着就学会
       // 用文字画一个"调用记录"交差 —— 生图轮报了动作却没提交任务，就是这么学来的。
       // 结构化之前的旧消息保留 actions 骨架兜底（每条只留 6 条、每条 60 字），别让它对干过的活全盲。
-      ...panel.chat
-        .slice(panel.compact?.upTo ?? 0, -1)
+      ...expandChatResponses(panel.chat.slice(panel.compact?.upTo ?? 0, -1))
         .filter((m) => m.role !== 'tool')
         .flatMap((m): any[] => {
           // 正文里若混着手写的 [那一轮的动作]（早先模型用文字画的假记录），先刮掉 ——
@@ -3269,7 +3265,7 @@ function registerIpc() {
             return [
               {
                 role: 'assistant',
-                content: null,
+                content: m.responseOf ? (text || null) : null,
                 tool_calls: m.toolCalls.map((c) => ({
                   id: c.id,
                   type: 'function',
@@ -3278,7 +3274,7 @@ function registerIpc() {
               },
               // 存的时候已截到前 1200 字，这里原样回灌（工具输出的完整正文不进历史）
               ...m.toolCalls.map((c) => ({ role: 'tool', tool_call_id: c.id, content: c.result })),
-              ...(text ? [{ role: 'assistant', content: text }] : []),
+              ...(!m.responseOf && text ? [{ role: 'assistant', content: text }] : []),
             ];
           }
           return [
@@ -3341,6 +3337,8 @@ function registerIpc() {
      */
     const clipResult = (name: string, raw: string) => archiveToolResult(name, raw, ctx);
 
+    const responseBuffer = new ChatResponseBuffer(assistant);
+
     /** agent 干活时，每调一次工具就在对话里留一条记录 */
     const noteTool = (name: string, args: any, result: string) => {
       const head = describeTool(name, args);
@@ -3352,12 +3350,14 @@ function registerIpc() {
       actions.push(BAD_STEP.test(first.trim()) ? `${head} ⚠ ${first.trim().slice(0, 100)}` : head);
       // 结构化存档（下一轮按真 tool_calls 回放）：args / result 都经 clipArgs / clipResult 封顶 ——
       // 结果只留前 1200 字 —— 记住"干成了什么、seed/路径在哪"就够，别每轮回灌一整份工具输出。
-      toolCalls.push({
+      const call = {
         id: W.newId('c'),
         name,
         args: clipArgs(args),
         result: clipResult(name, String(result)),
-      });
+      };
+      toolCalls.push(call);
+      if (responseBuffer.current) (responseBuffer.current.toolCalls ??= []).push(call);
       const note: ChatMessage = {
         id: W.newId('m'),
         role: 'tool',
@@ -3439,7 +3439,27 @@ function registerIpc() {
       if (!pending) return;
       const d = pending;
       pending = '';
-      emit('chat:delta', { panelId, id: assistantId, delta: d });
+      emit('chat:delta', {
+        panelId, id: assistantId, delta: d, sequence: responseBuffer.nextSequence(),
+        responseId: responseBuffer.current?.id,
+        offset: responseBuffer.current ? responseBuffer.current.content.length - d.length : undefined,
+      });
+    };
+    const pushProgress = () => emit('chat:progress', {
+      panelId, id: assistantId, reset: true, sequence: responseBuffer.nextSequence(),
+      responseId: responseBuffer.current?.id,
+      responses: responseBuffer.responses.filter((response) => response.phase === 'progress')
+        .map(({ toolCalls: _calls, ...response }) => response),
+    });
+    const startResponse = () => {
+      flushDelta();
+      const chat = store.panel(panelId)?.chat ?? [];
+      let anchor = '';
+      for (let i = chat.length - 1; i >= 0; i -= 1) {
+        if (chat[i].role !== 'system' && !chat[i].silent) { anchor = chat[i].id; break; }
+      }
+      responseBuffer.start(W.newId('r'), anchor, Date.now());
+      pushProgress();
     };
     try {
       ctrl.signal.throwIfAborted();
@@ -3468,12 +3488,23 @@ function registerIpc() {
         effectiveTools,
         effectiveRunner,
         {
+          onResponseStart: startResponse,
+          onResponseEnd: ({ content, hasTools }) => {
+            flushDelta();
+            responseBuffer.seal(content, hasTools);
+            if (hasTools) pushProgress();
+          },
           onText: (d) => {
+            let delta = d;
+            if (!responseBuffer.current || responseBuffer.current.phase === 'progress') {
+              startResponse();
+              delta = delta.replace(/^\n\n/, '');
+            }
             // 字又来了 = 重连接上了，那条「重连 3/5」立刻撤掉 ——
             // 留着它就成了"明明在正常输出，下面还挂着正在重连"，自相矛盾。
             if (liveRetry.delete(panelId)) livePush(panelId);
-            assistant.content += d;
-            pending += d;
+            responseBuffer.append(delta);
+            pending += delta;
             if (!flushTimer) flushTimer = setTimeout(flushDelta, 50);
           },
           // 思维链单独走一条通道：它不进正文，也不进历史 —— 它只是"过程"，
@@ -3504,11 +3535,10 @@ function registerIpc() {
                 flushTimer = null;
               }
               if (pending) {
-                emit('chat:delta', { panelId, id: assistantId, delta: pending });
-                pending = '';
+                flushDelta();
               }
-              assistant.content = assistant.content.slice(0, Math.max(0, assistant.content.length - info.discardText));
-              emit('chat:retract', { panelId, id: assistantId, text: info.discardText, think: info.discardThink });
+              responseBuffer.retract(info.discardText);
+              emit('chat:retract', { panelId, id: assistantId, text: info.discardText, think: info.discardThink, sequence: responseBuffer.nextSequence() });
             }
             liveRetry.set(panelId, {
               attempt: info.attempt,
@@ -3578,9 +3608,12 @@ function registerIpc() {
       endReason = ctrl.signal.aborted ? 'stopped' : 'failed';
       failCode = String(err?.code || '').trim();
       flushDelta();
-      const note = `\n\n⚠ ${err?.message ?? err}`;
-      assistant.content += note;
-      emit('chat:delta', { panelId, id: assistantId, delta: note });
+      const freshResponse = !responseBuffer.current || responseBuffer.current.phase === 'progress';
+      if (freshResponse) startResponse();
+      const note = `${freshResponse ? '' : '\n\n'}⚠ ${err?.message ?? err}`;
+      const offset = responseBuffer.current?.content.length ?? 0;
+      responseBuffer.append(note);
+      emit('chat:delta', { panelId, id: assistantId, delta: note, responseId: responseBuffer.current?.id, offset, sequence: responseBuffer.nextSequence() });
     }
     flushDelta();
     const endedAt = Date.now();
@@ -3593,6 +3626,7 @@ function registerIpc() {
     // 正文马上要进 chat 了，实时那一份让位 —— 两边都留着会让插件把同一句话说两遍
     store.setLiveTurn(panelId, null);
     assistant.streaming = false;
+    delete assistant.streamSequence;
     assistant.content = full || assistant.content;
     // 这条回复的账：用量、用时、动了哪些文件。
     // 用量是 runAgent 一路累计下来的，**中断时也带着已经花掉的那部分** ——
@@ -3605,6 +3639,13 @@ function registerIpc() {
 
     const { clean, proposal } = extractEditProposal(assistant.content);
     assistant.content = clean || assistant.content;
+    for (const response of responseBuffer.responses) {
+      const parsed = extractEditProposal(response.content);
+      response.content = parsed.clean;
+    }
+    if (responseBuffer.current) {
+      assistant.displayContent = responseBuffer.current.phase === 'progress' ? '' : responseBuffer.current.content;
+    }
     assistant.edited = Boolean(proposal) && !failed;
     assistant.actions = actions.length ? actions : undefined;
     assistant.toolCalls = toolCalls.length ? toolCalls : undefined;
@@ -3955,7 +3996,16 @@ function registerIpc() {
   ipcMain.handle('chat:liveState', (_e, panelId: string) => liveView(panelId));
 
   ipcMain.handle('chat:running', () =>
-    [...running.entries()].map(([panelId, r]) => ({ panelId, text: r.msg.content })),
+    [...running.entries()].map(([panelId, r]) => {
+      const response = r.msg.responses?.[r.msg.responses.length - 1];
+      return {
+        panelId, id: r.msg.id, text: r.msg.content, sequence: r.msg.streamSequence ?? 0,
+        streamText: response ? (response.phase === 'progress' ? '' : response.content) : r.msg.content,
+        responseId: response?.id,
+        responses: r.msg.responses?.filter((item) => item.phase === 'progress')
+          .map(({ toolCalls: _calls, ...item }) => item),
+      };
+    }),
   );
 
   ipcMain.handle('chat:stop', (_e, panelId: string) => {

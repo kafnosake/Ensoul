@@ -94,7 +94,6 @@ plugins/computer-control/
 plugins/dsh-compat/
 plugins/git/
 plugins/git-packager/
-plugins/mcp/
 plugins/our-free-model/
 plugins/pelican-bike/
 plugins/pixel-canvas/
@@ -163,3 +162,4 @@ __pycache__/
 .promo-work/__pycache__/
 .promo-work/**/__pycache__/
 .promo-work/
+

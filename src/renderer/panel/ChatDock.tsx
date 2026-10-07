@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { LiveTask, Panel, PanelNote } from '../../shared/types';
+import type { ChatResponse, LiveTask, Panel, PanelNote } from '../../shared/types';
 import { api } from '../core/api';
 import type { AskView } from '../core/api';
 import { IconChevron } from '../ui/icons';
@@ -7,6 +7,9 @@ import { onAppearance } from '../ui/theme';
 import { PanelZoomChip } from '../ui/ZoomOverlay';
 import { Composer } from './chat/Composer';
 import { Message } from './chat/Message';
+import { applyChatStreamEvent, buildChatTimeline, emptyChatStream, restoreChatStream } from './chat/timeline';
+import type { ChatStreamEvent } from './chat/timeline';
+import { renderMarkdown } from '../ui/markdown';
 import { LiveCard } from './chat/LiveCard';
 import { NoteGauge } from './chat/NoteGauge';
 import { GitPackagerDock } from './chat/GitPackagerDock';
@@ -38,34 +41,9 @@ import { zoomScale } from '../ui/zoom-space';
  *   · 右边**模型选择**就贴在输入框上（这个窗口用哪个模型，一眼看到、随手能换）
  *   · 最右是发送/停止
  */
-/**
- * 流式那一段用纯文本铺出来（每帧把整段回答重新解析成 markdown 的代价太高），
- * 但**行内的标记要擦掉** —— 不擦的话屏幕上就是一坨 `**` 和 `##`（用户截图里
- * "看着像一堆星号"就是这个）。只擦标题和强调记号，代码块、列表原样留着：
- * 它只活几秒，等这条回复落定，正式那条会由 markdown 好好渲染一遍。
- *
- * 两件事要一起做，缺一样都还是"读不下去"：
- *
- *   · **`==…==` 也得擦**。它是这个软件标重点的写法（落定后渲染成黄底），
- *     流式这几秒里不擦就是正文里杵着四个等号，用户第一眼看到的就是它。
- *   · **段内的硬换行要摊平**。模型自己会按几十个字换行，而这一段是 pre-wrap
- *     （换行照画）—— 于是同一句话被切成一截一截、长短还跟落定后不一样，
- *     就是截图里那种"莫名其妙到处断行"。落定的 markdown 是把整段接起来的，
- *     这里跟着接起来，两边的排版才对得上，落定那一刻也不会跳。
- *     只摊平"段内"的换行：空行是分段，列表 / 标题 / 引用 / 表格 / 代码栅栏
- *     都是真换行，一个都不动。
- */
-function stripMarks(s: string) {
-  return (
-    s
-      .replace(/^[ \t]*#{1,6}[ \t]+/gm, '')
-      .replace(/\*\*([^*\n]+)\*\*/g, '$1')
-      .replace(/==([\s\S]+?)==/g, '$1')
-      .replace(/^[ \t]*[-*][ \t]+/gm, '· ')
-      // 段内的单个换行 → 摊平成一行（上面那些块级标记后面的换行要留着）
-      .replace(/\n(?!\n)[ \t]*(?![·#>|]|\d+[.)]|```)/g, '')
-  );
-}
+const StreamingMarkdown = React.memo(function StreamingMarkdown({ content }: { content: string }) {
+  return <>{renderMarkdown(content)}</>;
+});
 
 /**
  * 思维链只摆最后一段：要的是"它此刻在想什么"，不是把它的草稿摊满一屏。
@@ -104,6 +82,7 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
   const [, setAppearanceTick] = useState(0);
   useEffect(() => onAppearance(() => setAppearanceTick(t => t + 1)), []);
   const [stream, setStream] = useState('');
+  const [liveResponses, setLiveResponses] = useState<ChatResponse[]>([]);
   /** 这一轮模型想的过程（思维链）：不进正文、不进历史，只给用户看它没在发呆 */
   const [think, setThink] = useState('');
   /** 它此刻是不是**还在**想 —— 只有这时候才把思维链摆出来，正文一出来就撤 */
@@ -140,9 +119,11 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
   const body = useRef<HTMLDivElement>(null);
   // silent 的那些是插件注入的机器触发语：进历史（模型读得到），但**不画出来** ——
   // 用户没说过那句话，不能在他的对话里冒充「我」（见 ChatMessage.silent）
-  const messages = Array.isArray(panel.chat)
-    ? panel.chat.filter((m) => m.role !== 'system' && !m.silent)
-    : [];
+  const messages = React.useMemo(
+    () => buildChatTimeline(Array.isArray(panel.chat) ? panel.chat : [], liveResponses)
+      .filter((m) => m.role !== 'system' && !m.silent),
+    [panel.chat, liveResponses],
+  );
 
   /**
    * 这一块的正文**该不该去补**。
@@ -283,7 +264,10 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
    * 主线程压死）。缓冲和 rAF 句柄住在 ref 里，因为这一轮结束时得把它们**一起掐掉** ——
    * 见下面的 resetLive。
    */
-  const liveBuf = useRef({ buf: '', raf: 0, tbuf: '', traf: 0 });
+  const liveBuf = useRef({ text: '', raf: 0, timer: null as ReturnType<typeof setTimeout> | null, tbuf: '', traf: 0 });
+  const activeAssistant = useRef<string | null>(null);
+  const completedAssistant = useRef<string | null>(null);
+  const streamView = useRef(emptyChatStream());
 
   /**
    * 还跟不跟着底部走。用户自己往上翻了就是在读旧内容 —— 那时候再自动滚到底，
@@ -338,39 +322,101 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
    * 它又把攒着的那段追加回去 —— 于是正文的尾巴永远留在对话最下面，不再属于任何一条
    * 回复（"莫名其妙一个助手说了一大堆文字常驻在最下面"就是它，截图里那半句就是尾巴）。
    */
-  const resetLive = React.useCallback(() => {
+  const resetDraft = React.useCallback(() => {
     const s = liveBuf.current;
     if (s.raf) cancelAnimationFrame(s.raf);
+    if (s.timer) clearTimeout(s.timer);
     if (s.traf) cancelAnimationFrame(s.traf);
     s.raf = 0;
+    s.timer = null;
     s.traf = 0;
-    s.buf = '';
+    s.text = '';
     s.tbuf = '';
     setStream('');
     setThink('');
     setThinking(false);
   }, []);
+  const resetLive = React.useCallback(() => {
+    resetDraft();
+    setLiveResponses([]);
+    activeAssistant.current = null;
+    streamView.current = emptyChatStream();
+  }, [resetDraft]);
+
+  useEffect(() => {
+    resetLive();
+    completedAssistant.current = null;
+  }, [panel.id, resetLive]);
 
   useEffect(() => {
     const s = liveBuf.current;
+    let alive = true;
+    let restoring = true;
+    let runningChanged = false;
+    const pendingEvents: ChatStreamEvent[] = [];
+    const accepts = (id: string) => {
+      if (!activeAssistant.current && completedAssistant.current !== id) activeAssistant.current = id;
+      return activeAssistant.current === id;
+    };
+    const cancelWrite = () => {
+      if (s.raf) cancelAnimationFrame(s.raf);
+      if (s.timer) clearTimeout(s.timer);
+      s.raf = 0;
+      s.timer = null;
+    };
+    const trimThinking = (amount: number) => {
+      if (s.traf) cancelAnimationFrame(s.traf);
+      s.traf = 0;
+      const reasoning = s.tbuf;
+      s.tbuf = '';
+      setThink((v) => (v + reasoning).slice(0, Math.max(0, v.length + reasoning.length - amount)));
+      setThinking(false);
+    };
     const flush = () => {
       s.raf = 0;
-      if (!s.buf) return;
-      const d = s.buf;
-      s.buf = '';
-      setStream((v) => v + d);
+      setStream(s.text);
       setOpen(true);
     };
-    const off = api.chat.onDelta((p) => {
-      if (p.panelId !== panel.id) return;
-      // 正文开始流了 = 这一轮的思考结束了，思维链立刻撤下（不再留"想完了"那种残迹）
-      setThinking(false);
-      s.buf += p.delta;
-      if (!s.raf) s.raf = requestAnimationFrame(flush);
-    });
-
-    // 思维链单独攒一条：模型在吐正文之前先吐它。没有它的话，思考的十几秒里
-    // 界面一片空白，看着像卡死了 —— 接上它，用户就能看见它正在想什么。
+    const applyEvent = (event: ChatStreamEvent) => {
+      const previous = streamView.current;
+      const next = applyChatStreamEvent(previous, event, completedAssistant.current);
+      if (previous === next) return;
+      streamView.current = next;
+      activeAssistant.current = next.id;
+      if (event.kind === 'progress') {
+        if (event.value.reset || previous.id !== next.id) resetDraft();
+        s.text = next.text;
+        setStream(next.text);
+        setLiveResponses(next.responses);
+        setOpen(true);
+      } else if (event.kind === 'retract') {
+        cancelWrite();
+        s.text = next.text;
+        setStream(next.text);
+        trimThinking(event.value.think);
+      } else {
+        s.text = next.text;
+        setThinking(false);
+        if (!s.raf && !s.timer) {
+          s.timer = setTimeout(() => {
+            s.timer = null;
+            s.raf = requestAnimationFrame(flush);
+          }, 80);
+        }
+      }
+    };
+    const receive = (event: ChatStreamEvent) => {
+      if (event.value.panelId !== panel.id) return;
+      if (event.value.id === completedAssistant.current) return;
+      if (restoring) {
+        if (event.kind === 'progress') activeAssistant.current = event.value.id;
+        pendingEvents.push(event);
+        if (event.kind === 'retract' && accepts(event.value.id)) trimThinking(event.value.think);
+      } else applyEvent(event);
+    };
+    const off = api.chat.onDelta((p) => receive({ kind: 'delta', value: p }));
+    const offP = api.chat.onProgress((p) => receive({ kind: 'progress', value: p }));
+    const offR = api.chat.onRetract((p) => receive({ kind: 'retract', value: p }));
     const flushThink = () => {
       s.traf = 0;
       if (!s.tbuf) return;
@@ -380,47 +426,52 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
       setOpen(true);
     };
     const offT = api.chat.onReasoning((p) => {
-      if (p.panelId !== panel.id) return;
+      if (p.panelId !== panel.id || !accepts(p.id)) return;
       setThinking(true);
       s.tbuf += p.delta;
       if (!s.traf) s.traf = requestAnimationFrame(flushThink);
     });
-
-    return () => {
-      if (s.raf) cancelAnimationFrame(s.raf);
-      if (s.traf) cancelAnimationFrame(s.traf);
-      s.raf = 0;
-      s.traf = 0;
-      off();
-      offT();
+    const offRunning = api.chat.onRunning((p) => {
+      if (p.panelId !== panel.id) return;
+      runningChanged = true;
+      setBusy(p.running);
+    });
+    const restore = (snapshot?: Awaited<ReturnType<typeof api.chat.running>>[number]) => {
+      const next = restoreChatStream(snapshot, pendingEvents, completedAssistant.current);
+      pendingEvents.length = 0;
+      restoring = false;
+      streamView.current = next;
+      activeAssistant.current = next.id;
+      cancelWrite();
+      s.text = next.text;
+      setStream(next.text);
+      setLiveResponses(next.responses);
+      if (next.text) setThinking(false);
+      if (next.id) setOpen(true);
     };
-  }, [panel.id]);
-
-  /**
-   * 这一轮还在不在跑 —— **问主进程，别自己记**。
-   * 切标签时这个组件会卸载重挂，busy 只活在 useState 里的话，换回来就变成
-   * "可以发送"（其实还在跑）。挂载时问一次，之后听广播。
-   */
-  useEffect(() => {
-    let alive = true;
-    const off = api.chat.onRunning((p) => {
-      if (p.panelId === panel.id) setBusy(p.running);
-    });
     void api.chat.running().then((list) => {
-      if (!alive || !Array.isArray(list)) return;
-      const me = list.find((x) => x.panelId === panel.id);
-      setBusy(Boolean(me));
-      // 已经吐出来的正文接上：不然切回来它从半截开始往下写，前面那段就没了
-      if (me?.text) {
-        setStream(me.text);
-        setOpen(true);
-      }
+      if (!alive) return;
+      const me = Array.isArray(list) ? list.find((x) => x.panelId === panel.id) : undefined;
+      if (!runningChanged) setBusy(Boolean(me && me.id !== completedAssistant.current));
+      restore(me);
+    }, () => {
+      if (alive) restore();
     });
+
     return () => {
       alive = false;
+      cancelWrite();
+      if (s.traf) cancelAnimationFrame(s.traf);
+      s.traf = 0;
+      s.text = '';
+      s.tbuf = '';
       off();
+      offT();
+      offP();
+      offR();
+      offRunning();
     };
-  }, [panel.id]);
+  }, [panel.id, resetDraft]);
 
   /** 跑动中那一块：挂载时问一次（切标签回来接得上），之后听广播 */
   useEffect(() => {
@@ -451,6 +502,8 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
     const off = api.chat.onMessage((p) => {
       if (p.panelId !== panel.id) return;
       if (p.message.role !== 'assistant') return;
+      if (activeAssistant.current && activeAssistant.current !== p.message.id) return;
+      completedAssistant.current = p.message.id;
       resetLive();
     });
     return off;
@@ -563,7 +616,7 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
   };
 
   const handleEditUserMsg = (msgId: string, newContent: string) => {
-    const newChat = messages.map((m) => (m.id === msgId ? { ...m, content: newContent } : m));
+    const newChat = (panel.chat ?? []).map((m) => (m.id === msgId ? { ...m, content: newContent } : m));
     void api.panel.patch(panel.id, { chat: newChat });
   };
 
@@ -664,15 +717,11 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
     if ((!combinedText && !combinedPics.length) || busy) return;
     clearQuotes();
     pinBottom(); // 自己发的这一轮，当然要从头看到尾：立刻回到底部（哪怕刚才翻到上面去了）
-    setStream('');
-    setThink(''); // 上一轮想过的清掉，这一轮重新记
-    setThinking(false);
+    resetLive();
     setBusy(true);
     setOpen(true);
     await api.chat.send(panel.id, combinedText, combinedPics);
-    setBusy(false);
-    // 这一轮跑完了：临时那一块（半截正文 + 思考）一并清掉。
-    resetLive();
+    // 正文与进度由 chat:message 的落定事件一起交接。
   };
 
   /**
@@ -934,7 +983,7 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
               panel={panel}
               id={m.id}
               role={m.role}
-              content={m.content}
+              content={m.displayContent ?? m.content}
               edited={m.edited}
               at={m.createdAt}
               stats={m.stats}
@@ -957,8 +1006,8 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
               {stream && (
                 <div className="live-write">
                   <span className="live-write-tag">{t('正在写')}</span>
-                  <div className="live-write-body">
-                    {stripMarks(stream)}
+                  <div className="msg-body live-write-body">
+                    <StreamingMarkdown content={stream} />
                     <span className="live-caret" />
                   </div>
                 </div>

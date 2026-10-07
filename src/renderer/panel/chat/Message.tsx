@@ -88,6 +88,7 @@ export const Message = React.memo(function Message({
   // 正文里如果混着 <<<FLOAT_EDIT>>> 提案块：切开，标记原文永远不直接示人
   const prop = content.includes('FLOAT_EDIT') ? splitProposal(content) : null;
   const body = prop ? prop.body : content;
+  const markdown = React.useMemo(() => renderMarkdown(streaming ? patchStreamingMarkdown(body) : body), [body, streaming]);
 
   // 用户消息的编辑态与复制态
   const [editing, setEditing] = useState(false);
@@ -271,7 +272,7 @@ export const Message = React.memo(function Message({
             </div>
           ) : (
             <>
-              {renderMarkdown(streaming ? patchStreamingMarkdown(body) : body)}
+              {markdown}
               {prop && <PropCard prop={prop} streaming={streaming} />}
             </>
           )}

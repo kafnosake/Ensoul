@@ -112,7 +112,7 @@
 }
 
 /* 行里的按钮平时安静待着，指过去才显形 —— 一列卡片上挂满按钮太吵 */
-.ext-row button {
+.ext-row button:not(.fx-switch) {
   flex: none;
   font-size: 11.5px;
   padding: 3px 9px;
@@ -121,7 +121,7 @@
   border-color: transparent;
 }
 
-.ext-row button:hover {
+.ext-row button:not(.fx-switch):hover {
   color: var(--text);
   background: var(--card-2);
   border-color: var(--line);
@@ -351,7 +351,7 @@
   background: var(--tint-a);
 }
 
-.plg-head button {
+.plg-head button:not(.fx-switch) {
   flex: none;
   font-size: 11.5px;
   padding: 3px 9px;
@@ -360,7 +360,7 @@
   border-color: transparent;
 }
 
-.plg-head button:hover {
+.plg-head button:not(.fx-switch):hover {
   color: var(--text);
   background: var(--card-2);
   border-color: var(--line);

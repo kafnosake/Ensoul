@@ -453,7 +453,7 @@ module.exports = {
   params: PARAMS,
   name: 'billing',
   description:
-    t('实时计费：把整个软件里的 API 用量按自然日归档、按模型算成钱，可打分支比较两段工作流各自的花费 —— 面板只是它的显示器'),
+    t('把整个软件的 API 用量按天、按模型算成钱'),
 
   /**
    * 自带一种面板类型。声明是**纯数据**（要过 IPC，函数过不去），
@@ -462,7 +462,7 @@ module.exports = {
   panel: {
     kind: 'billing',
     label: t('实时计费'),
-    hint: t('按天按模型显示整个软件的 token 用量与花费，可打分支比增量'),
+    hint: t('按天按模型看 token 用量与花费，可打分支比增量'),
     title: t('实时计费'),
     body: 'messages',
   },

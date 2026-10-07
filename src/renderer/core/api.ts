@@ -2,6 +2,10 @@ import type { WidgetEditRequest } from '../../shared/widget-editor';
 
 import type {
   ChatMessage,
+  ChatDeltaEvent,
+  ChatProgressEvent,
+  ChatRetractEvent,
+  ChatRunningState,
   ClosedRef,
   ComponentRef,
   DockNode,
@@ -452,7 +456,7 @@ export interface EvolveApi {
     /** 插话盒子变了（排队那条要跟着变） */
     onSteer(cb: (p: { panelId: string; items: OutboxItem[] }) => void): () => void;
     /** 哪些面板此刻还在跑（主进程是真源）—— 面板组件卸载重挂后靠它恢复"停止"按钮和已吐出的正文 */
-    running(): Promise<{ panelId: string; text: string }[]>;
+    running(): Promise<ChatRunningState[]>;
     /** 某个面板开跑 / 跑完 */
     onRunning(cb: (p: { panelId: string; running: boolean }) => void): () => void;
     rate(panelId: string, messageId: string, rating: 'up' | 'down'): Promise<boolean>;
@@ -473,9 +477,10 @@ export interface EvolveApi {
      * 给的是**字数**不是新内容：界面自己把尾巴切掉。为什么不发一份全文过来 ——
      * 重连可能连着来五次，每次都重传一遍整段正文（长回答能到几十 KB），纯浪费。
      */
-    onRetract(cb: (p: { panelId: string; id: string; text: number; think: number }) => void): () => void;
+    onRetract(cb: (p: ChatRetractEvent) => void): () => void;
     onMessage(cb: (p: { panelId: string; message: ChatMessage }) => void): () => void;
-    onDelta(cb: (p: { panelId: string; id: string; delta: string }) => void): () => void;
+    onDelta(cb: (p: ChatDeltaEvent) => void): () => void;
+    onProgress(cb: (p: ChatProgressEvent) => void): () => void;
     /** 思维链：模型吐正文之前先吐的那一段 */
     onReasoning(cb: (p: { panelId: string; id: string; delta: string }) => void): () => void;
   };

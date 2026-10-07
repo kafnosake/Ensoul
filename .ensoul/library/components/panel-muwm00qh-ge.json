@@ -1,0 +1,20 @@
+{
+  "id": "panel-muwm00qh-ge",
+  "panel": "panel-muwm00qh-ge",
+  "name": "技能市场",
+  "kind": "mcp",
+  "title": "技能市场",
+  "look": {
+    "accent": "#5b8cff",
+    "density": "normal",
+    "showChat": false,
+    "avatarKey": "game"
+  },
+  "spec": {
+    "body": "messages",
+    "systemPrompt": "",
+    "actions": [],
+    "fields": []
+  },
+  "at": 1791316368161
+}

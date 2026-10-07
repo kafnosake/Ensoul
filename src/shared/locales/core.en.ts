@@ -3251,6 +3251,7 @@ export const CORE_EN: Record<string, string> = {
   "已暂存 {a} · 工作区改动 {b} · 新建该上传 {c} · 临时该忽略 {d}": "{a} staged · {b} modified · {c} new to upload · {d} temp to ignore",
   "其中 {n} 个临时文件 .gitignore 还没盖住": "{n} temp files are not yet covered by .gitignore",
   "增量（窗内 · 自 {at}）": "Delta (window · since {at})",
+  "分支 · 自 {at}": "Branch · since {at}",
   "（逐笔明细保留 {n} 天）": "(per-run detail kept {n} days)",
   "员工会话（{n} 人，最近说过话的排最前）": "Employee conversations ({n} people, most recently active first)",
   "通讯录（{n} 人，按部门排）": "Contacts ({n} people, grouped by department)",

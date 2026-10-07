@@ -7,7 +7,7 @@
   "look": {
     "accent": "#4fb286",
     "density": "normal",
-    "showChat": false
+    "showChat": true
   },
   "spec": {
     "body": "messages",

@@ -138,7 +138,9 @@ export function buildSystemPrompt(
     '',
     t('【系统体系与工具纪律】'),
     t('· 面板即功能单位：面板由类型（kind）与规格（spec）定义，能用现有类型表达的，无需重复开发渲染。'),
-    t('· 工具与技能：可用工具以请求上下文中的 tools 列表为准；各领域扩展专业知识通过 use_skill 按需拉取。'),
+    extraSection
+      ? t('· 工具与技能：本轮可用工具以附后的 SDK 声明为准，通过 run_code 调用；原生 tools 列表仅有 run_code 不代表缺少 SDK 中的工具。各领域扩展专业知识通过 use_skill 按需拉取。')
+      : t('· 工具与技能：可用工具以请求上下文中的 tools 列表为准；各领域扩展专业知识通过 use_skill 按需拉取。'),
     t('· 界面与环境感知：改动界面或定位窗口前，先调用 describe_layout 获取实际停靠树；项目事实参见 AGENTS.md / CLAUDE.md。'),
     t('· 排版呈现：全面使用 Markdown 标题、列表、表格清晰排版，禁止退化为难以阅读的纯文本。'),
     '',
@@ -382,6 +384,10 @@ export interface SteerItem {
 
 export interface AgentEvents {
   onText(delta: string): void;
+  /** 一次模型回复开始；内部重试仍属于同一条回复。 */
+  onResponseStart?(): void;
+  /** 这次模型回复完成；没有工具不代表整轮结束，用户插话还可能继续。 */
+  onResponseEnd?(info: { content: string; hasTools: boolean }): void;
   /**
    * 到了步骤边界，把用户插进来的话取走。两个领取点，缺一不可：
    *   1. 每一轮模型调用**之前**；
@@ -1171,6 +1177,7 @@ export async function runAgent(
     // 边界一号：每一步开跑之前。上一轮的工具刚回执完、下一轮还没发出去 ——
     // 这时候插进来的话会跟着这一步一起进请求。
     takeSteering();
+    events.onResponseStart?.();
     const r = await callModel(msgs, cfg, tools, signal, events.onText, events.onReasoning, events.onRetry);
     signal?.throwIfAborted();
     // 每一轮之间空一行。以前是直接首尾相接，模型十几轮的旁白糊成一整段
@@ -1199,6 +1206,7 @@ export async function runAgent(
       if (!tc.id) tc.id = `call_${round}_${seq}`;
       valid.push(tc);
     }
+    events.onResponseEnd?.({ content: r.content, hasTools: valid.length > 0 });
     if (!valid.length) {
       /**
        * 边界二号 —— 就是用户说的"结束单次任务、但还没结束会话"的那个缝。

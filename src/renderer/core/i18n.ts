@@ -26,6 +26,28 @@ function apply(lang: Lang): void {
   document.documentElement.dataset.lang = lang;
 }
 
+/**
+ * **模块一加载就同步贴一次语言**（读 localStorage，不问主进程）。
+ *
+ * 为什么非得在这儿、不能等 initLang()：插件面板和内置类型注册表都在**模块顶层**取词
+ * （billing 的 RANGES / VIEWS 就是 `label: t('24 小时')`），而它们的模块求值发生在
+ * 渲染入口的函数体**之前** —— initLang() 里那次 apply 根本还没轮到。
+ *
+ * 后果就是那批 label 冻在中文上：界面全英文，唯独几块面板里的固定标签是中文，
+ * 且只有整窗重载才会重取一次（语言是模块求值那一刻的快照，不会自己更新）。
+ *
+ * 这一下不改"以主进程为准"：initLang() 拿到权威值后照样会再 apply 一次盖过去。
+ */
+(() => {
+  let v: string | null = null;
+  try {
+    v = localStorage.getItem(K_LANG);
+  } catch {
+    /* 隐私模式之类：按中文来 */
+  }
+  apply(isLang(v) ? v : 'zh');
+})();
+
 /** 别的窗口改了语言 —— 跟上 */
 if (api?.ui?.onLang) {
   api.ui.onLang((next: any) => {
@@ -53,6 +75,17 @@ export async function initLang(): Promise<Lang> {
   } catch {
     /* 隐私模式之类：回落中文 */
   }
+  /**
+   * **进 IPC 之前先把这一份贴上去**：localStorage 是同步的，不用等主进程。
+   *
+   * 为什么不能等到 await 之后再贴：插件的脸（plugins/<名>/panel.tsx）是 eager 预加载的，
+   * 它们在**模块顶层**就取词（billing 的 RANGES / VIEWS 就是 label: t('24 小时')）。
+   * 模块求值发生在渲染入口的函数体之前 —— 而这里挂起等主进程的时候，
+   * 入口的函数体已经接着往下跑、插件模块随即求值了。等 IPC 回来再 apply，
+   * 那批 label 早就冻成中文，只有整窗重载才会重取一次。
+   *
+   * 表现就是：**界面全英文，唯独那几块插件面板里的固定标签还是中文**。
+   */
   apply(local);
   try {
     const fromMain = await api.ui.getLang();

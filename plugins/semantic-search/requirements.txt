@@ -1,0 +1,11 @@
+sentence-transformers>=6.1.0,<7
+transformers>=5.19.0,<6
+torch>=2.5,<3
+torchvision>=0.20,<1
+httpx[socks]>=0.28
+Pillow>=10
+av>=14,<20
+soundfile>=0.12
+librosa>=0.10.2
+pypdf>=5
+openpyxl>=3.1

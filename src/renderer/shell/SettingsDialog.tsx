@@ -1,12 +1,14 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { api, type CatalogProvider, type CatalogModel, type ClosedRef, type ComponentRef, type ExtSnapshot, type ModelPick, type Panel, type PluginSettingsRef, type PluginSettingsView, type ProviderDraft } from '../core/api';
+import { api, type CatalogProvider, type CatalogModel, type ClosedRef, type ComponentRef, type ExtSnapshot, type ModelPick, type Panel, type ProviderDraft } from '../core/api';
 import { IconClose, IconFolderOpen } from '../ui/icons';
 import { panelType } from '../panel/registry';
 import { useGlobalZoom } from '../ui/ZoomOverlay';
 import { THEME_COLORS, FONTS_UI, FONTS_CODE, ZOOM_STEPS, getThemeMode, getThemeColor, setTheme, setThemeColor, getFontUi, setFontUi, getFontCode, setFontCode, getMotion, setMotion, getGlass, setGlass, getToolStepMode, setToolStepMode, getCodeWorkView, setCodeWorkView, onAppearance, type FxMode, type ToolStepMode } from '../ui/theme';
 import { getSurfaceOpacity, setSurfaceOpacity } from '../ui/theme';
-import { type PluginInfo, type PluginParamDecl } from '../../shared/types';
+import { type PluginInfo, type PluginParamDecl, type PluginSettingsRef, type PluginSettingsView } from '../../shared/types';
 import { t, localeTag, LANGS, getLang, setLang, onLang } from '../core/i18n';
+import { placeSettingsSections } from '../../shared/settings-navigation';
+import { PluginResources } from './PluginResources';
 
 
 
@@ -244,6 +246,7 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
    * 于是**点按钮完全没反应**，只有回车能装。存成受控的，两边才拿得到同一个值。
    */
   const [inlineText, setInlineText] = useState<Record<string, string>>({});
+  const [sectionError, setSectionError] = useState('');
   /** 插件分区的内容取回来没有 —— 取回来之前那一页是空的，不该按那个高度去做过渡 */
   const [sectionLoaded, setSectionLoaded] = useState(false);
   /** 进这张卡要的那批数据拉齐了没有（齐了才把卡片摆出来，见 load 上面那段） */
@@ -322,6 +325,19 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
     } catch (_) {}
   };
 
+  useEffect(() => {
+    if (page !== 'more') return;
+    let disposed = false;
+    const timer = window.setInterval(() => {
+      void api.env.get().then(config => {
+        if (disposed) return;
+        if (Array.isArray(config?.pythons)) setPythons(config.pythons);
+        if (config?.activePythonId) setActivePythonId(config.activePythonId);
+      }).catch(() => {});
+    }, 3000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, [page]);
+
   /**
    * 横线下面那一批（要下载外置资源的）—— 顺序按这张表来，不按插件目录的字母序。
    *
@@ -342,8 +358,8 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
   };
   const sectionPages = (external: boolean) =>
     sections
-      .filter((s) => SECTION_EXTERNAL.has(s.plugin) === external)
-      .sort((a, b) => (external ? extRank(a.plugin) - extRank(b.plugin) : 0))
+      .filter((s) => !s.placement && (s.group ? s.group === 'extension' : SECTION_EXTERNAL.has(s.plugin)) === external)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (external ? extRank(a.plugin) - extRank(b.plugin) : 0))
       .map((s) => ({
         id: pluginPageId(s.plugin, s.id),
         label: s.label,
@@ -352,6 +368,7 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
         after: s.after,
       }));
   const extPages = sectionPages(true);
+  const resourceSections = sections.filter((s) => s.placement === 'more');
 
   /**
    * 内置那几页 + 插件开的那些 —— 侧栏画的就是它。
@@ -375,25 +392,11 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
    * 它在第几行；固定在末尾，位置就不随别处增删而漂。
    */
   const allSections = sectionPages(false);
-  const builtinIds = new Set(builtinPages.map((p) => p.id));
-  /*
-   * 认不出的锚点（页名写错、那一页被砍了）**当没声明**，掉回收尾那一批。
-   *
-   * 这一条必须守住：锚点只是"排得好看点"的诉求，而丢页是真丢东西 ——
-   * 插件的入口在侧栏上没了，用户连点进去看看的机会都没有，还不会报错。
-   */
-  const anchored = allSections.filter((p) => p.after && builtinIds.has(p.after));
-  const loose = allSections.filter((p) => !(p.after && builtinIds.has(p.after)));
-  const nav: NavPage[] = [];
-  for (const page of builtinPages) {
-    nav.push(page);
-    for (const a of anchored) if (a.after === page.id) nav.push(a);
-  }
-  nav.push(...loose);
+  const nav = placeSettingsSections<NavPage>(builtinPages, allSections);
   nav.push({ id: morePage.id, label: morePage.label, desc: morePage.desc });
   // 那条线只在**真有需要下载的插件分区**时才画：末了光秃秃挂一条线，看着像出错
   if (extPages.length) nav.push({ id: 'sep', label: '', desc: '', sep: true as const });
-  nav.push(...extPages);
+  nav.push(...placeSettingsSections<NavPage>([], extPages));
   const here = nav.find((p) => p.id === page) ?? nav[0];
   /** 切分区时整张卡片的伸缩动画，见 usePaneStretch */
   const stretch = usePaneStretch(page, !here.plugin || sectionLoaded);
@@ -532,6 +535,8 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
     setPage(id);
     setSectionView(null);
     setSectionBusy('');
+    setInlineText({});
+    setSectionError('');
     setSectionLoaded(false);
     const p = nav.find((x) => x.id === id);
     if (p?.plugin) void loadSection(p.plugin.plugin, p.plugin.section);
@@ -553,10 +558,19 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
 
   const runSectionAction = async (actionId: string, rowId: string) => {
     if (!here.plugin) return;
+    setSectionError('');
     setSectionBusy(`${actionId}:${rowId}`);
-    const r = await api.ext.sectionAction(here.plugin.plugin, here.plugin.section, actionId, rowId);
-    if (r.view) setSectionView(r.view);
-    setSectionBusy('');
+    try {
+      const r = await api.ext.sectionAction(here.plugin.plugin, here.plugin.section, actionId, rowId);
+      if (r.view) setSectionView(r.view);
+      if (!r.ok) { setSectionError(r.error || r.reply || t('操作未完成。')); return; }
+      setInlineText(current => { const next = { ...current }; delete next[rowId]; return next; });
+    } catch (error) {
+      setSectionError(error instanceof Error ? error.message : String(error));
+      return;
+    } finally {
+      setSectionBusy('');
+    }
     // 这些动作多半动了面板（叫到岗、摆到布局）—— 顺手把下面几个下拉要的清单刷一遍
     setPanels(Object.values((await api.workspace.get()).panels));
     setCmps(await api.components.list());
@@ -571,7 +585,7 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
   const submitInlineText = (row: PluginSettingsView['rows'][number]) => {
     const raw = String(inlineText[row.id] ?? row.value ?? '').trim();
     const a = (row.actions ?? [])[0];
-    if (!raw || !a) return;
+    if (!a) return;
     void runSectionAction(`${a.id}:${raw}`, row.id);
   };
 
@@ -809,6 +823,7 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
               <section className="set-block">
                 {sectionView?.note && <div className="set-note">{sectionView.note}</div>}
                 {sectionView?.reply && <div className="set-note set-note-hi">{sectionView.reply}</div>}
+                {sectionError && <div className="set-note" role="alert" style={{ color: 'var(--danger)' }}>{sectionError}</div>}
                 <div className="ext-list">
                   {(sectionView?.rows ?? []).map((r, i) => (
                     <React.Fragment key={r.id}>
@@ -847,6 +862,17 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
                         敲回车就把这一格的内容编进动作 id 交回插件（`<动作>:<内容>`），
                         跟下拉同一套路：界面不认识"包名"是什么，它只负责把字递出去。
                       */}
+                      {r.inline === 'select' && (
+                        <select
+                          className="ext-inline"
+                          aria-label={r.title}
+                          value={r.value || ''}
+                          disabled={Boolean(sectionBusy)}
+                          onChange={(e) => void runSectionAction(`${r.actions?.[0]?.id || 'configure'}:${e.target.value}`, r.id)}
+                        >
+                          {(r.options ?? []).map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                      )}
                       {r.inline === 'text' && (
                         <input
                           className="ext-inline ext-inline-text"
@@ -877,7 +903,7 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
                           <i />
                         </button>
                       )}
-                      {(r.actions ?? []).map((a) => (
+                      {(r.inline === 'select' ? [] : r.actions ?? []).map((a) => (
                         <button
                           key={a.id}
                           title={a.hint || ''}
@@ -1916,6 +1942,8 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
               )}
               </div>
             </div>
+
+            <PluginResources sections={resourceSections} />
 
             {/* 3. 官方精选离线组件 */}
             <div className="more-panel-section">

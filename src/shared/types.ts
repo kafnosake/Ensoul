@@ -132,6 +132,11 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
+  /** 每次模型回复的边界；content 继续保留累计正文。 */
+  responses?: ChatResponse[];
+  displayContent?: string;
+  /** 实时事件序号，落定时移除。 */
+  streamSequence?: number;
   edited?: boolean;
   createdAt: number;
   streaming?: boolean;
@@ -184,6 +189,51 @@ export interface ChatMessage {
   endReason?: 'done' | 'stopped' | 'failed';
   /** endReason = failed 时是哪一类断的（FailCode 原样，认不出来就是空） */
   failCode?: string;
+}
+
+export interface ChatResponse {
+  id: string;
+  content: string;
+  afterMessageId: string;
+  phase: 'draft' | 'progress' | 'answer';
+  createdAt?: number;
+  toolCalls?: ChatMessage['toolCalls'];
+}
+
+export interface ChatProgressEvent {
+  sequence?: number;
+  panelId: string;
+  id: string;
+  responses: ChatResponse[];
+  reset: boolean;
+  responseId?: string;
+}
+
+export interface ChatDeltaEvent {
+  sequence?: number;
+  panelId: string;
+  id: string;
+  delta: string;
+  responseId?: string;
+  offset?: number;
+}
+
+export interface ChatRetractEvent {
+  panelId: string;
+  id: string;
+  text: number;
+  think: number;
+  sequence?: number;
+}
+
+export interface ChatRunningState {
+  sequence?: number;
+  panelId: string;
+  id: string;
+  text: string;
+  streamText?: string;
+  responses?: ChatResponse[];
+  responseId?: string;
 }
 
 /**
@@ -967,6 +1017,8 @@ export interface SkillInfo {
   whenToUse?: string;
   /** 在它那个根里的相对位置，形如 comfyui-draw */
   dir: string;
+  /** 所属领域/分类（如 frontend、design），二级技能有效 */
+  category?: string;
   /** 正文文件的**绝对**路径 */
   file: string;
   bytes: number;
@@ -1111,7 +1163,15 @@ export interface PluginSettingsAction {
  *           开着就一直在，关掉才撤。这种用按钮表达不了（按一下只是"做一次"，
  *           而这里要的是"一直开着"），桌面覆盖层就是这种。
  */
-export type PluginSettingsInline = 'models' | 'text' | 'switch';
+export interface PythonEnvironmentRef {
+  id: string;
+  name: string;
+  path: string;
+  version?: string;
+  available?: boolean;
+}
+
+export type PluginSettingsInline = 'models' | 'text' | 'switch' | 'select';
 
 /**
  * 这一行是**一条记录**还是**一个操作**。
@@ -1143,6 +1203,7 @@ export interface PluginSettingsRow {
    * （员工卡上的模型：它的家在看板上，可调它的手却在设置里）。
    */
   inline?: PluginSettingsInline;
+  options?: { value: string; label: string }[];
   /** 上面那个控件此刻的值（inline = models 时就是 提供方::模型，空串 = 没指定） */
   value?: string;
   /** inline = text 时框里那行灰字：告诉用户该往里填什么 */
@@ -1167,11 +1228,13 @@ export interface PluginSettingsRef {
   id: string;
   label: string;
   hint?: string;
+  /** 资源安装入口可嵌入“更多”，不另占侧栏导航。 */
+  placement?: 'more';
   /** 这一页的行会给行内控件留位置（`PluginSettingsRow.inline`）—— 界面照它决定列怎么排 */
   inline?: PluginSettingsInline;
   count: number;
   /**
-   * 想排在哪一页**正下方**（内置页 id，如 'model'）。不填 = 排在所有内置页之后。
+   * 想排在哪一页**正下方**（内置页 id 或 plugin:<插件名>:<分区 id>）。不填 = 排在所有内置页之后。
    *
    * 为什么要有它：插件分区原来一律坠在内置页末尾，那是"没意见"时的默认。
    * 可有些分区跟某一页本就是同一件事 —— 桌面组件这个开关和"模型"都属于

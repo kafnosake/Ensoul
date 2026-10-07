@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { appPath, userDataPath } from './paths';
+import { environmentDirectory, registerPythonEnvironment } from './environments';
 import { assertPanelActive, currentPanelSignal, workspaceRoot, safePath, writeText } from './fsapi';
 import { addSkillRoot as regSkillRoot, dropSkillRoots as unregSkillRoots } from './skills';
 import { store } from './store';
@@ -17,6 +18,7 @@ import type {
   PluginSettingsRef,
   PluginSettingsView,
   PluginSettingsInline,
+  PythonEnvironmentRef,
   PluginToolSpec,
 } from '../shared/types';
 import { MAIN_HOST } from '../shared/types';
@@ -211,13 +213,14 @@ export interface SettingsSectionSpec {
   id: string;
   label: string;
   hint?: string;
+  placement?: 'more';
   /**
    * 这一页的行会带**行内下拉**（见 PluginSettingsRow.inline / value）。
    * 导航自己不用它，只是把话透给界面：行里要不要给下拉留位置，界面照它决定。
    */
   inline?: PluginSettingsInline;
   /**
-   * 这一页想排在**哪个内置页的正下方**（如 'model'）。不填 = 排在所有内置页之后。
+   * 这一页想排在哪一页正下方：内置页 id 或 plugin:<插件名>:<分区 id>。
    *
    * 见 PluginSettingsRef.after —— 它跟着这份声明一路签到导航那边。
    */
@@ -314,6 +317,10 @@ export interface PluginParamView {
 }
 
 export interface PluginHost {
+  environments: {
+    directory(name: string): string;
+    registerPython(record: PythonEnvironmentRef): void;
+  };
   onFileWrite(fn: FileWriteHook): void;
   files: {
     write(path: string, text: string): boolean;
@@ -1326,6 +1333,7 @@ export async function settingsSections(): Promise<PluginSettingsRef[]> {
         id: s.id,
         label: s.label,
         hint: s.hint,
+        placement: s.placement,
         inline: s.inline,
         count,
         after: s.after,
@@ -1408,6 +1416,10 @@ function makeHost(inst: Instance): PluginHost {
   const tag = `[插件 ${inst.name}]`;
   const pluginWorkspace = workspaceRoot();
   return {
+    environments: {
+      directory: environmentDirectory,
+      registerPython: record => registerPythonEnvironment(record, pluginWorkspace),
+    },
     onFileWrite(fn) { if (typeof fn === 'function') inst.fileWrite.push(fn); },
     files: {
       write: (rel, text) => writeText(rel, text),
@@ -1514,6 +1526,11 @@ function makeHost(inst: Instance): PluginHost {
         id,
         label: String(spec.label || id).trim() || id,
         hint: spec.hint ? String(spec.hint) : undefined,
+        placement: spec.placement === 'more' ? 'more' : undefined,
+        inline: spec.inline,
+        group: spec.group === 'extension' ? 'extension' : spec.group === 'main' ? 'main' : undefined,
+        parent: spec.parent ? String(spec.parent) : undefined,
+        order: Number.isFinite(spec.order) ? spec.order : undefined,
         // 排在哪一页下面 —— 插件声明的，导航照着摆（不填就在内置页后面收尾）
         after: spec.after ? String(spec.after) : undefined,
         view: spec.view,

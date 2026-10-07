@@ -52,6 +52,10 @@ module.exports = {
 
 运行时增量（2026-10-05）：工具上下文含 `runId` 与 `signal`；耗时处理器应接收取消并在副作用前检查。`send(..., { signal })` 将取消传到被等待的会话，忙面板返回失败，排队或插话仍走原有 API。`modelPick(panelId)` 返回不含密钥的模型选择；`buildProject('full' | 'renderer', 'workspace' | 'app')` 使用共享构建器，默认 workspace。细节与边界见 [runtime-hardening.md](runtime-hardening.md)。
 
+设置分区可以声明 `placement: 'more'`，把资源安装与下载入口嵌入「更多」，无需另占侧栏。独立分区的 `group: 'extension'` 排在分割线下方，`after` 可以引用内置页 ID 或 `plugin:<插件名>:<分区 ID>`；被引用的分区未启用时，当前入口仍保留。
+
+设置行的 `inline: 'select'` 配合 `options: [{ value, label }]` 提供下拉选择，变更通过首个 action 的 `<id>:<value>` 即时提交。`api.environments.directory(name)` 返回 ensoul 用户数据目录下的全局环境路径；安装 Python 后调用 `api.environments.registerPython({ id, name, path, version?, available? })` 登记到统一解释器清单，所有工作区可见，保持当前激活项。
+
 | 方法 | 干什么 | 现成的例子 |
 |---|---|---|
 | `addTool(spec, handler)` | 加一个工具给模型用 | todo / jobs / web |

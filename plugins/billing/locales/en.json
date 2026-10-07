@@ -1,0 +1,21 @@
+{
+  "历史总计": "All-time total",
+  "自 {at} 起": "Since {at}",
+  "从这里开始另算": "Count separately from here",
+  "＋ 分支": "＋ Branch",
+  "删掉分支": "Delete branch",
+  "从 {at} 起算": "Count from {at}",
+  "按时间统计": "By time window",
+  "只算分支点之后": "After the branch point only",
+  "还没有分支": "No branch yet",
+  "这一段没有记录": "No records in this span",
+  "更早 {n} 轮已折成合计": "Earlier {n} turns folded into totals",
+  "旧记录未留模型名": "No model name in this legacy record",
+  "账为整个工作区一份": "One bill for the whole workspace",
+  "合计保留 {n} 天。": "Totals kept {n} days.",
+  "没读到插件状态": "Plugin state unreadable",
+  "都看": "Both",
+  "看全部": "See everything",
+  "把整个软件的 API 用量按天、按模型算成钱": "Prices the whole software's API usage by day and by model",
+  "按天按模型看 token 用量与花费，可打分支比增量": "Token usage and cost by day and by model, with branches to compare increments"
+}

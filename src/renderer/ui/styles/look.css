@@ -317,6 +317,7 @@
 
 .fx-switch i {
   display: block;
+  flex: none;
   width: 13px;
   height: 13px;
   margin: 0 2px;

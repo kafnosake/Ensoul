@@ -220,6 +220,11 @@ export function inferKitsForTool(name: string, description = ''): string[] {
   return Array.from(kits);
 }
 
+export function toolsForPanel(panel?: { kind: string; tools?: string[]; noWorkspacePrompt?: boolean }): ToolSpec[] {
+  if (!panel) return [];
+  const employee = !!panel.noWorkspacePrompt;
+  return toolsFor(employee && panel.kind !== 'chat' ? 'write' : 'full', panel.kind, employee ? panel.tools : undefined);
+}
 export function toolsFor(level: ToolLevel, kind?: string, allow?: string[]): ToolSpec[] {
   const all = toolsForAll(level, kind);
   if (!allow || !allow.length) return all;
@@ -238,9 +243,7 @@ export function toolsFor(level: ToolLevel, kind?: string, allow?: string[]): Too
     }
     return false;
   });
-  // 一个都没挑中（清单写错、工具改名）时**退回全给**：宁可多给一个工具，
-  // 也不能让某块面板悄悄变成哑巴 —— 跟 inScope 里那条兜底是同一个道理。
-  return picked.length ? picked : all;
+  return picked;
 }
 
 /**

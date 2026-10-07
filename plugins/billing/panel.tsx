@@ -113,19 +113,19 @@ const SEG_COLOR = { hit: '#4fb286', miss: '#5b8cff', out: '#c9924a' };
  * 实验却会量错。想要精确的整段增量，就得有一个"只认分支点"的档。
  */
 const RANGES = [
-  { k: '24h', label: t('24 小时'), ms: DAY },
-  { k: '7d', label: t('7 天'), ms: 7 * DAY },
-  { k: '30d', label: t('30 天'), ms: 30 * DAY },
-  { k: 'all', label: t('全部'), ms: 0 },
-  { k: 'branch', label: t('分支'), ms: -1 },
+  { k: '24h', label: '24 小时', ms: DAY },
+  { k: '7d', label: '7 天', ms: 7 * DAY },
+  { k: '30d', label: '30 天', ms: 30 * DAY },
+  { k: 'all', label: '全部', ms: 0 },
+  { k: 'branch', label: '分支', ms: -1 },
 ] as const;
 type RangeKey = (typeof RANGES)[number]['k'];
 
 /** 看哪几样：都看 / 只看用量 / 只看价格。表格的列也跟着它走 */
 const VIEWS = [
-  { k: 'both', label: t('用量 + 价格') },
-  { k: 'tok', label: t('只看用量') },
-  { k: 'cost', label: t('只看价格') },
+  { k: 'both', label: '都看' },
+  { k: 'tok', label: '用量' },
+  { k: 'cost', label: '价格' },
 ] as const;
 type ViewKey = (typeof VIEWS)[number]['k'];
 
@@ -465,12 +465,12 @@ export function ModelCard({ m, maxTok, maxCost, view }: { m: MSum; maxTok: numbe
     <div className="mb">
       {/* 左边一栏：是谁、跑了几轮。柱子从这一栏右边那条线上起跑 */}
       <div className="mb-side">
-        <span className="mb-name" title={m.pick || t('这条记录里没有模型名（加模型名之前留下的旧账）')}>
+        <span className="mb-name" title={m.pick || t('旧记录未留模型名')}>
           {m.pick ? modelName(m.pick) : t('未记录模型')}
         </span>
         <span className="mb-sub">
           {t('{n} 轮', { n: m.rounds })}
-          {free && <span className="bill-free">{t('· 只计量不计费')}</span>}
+          {free && <span className="bill-free">{t('· 未定价')}</span>}
         </span>
       </div>
 
@@ -599,14 +599,14 @@ export default function Billing({ panel, fs }: PanelFaceProps) {
   // 发过命令却一直没读到状态：多半是插件没在跑（没装 / 被停用），说一句比干等强
   const silent = sent > 0 && !snap;
   const busy = live && live.rounds > 0;
-  const rangeLabel = RANGES.find((r) => r.k === range)?.label ?? '';
+  const rangeLabel = t(RANGES.find((r) => r.k === range)?.label ?? '');
   /** 这一段是不是"只算分支之后"：标题、提示都要照这个换说法 */
   const byBranch = range === 'branch';
   /**
    * 给人看的"这一段是什么"——标题里用它。
    * 「分支」档要是只写"分支"两个字，看不出算的是哪一段，所以把时刻也带上。
    */
-  const segLabel = byBranch ? (branch ? `分支 · 自 ${hhmm(branch.at)}` : t('分支')) : rangeLabel;
+  const segLabel = byBranch ? (branch ? t('分支 · 自 {at}', { at: hhmm(branch.at) }) : t('分支')) : rangeLabel;
 
   return (
     /*
@@ -628,11 +628,11 @@ export default function Billing({ panel, fs }: PanelFaceProps) {
               <span className="bill-dot" />{t('正在跑')}{t('{n} 轮 · ', { n: live!.rounds })}{yuan(live!.cost)}
             </>
           ) : (
-            <>{t('已同步')}{s.at ? ago(s.at) : t('尚未')}</>
+            <>{s.at ? ago(s.at) : t('尚未')}</>
           )}
         </span>
-        <button className="bill-btn is-primary" onClick={addBranch} title={t('从这里开始另算一笔：之后所有花费都显示增量')}>
-          {t('＋ 打分支')}
+        <button className="bill-btn is-primary" onClick={addBranch} title={t('从这里开始另算')}>
+          {t('＋ 分支')}
         </button>
       </div>
 
@@ -641,24 +641,20 @@ export default function Billing({ panel, fs }: PanelFaceProps) {
       {/* ② 两个大数：整本账 / 这一段的账 */}
       <div className="bill-cards">
         <div className="bill-card">
-          <div className="bill-card-k">{t('全部（历史总计）')}</div>
+          <div className="bill-card-k">{t('历史总计')}</div>
           <div className="bill-card-v">{yuan(all.cost)}</div>
           <div className="bill-card-s">
-            {t('{n} 轮 · ', { n: all.rounds })}{fmt(all.tin + all.tout)} tokens
+            {t('{n} 轮 · ', { n: all.rounds })}{fmt(all.tin + all.tout)} tok
             {all.free > 0 && <span className="bill-free">{t(' · {n} 轮未定价', { n: all.free })}</span>}
           </div>
         </div>
         <div className={`bill-card${byBranch && branch ? ' is-branch' : ''}`}>
           <div className="bill-card-k">
-            {byBranch && branch
-              ? t('增量（自 {at}）', { at: hhmm(branch.at) })
-              : branch
-                ? t('增量（窗内 · 自 {at}）', { at: hhmm(branch.at) })
-                : rangeLabel}
+            {branch ? t('自 {at} 起', { at: hhmm(branch.at) }) : rangeLabel}
           </div>
           <div className="bill-card-v">{yuan(win.cost)}</div>
           <div className="bill-card-s">
-            {t('{n} 轮 · ', { n: win.rounds })}{fmt(win.tin + win.tout)} tokens
+            {t('{n} 轮 · ', { n: win.rounds })}{fmt(win.tin + win.tout)} tok
             {win.free > 0 && <span className="bill-free">{t(' · {n} 轮未定价', { n: win.free })}</span>}
           </div>
         </div>
@@ -676,7 +672,7 @@ export default function Billing({ panel, fs }: PanelFaceProps) {
               // 而实际算的是从头开始 —— 两者得对上
               if (byBranch) setRange('all');
             }}
-            title={t('不切分支：看全部')}
+            title={t('看全部')}
           >
             {t('全部')}
           </button>
@@ -687,19 +683,16 @@ export default function Billing({ panel, fs }: PanelFaceProps) {
                 <button
                   className={`bill-chip${s.selected === b.id ? ' is-on' : ''}`}
                   onClick={() => selectBranch(b.id)}
-                  title={t('从 {at} 起算：{n} 轮、{y} —— 再点一下取消选中', { at: hhmm(b.at), n: seg.rounds, y: yuan(seg.cost) })}
+                  title={t('从 {at} 起算', { at: hhmm(b.at) })}
                 >
                   {b.label} · {hhmm(b.at)} · {yuan(seg.cost)}
                 </button>
-                <button className="bill-x" onClick={() => removeBranch(b.id)} title={t('删掉这个分支')}>
+                <button className="bill-x" onClick={() => removeBranch(b.id)} title={t('删掉分支')}>
                   ×
                 </button>
               </span>
             );
           })}
-          <span className="bill-hint">
-            {byBranch && branch ? t('当前只看这个分支之后') : t('点一个分支 = 只看它之后的花费')}
-          </span>
         </div>
       )}
 
@@ -716,7 +709,7 @@ export default function Billing({ panel, fs }: PanelFaceProps) {
                 className={`bill-seg-b${view === v.k ? ' is-on' : ''}`}
                 onClick={() => setView(v.k)}
               >
-                {v.label}
+                {t(v.label)}
               </button>
             ))}
           </div>
@@ -742,14 +735,10 @@ export default function Billing({ panel, fs }: PanelFaceProps) {
                     }
                   }}
                   title={
-                    off
-                      ? t('还没有分支：先点「＋ 打分支」，那一刻之后的花费就单独算一段')
-                      : r.k === 'branch'
-                        ? t('只算分支点之后的花费，不受时间窗影响 —— 量一整段实验用这个')
-                        : t('统计哪一段时间的账')
+                    off ? t('还没有分支') : r.k === 'branch' ? t('只算分支点之后') : t('按时间统计')
                   }
                 >
-                  {r.label}
+                  {t(r.label)}
                 </button>
               );
             })}
@@ -757,7 +746,7 @@ export default function Billing({ panel, fs }: PanelFaceProps) {
         </div>
 
         {view !== 'cost' && (maxTok > 0 || models.length > 0) && (
-          <div className="bill-key">
+          <div className="bill-key" title={t('柱子满格 = 这一段里最大的模型')}>
             {[
               { k: t('缓存命中'), c: SEG_COLOR.hit },
               { k: t('未命中输入'), c: SEG_COLOR.miss },
@@ -768,15 +757,12 @@ export default function Billing({ panel, fs }: PanelFaceProps) {
                 {x.k}
               </span>
             ))}
-            <span className="bill-hint">{t('柱子满格 = 这一段里最大的那个模型')}</span>
           </div>
         )}
 
         {models.length === 0 ? (
           <div className="bill-empty">
-            {t('这一段里还没有记录。')}
-            <br />
-            {t('换个时间范围看看，或者跑几轮对话 —— 免费模型会记着 token 数但不计钱。')}
+            {t('这一段没有记录')}
           </div>
         ) : (
           <div className="mb-grid">
@@ -794,8 +780,7 @@ export default function Billing({ panel, fs }: PanelFaceProps) {
             <h4>{t('明细（')}{segLabel}）</h4>
             {s.dropped > 0 && (
               <span className="bill-hint">
-                {t('更早的 {n} 轮只留合计、不再逐笔列出', { n: s.dropped })}
-                {s.rawDays > 0 && t('（逐笔明细保留 {n} 天）', { n: s.rawDays })}
+                {t('更早 {n} 轮已折成合计', { n: s.dropped })}
               </span>
             )}
           </div>
@@ -821,7 +806,7 @@ export default function Billing({ panel, fs }: PanelFaceProps) {
                   const free = m.free === m.rounds && m.rounds > 0;
                   return (
                     <tr key={m.pick || '__none'}>
-                      <td className="bill-model" title={m.pick || t('加模型名之前留下的旧账')}>
+                      <td className="bill-model" title={m.pick || t('旧记录未留模型名')}>
                         {m.pick ? modelName(m.pick) : t('未记录模型')}
                         {free && <span className="bill-free">{t('· 未定价')}</span>}
                       </td>
@@ -862,12 +847,9 @@ export default function Billing({ panel, fs }: PanelFaceProps) {
       )}
 
       <div className="bill-foot">
-        {t('柱子按最大值归一（满格 = 这一段里最大的模型），绝对值写在柱头。')}
-        {t('单价取模型列表里标注的价格，')}<b>{t('在每一轮开工时快照')}</b>{t('—— 之后改价不会算歪旧账。')}
-        {t('免费 / 未定价的模型只记 token、不计钱。账是')}<b>{t('整个工作区')}</b>{t('一份：面板关掉、对话清空，花过的钱照旧留着。')}
-        {t('明细按自然日归档；超过保留期的折成「按天 + 按模型」的合计，数字仍在「全部」里，')}
-        {s.keepDays > 0 ? t('合计超过 {n} 天会删。', { n: s.keepDays }) : t('合计永久保留（想自动清可在插件设置里填天数）。')}
-        {silent && <span className="bill-warn">{t('· 没读到插件状态（plugins/billing 在吗？）')}</span>}
+        {t('账为整个工作区一份')}
+        {s.keepDays > 0 && t('合计保留 {n} 天。', { n: s.keepDays })}
+        {silent && <span className="bill-warn">{t('没读到插件状态')}</span>}
       </div>
     </div>
   );

@@ -1041,7 +1041,6 @@ body.is-resizing .dock-edge::before {
   min-width: 0;
   font-size: 12px;
   line-height: 1.68;
-  white-space: pre-wrap;
   word-break: break-word;
   user-select: text;
 }

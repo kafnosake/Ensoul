@@ -2,6 +2,7 @@
   "name": "ensoul",
   "productName": "ensoul",
   "version": "0.1.0",
+  "license": "MIT",
   "description": "可自我进化的对话式代码框架：无限浮窗 + 选项卡合并 + 浮窗即对话框",
   "main": "dist/main/index.js",
   "type": "commonjs",
