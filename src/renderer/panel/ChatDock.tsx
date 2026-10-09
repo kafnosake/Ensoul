@@ -16,6 +16,7 @@ import { NoteGauge } from './chat/NoteGauge';
 import { AskBar } from './chat/AskBar';
 import type { AskAnswerDraft } from './chat/AskBar';
 import { GitPackagerDock } from './chat/GitPackagerDock';
+import { HeadStatusChip } from './chat/HeadStatus';
 import { HistRail } from './chat/HistRail';
 import { FOLLOW_SLACK, PAGE, PEEK_W } from './chat/constants';
 import type { ChatQuote } from './chat/types';
@@ -904,11 +905,10 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
               所以它只说「显示什么」，画由这里来 —— 关掉那个插件，这块干净消失。 */}
           {(ws?.status?.[panel.id] ?? [])
             .filter((s) => s.slot === 'head' && Boolean(s.text?.trim()))
-            .map((s) => (
-              <span className="head-status" key={s.id} title={s.title}>
-                {s.text}
-              </span>
-            ))}
+            // 能点开的排前面（那是入口），只读的往后靠（那是读数）—— 于是目标项目那颗
+            // 就落在这一排最左边、git 分支那几块的前面，手往左上角一伸就够着。
+            .sort((a, b) => Number(Boolean(b.menu)) - Number(Boolean(a.menu)))
+            .map((s) => <HeadStatusChip key={s.id} s={s} />)}
           {
             /* 这块面板的比例显示 —— 就挂在 git 状态条右手边（见 ui/ZoomOverlay）。
                头部那一行本来就是「这块面板现在什么处境」，比例跟它是同类。 */

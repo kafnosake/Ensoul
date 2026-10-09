@@ -99,6 +99,113 @@
   max-width: 52ch;
 }
 
+/* 能点的状态块：右下角一个小三角，点开就是插件自己那份菜单（切换目标项目这种）。
+   跟边上那几块死字共用 .head-status 的长相，只多一个"这儿能点"的信号。 */
+.head-status-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.head-status-btn:hover {
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.head-status-btn.is-open {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.hs-caret {
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+/* 菜单浮在触发点下面 —— 它不是停靠树里的一块面板，不占会话语义的宽度。 */
+.hs-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.hs-menu {
+  position: fixed;
+  z-index: 61;
+  min-width: 240px;
+  max-width: 380px;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 5px;
+  background: var(--pop);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow), var(--edge);
+  backdrop-filter: var(--glass-blur);
+  animation: pop-in 120ms ease-out;
+}
+
+.hs-head {
+  padding: 5px 8px;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.hs-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 6px 8px;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--text);
+}
+
+.hs-item:hover {
+  background: var(--card);
+}
+
+.hs-item.is-on {
+  background: var(--card);
+  border-color: var(--line);
+}
+
+.hs-item-label {
+  font-size: 12px;
+}
+
+.hs-item-desc {
+  max-width: 340px;
+  font-size: 10.5px;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hs-manual {
+  display: flex;
+  padding: 5px 6px 3px;
+}
+
+.hs-manual input {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 7px;
+  font-size: 11.5px;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
 .dock-right .dock-revert {
   margin-left: 0;
 }

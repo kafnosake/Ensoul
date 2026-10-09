@@ -78,6 +78,7 @@ const CORE_TOOLS = new Set([
   'restart_project',
   'project_status',
   'use_skill',
+  'tool_find',
   'describe_layout',
   'component_declare',
   'component_remove',
@@ -139,6 +140,29 @@ function inScope(spec: PluginTool['spec'], kind?: string): boolean {
   // 说不出是哪块面板时不做裁剪：宁可多给一个工具，也不能让某块面板悄悄少一个
   if (!kind) return true;
   return scope.includes(kind);
+}
+
+/**
+ * 常驻工具：完整参数表直接进系统提示。
+ *
+ * 其余工具在提示里只有「名字 + 一行说明」，完整定义由 tool_find 现取（见 ptc.ts）。
+ * 挑的是**不知道下一步要干什么时也几乎一定会用到**的那几个：看文件、搜内容、跑命令、
+ * 取技能，以及取工具定义本身。这一份是唯一真源，装配和 tool_find 都读它。
+ */
+const RESIDENT_TOOLS = new Set<string>([
+  // 文件与检索
+  'list_dir', 'read_file', 'write_file', 'edit', 'search', 'grep', 'glob',
+  // 执行与看图
+  'run_command', 'read_image', 'read_logs',
+  // 干活时几乎每轮都要碰的
+  'use_skill', 'todo_write', 'todo_read', 'ask_user_question', 'web_search', 'web_fetch',
+  // 取定义本身
+  'tool_find',
+]);
+
+/** 这个工具的完整参数表要不要常驻在系统提示里 */
+export function isResidentTool(name: string): boolean {
+  return RESIDENT_TOOLS.has(name);
 }
 
 /** 每个组都会发的那几个通用工具 —— 归哪组由 KITS 写死，不靠名字里的下划线猜 */
@@ -343,6 +367,13 @@ function toolsForAll(level: ToolLevel, kind?: string): ToolSpec[] {
     spec(
       'use_skill',
       t('取出一个技能的完整内容（接线细节、踩过的坑、成串的约束都在里面）。先看系统提示里的技能清单，再决定取哪个。'),
+      { name: { type: 'string' } },
+      ['name'],
+    ),
+    // 工具完整参数表按需取 —— 提示里只有名字和一行说明，省下的就是每轮都付的那笔
+    spec(
+      'tool_find',
+      t('取一个工具的完整参数表。系统提示里只列了名字和一行说明的工具，用这个拿它的参数定义；拿到后就能像常驻工具一样 await tools.<名字>(参数) 调用。'),
       { name: { type: 'string' } },
       ['name'],
     ),
@@ -835,7 +866,7 @@ const SPILL_TAIL = 2_000;
  * read_file **不在**这里了：它一屏最多 50KB（约一万七千字），从前既不落地、又被修剪，
  * 模型拿着头 4096 字、看着"读完了"的 footer，就把半份文件当全份用 —— 这是错的，不只是贵。
  */
-const NO_SPILL = new Set(['use_skill', 'list_dir', 'describe_layout']);
+const NO_SPILL = new Set(['use_skill', 'list_dir', 'describe_layout', 'tool_find']);
 
 /**
  * read_file 的窗口参数（READ_LIMIT / READ_MAX_LINE_LENGTH / READ_MAX_BYTES）。

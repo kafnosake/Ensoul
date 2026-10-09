@@ -94,6 +94,8 @@ const EXEMPT = [
   { plugin: 'histconv', rule: 'memory', why: 'boxes 按 pid、cache 按面板 id 做 key（openBox / get 处就看得见），天生按面板分槽；lastTouch 也是——pid → 这块面板最后一次动过的时间，问的就是"这一块"，天然按面板分槽。prevAlive 记的是「上一拍哪些面板还活着」——它要的正是全量名单（收走消失面板的账），按面板分反而没法工作。四张表的 key 都离声明那几行远了点' },
   { plugin: 'eschat', rule: 'memory', why: 'dormCache 是后台面板目录的索引缓存（按目录 mtime 失效），所有 eschat 面板看的是同一份目录，按面板分槽只会复制 N份相同扫描；noThink 记「哪个员工已关过思考」——动作落在员工角色卡上、不在面板上，按面板分会让同一员工被关两次' },
   { plugin: 'git-packager', rule: 'cmd', why: '命令每条都带 panelId（脸写进队列），打包台管理的是开源发布的全局排除清单与 .gitignore，跟 git/library 插件同级' },
+  { plugin: 'target-dir', rule: 'prompt', why: '目标目录是这一整个工作区的处境：一个工作区只有一份"现在在哪个项目里干活"，两块面板看到的当前项目必然相同。按面板分槽反而让每块面板各自维护一份假象、还看不出跨项目的越界 —— 跟 git 分支、AGENTS.md 同级' },
+  { plugin: 'target-dir', rule: 'state', why: '同上：current 和 projects 就是这一刻的目标项目清单，不存在"A 面板的目标项目"。要的正是跨面板共享这一份，按面板分槽等于把提醒功能废掉' },
 ];
 
 const names = fs.existsSync(DIR)

@@ -2513,12 +2513,33 @@ const priceSummary = (d: PriceDraft): string => {
 
 const timeBad = (s: string) => Boolean(s.trim()) && !timeOk(s);
 
-/** 编辑表单里一个模型的草稿：id / 显示名 / 价格草稿（价格草稿由 PriceEditor 就地改） */
-type ModelDraft = { id: string; name: string; price: PriceDraft };
+/** 窗口框收 "32K" / "1M" / "128000"；认不出来就返回 null，那一下按键不算数 */
+const parseCtx = (text: string): string | null => {
+  const s = text.trim().replace(/[\s,，_]/g, '');
+  if (!s) return '';
+  const m = /^(\d+(?:\.\d+)?)([km]?)$/i.exec(s);
+  if (!m) return null;
+  const unit = m[2].toLowerCase();
+  const v = Math.floor(Number(m[1]) * (unit === 'm' ? 1048576 : unit === 'k' ? 1024 : 1));
+  return v > 0 ? String(v) : null;
+};
+
+/** 平时写紧凑点（32768 → 32K，1048576 → 1M）；除不尽的照原样，不硬凑 */
+const formatCtx = (raw: string): string => {
+  const n = Number(raw);
+  if (!raw.trim() || !Number.isFinite(n) || n <= 0) return '';
+  if (n % 1048576 === 0) return `${n / 1048576}M`;
+  if (n % 1024 === 0) return `${n / 1024}K`;
+  return raw;
+};
+
+/** 编辑表单里一个模型的草稿：id / 显示名 / 上下文窗口 / 价格草稿（价格草稿由 PriceEditor 就地改） */
+type ModelDraft = { id: string; name: string; ctx: string; price: PriceDraft };
 
 const modelDraftOf = (m?: CatalogModel): ModelDraft => ({
   id: m?.id ?? '',
   name: m?.name ?? '',
+  ctx: typeof m?.contextWindow === 'number' && m.contextWindow > 0 ? String(m.contextWindow) : '',
   price: draftOfPrice(m?.price),
 });
 
@@ -2606,6 +2627,8 @@ function ProviderForm({
   onCancel(): void;
 }) {
   const [label, setLabel] = useState(draft.label);
+  /** 走哪套协议：openai-completions / anthropic-messages（见 src/main/anthropic.ts） */
+  const [apiProto, setApiProto] = useState(draft.api || 'openai-completions');
   const [baseUrl, setBaseUrl] = useState(draft.baseUrl);
   const [apiKey, setApiKey] = useState('');
   const [models, setModels] = useState<ModelDraft[]>(() => (draft.models.length ? draft.models.map(modelDraftOf) : [modelDraftOf()]));
@@ -2669,7 +2692,7 @@ function ProviderForm({
 
   /** 从选单里挑一个：只把这一条加进目录（价格照旧留空，点那一行再填） */
   const addFromPicker = (m: CatalogModel) => {
-    setModels((ms) => [...ms, { id: m.id, name: m.name || m.id, price: draftOfPrice(undefined) }]);
+    setModels((ms) => [...ms, { id: m.id, name: m.name || m.id, ctx: '', price: draftOfPrice(undefined) }]);
   };
 
   const save = async () => {
@@ -2677,12 +2700,22 @@ function ProviderForm({
     const list = await api.providers.save({
       key: draft.key,
       label: label.trim() || draft.key,
-      api: draft.api || 'openai-completions',
+      api: apiProto || 'openai-completions',
       baseUrl: baseUrl.trim(),
       apiKey,
       models: models
         .filter((m) => m.id.trim())
-        .map((m) => { const price = priceOfDraft(m.price); return { id: m.id.trim(), name: (m.name || m.id).trim(), ...(price ? { price } : {}) }; }),
+        .map((m) => {
+          const price = priceOfDraft(m.price);
+          const ctx = Number(m.ctx.trim());
+          return {
+            id: m.id.trim(),
+            name: (m.name || m.id).trim(),
+            // 窗口填了才带上：留空就是「没填」，主进程那边按 128K 兜底，而不是存一个 0 进去
+            ...(m.ctx.trim() && Number.isFinite(ctx) && ctx > 0 ? { contextWindow: Math.floor(ctx) } : {}),
+            ...(price ? { price } : {}),
+          };
+        }),
     });
     setBusy(false);
     onSaved(list);
@@ -2710,6 +2743,14 @@ function ProviderForm({
       <div className="pv-sub">{t('自定义设置')}</div>
 
       <label className="pv-field">
+        <span>{t('协议')}</span>
+        <select value={apiProto} onChange={(e) => setApiProto(e.target.value)}>
+          <option value="openai-completions">OpenAI 兼容（/chat/completions）</option>
+          <option value="anthropic-messages">Anthropic（/v1/messages）</option>
+        </select>
+      </label>
+
+      <label className="pv-field">
         <span>{t('API 地址')}</span>
         <input
           value={baseUrl}
@@ -2723,6 +2764,8 @@ function ProviderForm({
       <div className="pv-note">
         {t('单价按元 / 百万 token。')}<strong>{t('模型一行一条，点那一行就展开它自己的价目')}</strong>（峰谷段也在里头加，想开几条开几条）；
         三档都填了才算数，缺一档显示"未定价"。
+        <br />
+        <strong>{t('「窗口」填这个模型的上下文窗口（token）')}</strong>{t('：压缩阈值按它算，各填各的 —— 留空按 128K 兜底。')}
         <br />
         <strong>{t('懒得手抄 id 就点「列出可用模型」')}</strong>{t('：拿填好的地址和密钥问服务端要一份清单，')}
         <strong>{t('点哪个加哪个')}</strong>{t('，一次只进一条。')}
@@ -2742,6 +2785,12 @@ function ProviderForm({
               <span className="pv-caret">▸</span>
               <input value={m.id} placeholder={t('模型 id')} onChange={(e) => setModel(i, { id: e.target.value })} spellCheck={false} />
               <input value={m.name} placeholder={t('显示名')} onChange={(e) => setModel(i, { name: e.target.value })} spellCheck={false} />
+              {/* 折叠行上只摆一个紧凑值，改的地方在展开区 —— 三个输入框并排会把这一行挤成表单 */}
+              {formatCtx(m.ctx) ? (
+                <span className="pv-ctx-sum" title={t('上下文窗口（token）—— 压缩阈值按它算，点这一行展开可改')}>
+                  {formatCtx(m.ctx)}
+                </span>
+              ) : null}
               <span className="pv-price-sum">{priceSummary(m.price)}</span>
               <button className="pv-model-del" onClick={() => { setModels((ms) => ms.filter((_, j) => j !== i)); openModels.shiftAfterDrop(i); }} title={t('删掉这个模型')}>
                 ×
@@ -2749,6 +2798,22 @@ function ProviderForm({
             </div>
             {openModels.has(String(i)) && (
               <div className="pv-model-body">
+                <label className="pv-ctx-field">
+                  <span>{t('窗口')}</span>
+                  <input
+                    className="pv-ctx"
+                    value={formatCtx(m.ctx)}
+                    placeholder="128000"
+                    title={t('上下文窗口（token）—— 压缩阈值按它算，留空按 128K 兜底')}
+                    onChange={(e) => {
+                      const next = parseCtx(e.target.value);
+                      // 认不出来（打了一半、混了别的字符）就先不动，别中途改成半截数
+                      if (next !== null) setModel(i, { ctx: next });
+                    }}
+                    spellCheck={false}
+                  />
+                  <em>{t('留空按 128K 兜底；压缩阈值 = 窗口 × 80%')}</em>
+                </label>
                 <PriceEditor draft={m.price} onChange={(p) => setModel(i, { price: p })} />
               </div>
             )}

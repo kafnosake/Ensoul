@@ -827,11 +827,21 @@ export interface ModelConfig {
   models?: string[];
   /** 提供方 key —— 决定思考水平用哪套字段名（见 chat-core 的 thinkParams） */
   provider?: string;
+  /** 走哪套协议：openai-completions（默认）/ anthropic-messages —— 见 anthropic.ts */
+  api?: string;
   /**
    * 这个会话的思考水平：空串 = **不发任何思考参数**（跟没这个功能时一模一样），
    * 另外四档是 off / low / medium / high。
    */
   think?: string;
+  /**
+   * 这个模型的上下文窗口（token）—— 压缩阈值拿它当分母，**逐条 pick 生效**。
+   *
+   * 从前这里没有它，核心写着一个 128K 的常数管所有模型：32K 的免费模型撞上 API 超长
+   * 都轮不到压缩，1M 的长窗口模型则永远摸不到门槛。解不出来（没配、模型被删）时
+   * 退 `DEFAULT_CONTEXT_WINDOW`，行为跟以前一样。
+   */
+  contextWindow?: number;
 }
 
 /**
@@ -857,6 +867,32 @@ export interface ModelInfo {
 export type HostKey = string;
 export const MAIN_HOST: HostKey = 'main';
 
+/**
+ * 状态部件上的一块**可点下拉**（纯数据）。
+ *
+ * 插件跑在主进程、画不了界面，所以照状态部件那套：插件只说“有哪些项”，
+ * 画由核心来。点一下的动作从 `plugin` + `section` 这条路回给插件 ——
+ * 跟设置分区用的是同一个口子（`ext:sectionAction`），不多开一条 IPC。
+ */
+export interface PluginStatusMenu {
+  /** 菜单顶上那一行小字 */
+  title?: string;
+  /** 回给哪个插件的哪一页 */
+  plugin: string;
+  section: string;
+  items: {
+    label: string;
+    desc?: string;
+    /** 就是当前选中的那个，打个勾 */
+    on?: boolean;
+    /** 点下去回传的两个值：action + row */
+    action: string;
+    row: string;
+  }[];
+  /** 底下一个“填个值就提交”的输入行（加新目录那种）；不写就没有 */
+  manual?: { placeholder?: string; actionPrefix: string; row: string };
+}
+
 /** 整个工作区：面板表 + 主窗口的树 + 浮窗列表 + 每个窗口的模型 api */
 export interface Workspace {
   panels: Record<string, Panel>;
@@ -877,7 +913,7 @@ export interface Workspace {
   /** 最近开过的工作区目录，新的在前 */
   recentWorkspaces?: string[];
   /** 插件挂的状态部件（按面板分好，渲染层直接画）。`slot` 说它挂哪一条：composer = 输入框那排，head = 会话框顶上 */
-  status?: Record<string, { id: string; slot: 'composer' | 'head'; text: string; title?: string }[]>;
+  status?: Record<string, { id: string; slot: 'composer' | 'head'; text: string; title?: string; menu?: PluginStatusMenu }[]>;
   /**
    * 插件注册的斜杠命令（输入框敲 / 时的候选弹层）。
    * 只有能过 IPC 的那几个字段 —— handler 留在主进程，执行从来不经过界面。

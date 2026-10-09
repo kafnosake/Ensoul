@@ -19,6 +19,7 @@ import type {
   SketchSlot,
   PanelComponent,
   PanelFloat,  PanelKind,
+  PluginStatusMenu,
   PanelMode,
   Rect,
   Workspace,
@@ -27,7 +28,7 @@ import type {
 import { MAIN_HOST, DEFAULT_COMPONENT_BAR_MAX, defaultLook, defaultSpec, emptyRect, isComponentPanel, isTabGroup } from '../shared/types';
 import type { PanelWidget } from '../shared/types';
 import { readTextFile } from './chat-core';
-import { describePick, fallbackPick, resolvePick } from './providers';
+import { contextWindowOf, describePick, fallbackPick, resolvePick } from './providers';
 import * as W from './workspace';
 import { t } from '../shared/i18n';
 
@@ -906,17 +907,19 @@ class Store {
    * 配置全部来自 harness（settings.yaml + .credentials.yaml），这里只做解析。
    */
   modelFor(hostKey: HostKey): ModelConfig {
-    const r = resolvePick(this.pickFor(hostKey));
+    const pick = this.pickFor(hostKey);
+    const r = resolvePick(pick);
     return r
-      ? { baseUrl: r.baseUrl, apiKey: r.apiKey, model: r.model, provider: r.provider, think: this.thinkFor(hostKey) }
+      ? { baseUrl: r.baseUrl, apiKey: r.apiKey, model: r.model, provider: r.provider, api: r.api, think: this.thinkFor(hostKey), contextWindow: contextWindowOf(pick) }
       : { baseUrl: '', apiKey: '', model: '' };
   }
 
   /** 这一轮要用的东西：按**会话**取，面板自己选的优先 */
   modelForPanel(panelId: string): ModelConfig {
-    const r = resolvePick(this.pickForPanel(panelId));
+    const pick = this.pickForPanel(panelId);
+    const r = resolvePick(pick);
     return r
-      ? { baseUrl: r.baseUrl, apiKey: r.apiKey, model: r.model, provider: r.provider, think: this.thinkFor(panelId) }
+      ? { baseUrl: r.baseUrl, apiKey: r.apiKey, model: r.model, provider: r.provider, api: r.api, think: this.thinkFor(panelId), contextWindow: contextWindowOf(pick) }
       : { baseUrl: '', apiKey: '', model: '' };
   }
 
@@ -1046,9 +1049,9 @@ class Store {
    * 插件提供的状态部件。广播时按面板算好，渲染层拿到的是纯文本 ——
    * 插件跑在主进程、画不了界面，所以它只说"该显示什么"，画由核心来。
    */
-  private statusOf: (panelId: string) => { id: string; slot: 'composer' | 'head'; text: string; title?: string }[] = () => [];
+  private statusOf: (panelId: string) => { id: string; slot: 'composer' | 'head'; text: string; title?: string; menu?: PluginStatusMenu }[] = () => [];
 
-  setStatusSource(fn: (panelId: string) => { id: string; slot: 'composer' | 'head'; text: string; title?: string }[]) {
+  setStatusSource(fn: (panelId: string) => { id: string; slot: 'composer' | 'head'; text: string; title?: string; menu?: PluginStatusMenu }[]) {
     this.statusOf = fn;
   }
 

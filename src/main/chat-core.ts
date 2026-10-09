@@ -5,6 +5,18 @@ import { BUILTIN_KINDS } from '../shared/types';
 import { skillDigest } from './skills';
 import { getLang } from './lang';
 import { localeTag, t } from '../shared/i18n';
+import {
+  isAnthropicApi,
+  anthropicEndpoint,
+  anthropicHeaders,
+  toAnthropicMessages,
+  toAnthropicBody,
+  newAnthropicStream,
+  feedAnthropicEvent,
+  anthropicUsageOf,
+  anthropicFinishReason,
+  fromAnthropicMessage,
+} from './anthropic';
 
 /**
  * 对话内核 —— 每个浮窗的"大脑"。
@@ -611,21 +623,36 @@ export async function summarizeSession(
     .filter(Boolean)
     .join('\n');
 
-  const res = await fetch(`${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
-    body: JSON.stringify({
-      model: cfg.model,
-      stream: false,
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: body },
-      ],
-    }),
-    signal,
-  });
+  const ant = isAnthropicApi(cfg.api);
+  const res = ant
+    ? await fetch(anthropicEndpoint(cfg.baseUrl), {
+        method: 'POST',
+        headers: anthropicHeaders({ apiKey: cfg.apiKey, baseUrl: cfg.baseUrl }),
+        body: JSON.stringify(toAnthropicBody({
+          model: cfg.model,
+          system: sys,
+          messages: [{ role: 'user', content: [{ type: 'text', text: body }] }],
+          tools: [],
+          stream: false,
+        })),
+        signal,
+      })
+    : await fetch(`${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
+        body: JSON.stringify({
+          model: cfg.model,
+          stream: false,
+          messages: [
+            { role: 'system', content: sys },
+            { role: 'user', content: body },
+          ],
+        }),
+        signal,
+      });
   if (!res.ok) throw new Error(`摘要请求返回 ${res.status}`);
   const j: any = await res.json();
+  if (ant) return String(fromAnthropicMessage(j).content ?? '').trim();
   return String(j.choices?.[0]?.message?.content ?? '').trim();
 }
 
@@ -643,24 +670,40 @@ export async function askOnce(
   opts?: { maxTokens?: number; signal?: AbortSignal },
 ): Promise<string> {
   if (!cfg.apiKey || !cfg.baseUrl) throw new Error(t('这个面板还没选模型（点对话框右下角那个模型 chip 选一个）'));
-  const res = await fetch(`${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
-    body: JSON.stringify({
-      model: cfg.model,
-      stream: false,
-      messages: [
-        ...(system ? [{ role: 'system', content: system }] : []),
-        { role: 'user', content: user },
-      ],
-      ...(opts?.maxTokens ? { max_tokens: opts.maxTokens } : {}),
-    }),
-    signal: opts?.signal ?? AbortSignal.timeout(120_000),
-  });
+  const ant = isAnthropicApi(cfg.api);
+  const signal = opts?.signal ?? AbortSignal.timeout(120_000);
+  const res = ant
+    ? await fetch(anthropicEndpoint(cfg.baseUrl), {
+        method: 'POST',
+        headers: anthropicHeaders({ apiKey: cfg.apiKey, baseUrl: cfg.baseUrl }),
+        body: JSON.stringify(toAnthropicBody({
+          model: cfg.model,
+          system,
+          messages: [{ role: 'user', content: [{ type: 'text', text: user }] }],
+          tools: [],
+          maxTokens: opts?.maxTokens,
+          stream: false,
+        })),
+        signal,
+      })
+    : await fetch(`${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
+        body: JSON.stringify({
+          model: cfg.model,
+          stream: false,
+          messages: [
+            ...(system ? [{ role: 'system', content: system }] : []),
+            { role: 'user', content: user },
+          ],
+          ...(opts?.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+        }),
+        signal,
+      });
   if (!res.ok) throw new Error(`模型接口返回 ${res.status}：${(await res.text().catch(() => '')).slice(0, 200)}`);
   const j: any = await res.json();
-  const out = j?.choices?.[0]?.message?.content;
-  if (typeof out !== 'string') throw new Error(t('模型没回内容'));
+  const out = ant ? fromAnthropicMessage(j).content : j?.choices?.[0]?.message?.content;
+  if (typeof out !== 'string' || !out.trim()) throw new Error(t('模型没回内容'));
   return out.trim();
 }
 
@@ -826,6 +869,17 @@ function thinkVariants(provider: string | undefined, baseUrl: string | undefined
   return [{ reasoning_effort: effort }, { enable_thinking: true, thinking_budget: budget }];
 }
 
+/**
+ * anthropic 那一路的思考候选：只有 `thinking.budget_tokens` 这一种写法。
+ * 不设档和「关掉」一样，都返回空 —— anthropic 不发 thinking 就是关，
+ * 硬发 `{type:'disabled'}` 反而 400。
+ */
+function anthropicThinkVariants(level?: string): Record<string, unknown>[] {
+  if (!level || level === 'off') return [];
+  const budget = level === 'low' ? 2048 : level === 'high' ? 16384 : 8192;
+  return [{ thinking: { type: 'enabled', budget_tokens: budget } }];
+}
+
 /** 退避等待：等的时候用户按了停就立刻收场，不让他白等这几秒 */
 function waitRetry(ms: number, signal: AbortSignal | undefined): Promise<void> {
   return new Promise((resolve) => {
@@ -925,7 +979,8 @@ async function callModelOnce(
   onText: (d: string) => void,
   onReasoning?: (d: string) => void,
 ): Promise<CallResult> {
-  const url = `${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`;
+  const ant = isAnthropicApi(cfg.api);
+  const url = ant ? anthropicEndpoint(cfg.baseUrl) : `${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`;
 
   // 外部信号（用户点停止 / 窗口关了）和下面这道闲时超时并到同一个控制器上，
   // 这样无论谁先动手，都在同一条路上收场，错误信息也说得清是谁干的。
@@ -948,15 +1003,27 @@ async function callModelOnce(
   };
 
   // 思考水平：候选串按"最可能被认的"排队。没设档时这里是空的 —— 一个字节都不多发。
-  const variants = thinkVariants(cfg.provider, cfg.baseUrl, cfg.think);
+  const variants = ant ? anthropicThinkVariants(cfg.think) : thinkVariants(cfg.provider, cfg.baseUrl, cfg.think);
   /** 现在发第几个候选；越界 = 一个思考字段都不发了 */
   let vi = 0;
   const curThink = (): Record<string, unknown> | null => variants[vi] ?? null;
   /** 用量那一档：接口不认 stream_options 就关掉，之后不再发 */
   let usageOn = true;
 
-  const body = (withUsage: boolean, think: Record<string, unknown> | null) =>
-    JSON.stringify({
+  const body = (withUsage: boolean, think: Record<string, unknown> | null) => {
+    if (ant) {
+      // 系统提示、工具结果的位置、max_tokens 全是另一套，交给 anthropic.ts 抹平
+      const a = toAnthropicMessages(msgs);
+      return JSON.stringify(toAnthropicBody({
+        model: cfg.model,
+        system: a.system,
+        messages: a.messages,
+        tools,
+        think,
+        stream: true,
+      }));
+    }
+    return JSON.stringify({
       model: cfg.model,
       stream: true,
       // 让接口在最后一块把用量报给我们（用量监控就靠它）
@@ -965,6 +1032,7 @@ async function callModelOnce(
       messages: msgs,
       ...(tools.length ? { tools, tool_choice: 'auto' } : {}),
     });
+  };
 
   /**
    * 只发一次，**自己不重试** —— 连不上、被拒绝这类归到 Fail 往上抛，
@@ -975,7 +1043,9 @@ async function callModelOnce(
     try {
       return await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
+        headers: ant
+          ? anthropicHeaders({ apiKey: cfg.apiKey, baseUrl: cfg.baseUrl })
+          : { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
         body: body(withUsage, think),
         signal: ctrl.signal,
       });
@@ -1038,6 +1108,7 @@ async function callModelOnce(
     let usage: AgentUsage | null = null;
     let finishReason = '';
     const calls: any[] = [];
+    const antSt = newAnthropicStream();
 
     for (;;) {
       const { done, value } = await reader.read();
@@ -1055,6 +1126,11 @@ async function callModelOnce(
         try {
           j = JSON.parse(data);
         } catch {
+          continue;
+        }
+        if (ant) {
+          const fed = feedAnthropicEvent(antSt, j, onText, onReasoning);
+          if (fed.error) throw new Fail('REQUEST', fed.error);
           continue;
         }
         if (j.usage) usage = readUsage(j.usage);
@@ -1091,6 +1167,12 @@ async function callModelOnce(
      * 分两种：吐了字的当传输中断，交给重连接住；一个字都没吐的就是空回复，
      * 也是可重连的那一类。
      */
+    if (ant) {
+      content = antSt.content;
+      usage = anthropicUsageOf(antSt);
+      finishReason = anthropicFinishReason(antSt.stopReason);
+    }
+
     if (!finishReason && !dead()) {
       throw new Fail(
         content || calls.filter(Boolean).length ? 'TRANSPORT' : 'EMPTY_RESPONSE',
@@ -1100,7 +1182,7 @@ async function callModelOnce(
       );
     }
 
-    return { content, toolCalls: calls.filter(Boolean), usage, finishReason };
+    return { content, toolCalls: ant ? antSt.calls.filter(Boolean) : calls.filter(Boolean), usage, finishReason };
   } catch (e: any) {
     // 被我们自己断开时，fetch 抛的是没有信息量的 "This operation was aborted"。
     // 换成"是谁、为什么断的"：闲时超时归 TIMEOUT（能被重连接住），
@@ -1305,7 +1387,7 @@ export async function runAgent(
   return { text, usage, files: [...files], ended };
 }
 
-/** 流式调用（OpenAI 兼容协议），逐字回调。cfg 由调用方按"这个窗口用哪个模型"给 */
+/** 流式调用（OpenAI 兼容 / Anthropic 两套协议），逐字回调。cfg 由调用方按"这个窗口用哪个模型"给 */
 export async function streamChat(
   messages: ChatMessage[],
   handlers: StreamHandlers,
@@ -1318,18 +1400,21 @@ export async function streamChat(
   }
 
   let full = '';
+  const ant = isAnthropicApi(cfg.api);
   try {
-    const res = await fetch(`${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+    const asOpenAi = messages.map((m) => ({
+      role: m.role === 'tool' ? 'user' : m.role,
+      content: m.content,
+    }));
+    const a = ant ? toAnthropicMessages(messages as any[]) : null;
+    const res = await fetch(ant ? anthropicEndpoint(cfg.baseUrl) : `${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
-      body: JSON.stringify({
-        model: cfg.model,
-        stream: true,
-        messages: messages.map((m) => ({
-          role: m.role === 'tool' ? 'user' : m.role,
-          content: m.content,
-        })),
-      }),
+      headers: ant
+        ? anthropicHeaders({ apiKey: cfg.apiKey, baseUrl: cfg.baseUrl })
+        : { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
+      body: JSON.stringify(ant
+        ? toAnthropicBody({ model: cfg.model, system: a!.system, messages: a!.messages, tools: [], stream: true })
+        : { model: cfg.model, stream: true, messages: asOpenAi }),
       signal,
     });
 
@@ -1341,6 +1426,7 @@ export async function streamChat(
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
+    let antSt: ReturnType<typeof newAnthropicStream> | null = ant ? newAnthropicStream() : null;
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -1353,7 +1439,21 @@ export async function streamChat(
         const data = t.slice(5).trim();
         if (data === '[DONE]') continue;
         try {
-          const delta: string = JSON.parse(data).choices?.[0]?.delta?.content ?? '';
+          const j: any = JSON.parse(data);
+          if (antSt) {
+            const fed = feedAnthropicEvent(antSt, j);
+            if (fed.error) {
+              handlers.onError(fed.error);
+              return full;
+            }
+            const grew = antSt.content.slice(full.length);
+            if (grew) {
+              full = antSt.content;
+              handlers.onDelta(grew);
+            }
+            continue;
+          }
+          const delta: string = j.choices?.[0]?.delta?.content ?? '';
           if (delta) {
             full += delta;
             handlers.onDelta(delta);

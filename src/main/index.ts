@@ -14,7 +14,7 @@ import { expandChatResponses } from '../shared/chat-history';
 import appIdentity from '../shared/app-identity.json';
 import { planPluginPack } from '../shared/ensoulpack';
 import { matchPanelAvatarFamily } from '../shared/panel-avatars';
-import { executeRunCode, getRunCodeToolSpec, renderToolsSdk } from './ptc';
+import { executeRunCode, getRunCodeToolSpec, renderToolFind, renderToolsSdk } from './ptc';
 import { commitPromptBaseline, consumePromptDeltas } from './prompt-composer';
 import { askOnce, buildPanelSnapshot, buildSystemPrompt, extractEditProposal, failLabel, modeSection, runAgent, summarizeSession, conversationForSummary, type SteerItem } from './chat-core';
 import { archiveToolResult, describeTool, runTool, runToolConfirmed, setExtensions, toolsForPanel } from './agent';
@@ -307,14 +307,26 @@ function pluginExtras(ctx: { panelId: string; host: string; kind: string }, fns:
   return parts.join('\n\n');
 }
 
-/** 模型上下文窗口（token）。真要准该从模型配置里读，这里先给个稳妥值 */
-const CONTEXT_TOKENS = 128_000;
 /**
- * 默认：到窗口的 80% 才压缩，逐字保留最近 16%。
- * 这个 80% 只在**缓存还热**时算数 —— 空闲过后门槛降到 COLD_COMPACT_AT（见下面）。
+ * 模型条目没填 contextWindow 时的兜底窗口（token）。
+ * 真值**逐条模型**给（providers 的 contextWindowOf 从 providers.json 里读），这里只是最后一道保险：
+ * 从前它是唯一的来源，于是 32K 的免费模型和 1M 的长窗口模型共用一个分母，两边都是错的。
  */
-const COMPACT_AT = Math.floor(CONTEXT_TOKENS * 0.8);
-const RETAIN_TOKENS = Math.floor(CONTEXT_TOKENS * 0.16);
+const FALLBACK_CONTEXT_TOKENS = 128_000;
+
+/** 这一轮这个模型的窗口 —— 解不出来就退兜底 */
+const contextTokensOf = (cfg: ModelConfig): number =>
+  typeof cfg.contextWindow === 'number' && Number.isFinite(cfg.contextWindow) && cfg.contextWindow > 0
+    ? Math.floor(cfg.contextWindow)
+    : FALLBACK_CONTEXT_TOKENS;
+
+/**
+ * 门槛按**这个模型自己的窗口**算：热时 80% 才压缩，逐字保留最近 16%。
+ * 这个 80% 只在**缓存还热**时算数 —— 空闲过后门槛降到 25%（见 CACHE_IDLE_MS）。
+ */
+const HOT_COMPACT_RATIO = 0.8;
+const COLD_COMPACT_RATIO = 0.25;
+const RETAIN_RATIO = 0.16;
 /**
  * 空闲到这一步，服务商的缓存基本已经过期。
  *
@@ -328,8 +340,8 @@ const CACHE_IDLE_MS = 4 * 60 * 60_000;
 /**
  * 缓存反正已经冷时，压缩是白捡的：那一轮每个 token 本来就要全价重算，
  * 把长会话压短，这一次就便宜 —— 所以门槛从 80% 降到 25%，且不看时间也别等它涨满。
+ * 两个门槛都按**那一轮模型自己的窗口**算，见下面 compactAt 那几行。
  */
-const COLD_COMPACT_AT = Math.floor(CONTEXT_TOKENS * 0.25);
 
 /** 粗估 token：中文约一个字一个，代码/英文约四字符一个，取三折中；结构化工具存档（toolCalls）同样要计入 */
 const estimateTokens = (msgs: ChatMessage[]) =>
@@ -469,12 +481,14 @@ function wireStatus(items: StatusItem[]) {
         try {
           const text = s.text(pid, null);
           if (!text) return null;
-          return { id: s.id, slot: s.slot === 'head' ? ('head' as const) : ('composer' as const), text, title: s.title?.(pid, null) };
+          // 菜单是可选的：没有就是一块死字，跟以前长一样
+          const menu = s.menu?.(pid, null) || undefined;
+          return { id: s.id, slot: s.slot === 'head' ? ('head' as const) : ('composer' as const), text, title: s.title?.(pid, null), menu };
         } catch {
           return null;
         }
       })
-      .filter(Boolean) as { id: string; slot: 'composer' | 'head'; text: string; title?: string }[],
+      .filter(Boolean) as { id: string; slot: 'composer' | 'head'; text: string; title?: string; menu?: import('../shared/types').PluginStatusMenu }[],
   );
 }
 
@@ -3279,13 +3293,18 @@ function registerIpc() {
     // 距上一条消息多久。缓存前缀存在服务商那边、TTL 也在那边，客户端只能这样侧面估冷热。
     const lastAt = panel.chat.slice(0, -1).reduce((n, m) => Math.max(n, m.createdAt || 0), 0);
     const idleMs = Date.now() - (lastAt || Date.now());
+    // **门槛按这一轮模型自己的窗口算**：32K 的模型几个来回就该压了，1M 的长会话模型等到 80% 也还早。
+    // 从前这里共用一个写死的 128K 分母 —— 小窗口的模型还没压就先撞上 API 的"超长"，
+    // 大窗口的则永远摸不到门槛，白按全价重发。现在换个模型门槛就跟着换。
+    const windowTokens = contextTokensOf(cfg);
     // 缓存还热时**不动**门槛：这时候压缩会把一个本该命中的请求打成全价重算，
     // 省下的那点比代价还少。空闲到缓存大概已经没了，才放宽 —— 反正都要全价，压短的更便宜。
-    const compactAt = idleMs > CACHE_IDLE_MS ? COLD_COMPACT_AT : COMPACT_AT;
+    const compactAt = Math.floor(windowTokens * (idleMs > CACHE_IDLE_MS ? COLD_COMPACT_RATIO : HOT_COMPACT_RATIO));
+    const retainTokens = Math.floor(windowTokens * RETAIN_RATIO);
     if (estimateTokens(restAll.filter((m) => m.role !== 'tool')) > compactAt) {
       let keepFrom = restAll.length;
       let kept = 0;
-      while (keepFrom > 0 && kept < RETAIN_TOKENS) {
+      while (keepFrom > 0 && kept < retainTokens) {
         keepFrom -= 1;
         if (restAll[keepFrom].role !== 'tool') kept += estimateTokens([restAll[keepFrom]]);
       }
@@ -3579,11 +3598,19 @@ function registerIpc() {
       ctrl.signal.throwIfAborted();
       const effectiveTools = isPtc ? [getRunCodeToolSpec()] : baseTools;
       const allowedTools = new Set(baseTools.map((tool) => tool.function.name));
+      // tool_find 由这里直接接住，不走 agent 的那张单例表 ——
+      // 它只读本轮的 baseTools，而 PTC 子调用和直连**两条路都汇到这儿**，
+      // 于是取回来的参数表天然是这块面板这一轮的，不会串到别处。
+      const runOne = async (name: string, args: any, subCtx: ToolContext) => {
+        if (!allowedTools.has(name)) return `工具 ${name} 不在当前面板/员工授权的工具套件中`;
+        if (name === 'tool_find') return renderToolFind(baseTools, String(args?.name ?? ''));
+        return runTool(name, args, subCtx);
+      };
       const effectiveRunner = async (name: string, args: any) => {
         if (name === 'run_code' && isPtc) {
           const runRes = await executeRunCode(
             args?.code || '',
-            (subName, subArgs, signal) => runTool(subName, subArgs, { ...ctx, signal }),
+            (subName, subArgs, signal) => runOne(subName, subArgs, { ...ctx, signal }),
             (subName, subArgs, subOut) => noteTool(subName, subArgs, subOut),
             50,
             allowedTools,
@@ -3592,8 +3619,7 @@ function registerIpc() {
           for (const f of runRes.filesWritten) files.push(f);
           return runRes.output;
         }
-        if (!allowedTools.has(name)) return `工具 ${name} 不在当前面板/员工授权的工具套件中`;
-        return runTool(name, args, ctx);
+        return runOne(name, args, ctx);
       };
 
       const res = await runAgent(
@@ -4043,14 +4069,30 @@ function registerIpc() {
     if (!p?.key || !p.baseUrl) return false;
     try {
       const existing = loadProviders().find((x) => x.key === String(p.key));
+      const incoming = Array.isArray(p.models) ? p.models : [];
+      /** 用户在设置里动过这份目录（加过自己的模型）—— 那份就算用户的，插件不许整份盖掉 */
       const hasCustomModels = existing && Array.isArray(existing.models) && existing.models.length > 0;
+      /**
+       * 用户那份照旧一个字不动（不增、不删、不覆盖它自己的字段），只把同一 id 的
+       * contextWindow 同步进来 —— 那是插件才知道的客观值，而压缩阈值正拿它当分母。
+       * 整份盖掉会把用户手加的模型和改过的单价一起冲走，所以这里只补这一个字段。
+       */
+      const models = hasCustomModels
+        ? existing!.models.map((m) => {
+            const n = incoming.find((x) => x.id === m.id);
+            const ctx = Number(n?.contextWindow);
+            return Number.isFinite(ctx) && ctx > 0 && m.contextWindow !== Math.floor(ctx)
+              ? { ...m, contextWindow: Math.floor(ctx) }
+              : m;
+          })
+        : incoming;
       upsert({
         key: String(p.key),
         label: String(p.label || p.key),
         api: String(p.api || 'openai-completions'),
         baseUrl: String(p.baseUrl),
         apiKey: String(p.apiKey || ''),
-        models: hasCustomModels ? existing.models : (Array.isArray(p.models) ? p.models : []),
+        models,
       });
       refresh();
       return true;

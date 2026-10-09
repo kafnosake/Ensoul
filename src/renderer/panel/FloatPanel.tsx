@@ -4,7 +4,7 @@ import { floatRatio } from '../../shared/types';
 import { api } from '../core/api';
 import { statusClass, statusColor, statusLabel } from '../ui/status';
 import { IconLock } from '../ui/icons';
-import { PanelSurface } from '../panel/PanelSurface';
+import { PanelSurface } from './PanelSurface';
 import { panelType, panelTypesRevision, subscribePanelTypes } from './registry';
 import { t } from '../core/i18n';
 import { useFloatUnlock } from './useFloatUnlock';

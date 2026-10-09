@@ -4,7 +4,7 @@
  * 2. 在可终止的工作线程中运行编排代码，工具调用由宿主执行
  */
 
-import type { ToolSpec } from './agent';
+import { isResidentTool, type ToolSpec } from './agent';
 import { t } from '../shared/i18n';
 import * as path from 'path';
 import { Worker } from 'worker_threads';
@@ -50,10 +50,32 @@ function schemaToTsType(schema: any, indentLevel = 1): string {
   return 'any';
 }
 
+/** 工具说明压成一行并掐到上限 —— 按需区只留「它是干什么的」这一点线索 */
+function oneLine(text: string, max = 100): string {
+  const s = String(text ?? '').replace(/\s+/g, ' ').trim();
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+
 /**
- * 将传入的所有工具声明渲染成紧凑的 TypeScript SDK 接口代码
+ * 将传入的所有工具声明渲染成紧凑的 TypeScript SDK 接口代码。
+ *
+ * 分两段，账这么算：
+ *   · 常驻工具（见 agent.ts 的 RESIDENT_TOOLS）给**完整签名** —— 它们是每轮都会用到的，
+ *     这一段的字节会随轮数线性计费，所以必须只留真正高频的。
+ *   · 其余工具只给「名字 + 一行说明」—— 参数表由 tool_find 现取，
+ *     那一笔只在真正要用的那一轮付一次（见 renderToolFind）。
+ *
+ * 两段都在 `declare const tools` 里，所以按需那些也**可以直接调用** ——
+ * 区别只是提示里没有它们的参数形状，不知道怎么写就先 tool_find。
  */
 export function renderToolsSdk(tools: ToolSpec[]): string {
+  const usable = tools.filter((tool) => tool.function.name !== 'run_code'); // 避免自引用
+  // 安全阀：按需那一段要靠 tool_find 才取得回来。白名单（员工工具套件）把它滤掉时
+  // 就必须整体退回全量 —— 否则那些工具只剩个名字，参数表再也取不到，等于被静默摘掉。
+  const canDefer = usable.some((tool) => tool.function.name === 'tool_find');
+  const resident = usable.filter((tool) => !canDefer || isResidentTool(tool.function.name));
+  const onDemand = canDefer ? usable.filter((tool) => !isResidentTool(tool.function.name)) : [];
+
   const lines: string[] = [
     t('// ── PTC 模式：已注册的可用工具 SDK 声明 ──'),
     t('// 大模型无需直接发出原生 tool call，只需在 run_code 中通过 `await tools.<工具名>(参数)` 调用。'),
@@ -61,9 +83,8 @@ export function renderToolsSdk(tools: ToolSpec[]): string {
     'declare const tools: {',
   ];
 
-  for (const t of tools) {
-    const fn = t.function;
-    if (fn.name === 'run_code') continue; // 避免自引用
+  for (const tool of resident) {
+    const fn = tool.function;
     const desc = fn.description ? fn.description.replace(/\n+/g, ' ') : '';
     lines.push(`  /** ${desc} */`);
     const params = fn.parameters as any;
@@ -72,8 +93,58 @@ export function renderToolsSdk(tools: ToolSpec[]): string {
     lines.push(`  ${fn.name}(args${req ? '' : '?'}: ${tsParam}): Promise<any>;`);
   }
 
+  if (onDemand.length) {
+    lines.push(
+      '',
+      t('  // ── 以下工具同样可直接调用；参数表没写在这儿，用 tool_find 现取 ──'),
+      t('  // 不知道参数怎么写时：`await tools.tool_find({ name: "<名字>" })` 拿完整定义，再照它调。'),
+      t('  // 参数已经清楚的，直接 `await tools.<名字>(...)` 调用即可，不必先查。'),
+    );
+    for (const tool of onDemand) {
+      const fn = tool.function;
+      lines.push(`  /** ${oneLine(fn.description || '')} */`);
+      lines.push(`  ${fn.name}(args?: any): Promise<any>;`);
+    }
+  }
+
   lines.push('};');
   return lines.join('\n');
+}
+
+/**
+ * tool_find 的回执 —— 一个工具的完整参数表。
+ *
+ * 这一份是**当轮的增量**：它只出现在这次工具返回里，不回写系统提示，
+ * 所以取多少都不动前缀缓存 —— 这正是它比常驻便宜的原因。
+ */
+export function renderToolFind(tools: ToolSpec[], name: string): string {
+  const wanted = String(name ?? '').trim();
+  if (!wanted) return t('tool_find 要 name：想取哪一个工具的参数表。');
+  const found = tools.find((tool) => tool.function.name === wanted);
+  if (!found) {
+    const names = tools
+      .filter((tool) => tool.function.name !== 'run_code')
+      .map((tool) => tool.function.name)
+      .join('、');
+    return t('这块面板上没有叫「{n}」的工具。可用的有：{list}', { n: wanted, list: names });
+  }
+  const fn = found.function;
+  const desc = fn.description ? fn.description.replace(/\n+/g, ' ') : '';
+  const params = fn.parameters as any;
+  const req = Array.isArray(params?.required) && params.required.length > 0;
+  const tsParam = schemaToTsType(params, 1);
+  return [
+    `// ${fn.name} —— 完整参数表`,
+    `/** ${desc} */`,
+    `async function ${fn.name}(args${req ? '' : '?'}: ${tsParam}): Promise<any>`,
+    '',
+    t('参数 JSON Schema（照它填）：'),
+    '```json',
+    JSON.stringify(params ?? { type: 'object', properties: {} }, null, 1),
+    '```',
+    '',
+    t('调用方式：') + '`await tools.' + fn.name + '({ ... })`',
+  ].join('\n');
 }
 
 /**

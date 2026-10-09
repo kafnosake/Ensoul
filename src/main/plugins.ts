@@ -20,6 +20,7 @@ import type {
   PluginSettingsView,
   PluginSettingsInline,
   PythonEnvironmentRef,
+  PluginStatusMenu,
   PluginToolSpec,
 } from '../shared/types';
 import { MAIN_HOST } from '../shared/types';
@@ -216,6 +217,16 @@ export interface SettingsSectionSpec {
   hint?: string;
   placement?: 'more';
   /**
+   * 只当**动作落点**、不上设置导航。
+   *
+   * 为什么需要：状态部件上那块可点下拉（`menu`）的动作是借设置分区这条老路
+   * （`ext:sectionAction`）递回插件的 —— 那条路按 plugin + section 找落点。
+   * 可有些入口本就**不该在设置里多出一页**：会话顶上那颗切换要的是
+   * "抬眼就在那块字上点一下"，不是绕进设置再找一页。标了它，导航不列、
+   * 导航也不拿 `view()` 去数条数，但动作照旧递得回来。
+   */
+  hidden?: boolean;
+  /**
    * 这一页的行会带**行内下拉**（见 PluginSettingsRow.inline / value）。
    * 导航自己不用它，只是把话透给界面：行里要不要给下拉留位置，界面照它决定。
    */
@@ -347,6 +358,14 @@ export interface StatusItem {
   text(panelId: string, ctx: ToolContext | null): string;
   /** 鼠标悬停时的详细说明，可以多行 */
   title?(panelId: string, ctx: ToolContext | null): string;
+  /**
+   * 点开这一个部件的下拉菜单（纯数据）。不写就是块死字，跟原来一模一样。
+   *
+   * 为什么加在这儿：状态部件原来只能显示“什么”，用户看着那块字却动不了它 ——
+   * 要改就得绕去设置页，比切工作区还麻烦。菜单这一层不新开界面体系：
+   * 插件照旧只交数据、核心照旧只画一次，动作从现成的插件分区那条路回去。
+   */
+  menu?(panelId: string, ctx: ToolContext | null): PluginStatusMenu | null;
 }
 
 /**
@@ -831,7 +850,11 @@ export interface PluginProviderDraft {
   label?: string;
   api?: string;
   baseUrl: string;
-  models: { id: string; name: string }[];
+  /**
+   * 插件登记的模型目录。`contextWindow` 要带上（插件才知道自己那条线吃多少 token）——
+   * 压缩阈值拿它当分母，丢了就退回核心的 128K 兜底。
+   */
+  models: { id: string; name: string; contextWindow?: number }[];
   /** 一起登记的新密钥。留空 = 别动它现在那把（不是"删掉") */
   apiKey?: string;
 }
@@ -1443,6 +1466,9 @@ export async function settingsSections(): Promise<PluginSettingsRef[]> {
   for (const inst of instances.values()) {
     if (!inst.info.enabled) continue;
     for (const s of inst.sections) {
+      // hidden 的只当动作落点（会话顶上那颗下拉借它递回插件）：导航里不该多出一页，
+      // 也不该为了一个不显示的条数去调它的 view()。
+      if (s.hidden) continue;
       // 条数顺手现算一个：导航上"员工 4"比光一个名字有用得多。
       // 算不出来不算错 —— 那一页点进去会自己把原因写在正文里，别让导航整片空着。
       let count = 0;
@@ -1653,6 +1679,7 @@ function makeHost(inst: Instance): PluginHost {
         label: String(spec.label || id).trim() || id,
         hint: spec.hint ? String(spec.hint) : undefined,
         placement: spec.placement === 'more' ? 'more' : undefined,
+        hidden: spec.hidden === true ? true : undefined,
         inline: spec.inline,
         group: spec.group === 'extension' ? 'extension' : spec.group === 'main' ? 'main' : undefined,
         parent: spec.parent ? String(spec.parent) : undefined,

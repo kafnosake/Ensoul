@@ -24,6 +24,14 @@ export interface ProviderModel {
   id: string;
   name: string;
   /**
+   * 这个模型能吃多少 token（上下文窗口）。
+   *
+   * 为什么必须逐条填：压缩阈值按它算，而各家窗口差着几十倍（32K ~ 1M）。
+   * 分母写死一个数的话，小窗口的模型还没压就先撞上 API 的"超长"，
+   * 大窗口的模型则永远摸不到门槛、徒手按全价重发。没填就当 DEFAULT_CONTEXT_WINDOW。
+   */
+  contextWindow?: number;
+  /**
    * 单价：元 / 百万 token，三档分开（命中缓存的输入 / 未命中的输入 / 输出）。
    * **没填就是算不了钱** —— 界面上那笔账会显示"未定价"，而不是拿个假数字充数。
    * 想加就在 `providers.json` 的模型里补 `price`。
@@ -66,9 +74,9 @@ export const PRESETS: Omit<Provider, 'apiKey'>[] = [
     baseUrl: 'https://api.deepseek.com',
     builtin: true,
     models: [
-      { id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash', price: { hit: 0.2, miss: 2, out: 8 } },
-      { id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro', price: { hit: 0.5, miss: 4, out: 16 } },
-      { id: 'deepseek-v4-flash-vision-exp', name: 'DeepSeek-V4-Flash-Vision' },
+      { id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash', contextWindow: 128_000, price: { hit: 0.2, miss: 2, out: 8 } },
+      { id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro', contextWindow: 128_000, price: { hit: 0.5, miss: 4, out: 16 } },
+      { id: 'deepseek-v4-flash-vision-exp', name: 'DeepSeek-V4-Flash-Vision', contextWindow: 128_000 },
     ],
   },
   {
@@ -86,21 +94,32 @@ export const PRESETS: Omit<Provider, 'apiKey'>[] = [
     label: 'Moonshot',
     api: 'openai-completions',
     baseUrl: 'https://api.moonshot.cn/v1',
-    models: [{ id: 'kimi-k2-0905-preview', name: 'Kimi K2' }],
+    models: [{ id: 'kimi-k2-0905-preview', name: 'Kimi K2', contextWindow: 256_000 }],
   },
   {
     key: 'zhipu',
     label: t('智谱'),
     api: 'openai-completions',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    models: [{ id: 'glm-4.6', name: 'GLM-4.6' }],
+    models: [{ id: 'glm-4.6', name: 'GLM-4.6', contextWindow: 200_000 }],
   },
   {
     key: 'dashscope',
     label: t('通义千问'),
     api: 'openai-completions',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    models: [{ id: 'qwen3-max', name: 'Qwen3-Max' }],
+    models: [{ id: 'qwen3-max', name: 'Qwen3-Max', contextWindow: 262_144 }],
+  },
+  {
+    key: 'anthropic',
+    label: 'Anthropic',
+    api: 'anthropic-messages',
+    baseUrl: 'https://api.anthropic.com',
+    models: [
+      { id: 'claude-opus-4-1', name: 'Claude Opus 4.1', contextWindow: 200_000 },
+      { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', contextWindow: 200_000 },
+      { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', contextWindow: 200_000 },
+    ],
   },
 ];
 
@@ -122,11 +141,14 @@ function normModels(raw: unknown): ProviderModel[] {
   const out: ProviderModel[] = [];
   for (const m of raw) {
     if (!m || typeof m !== 'object') continue;
-    const o = m as { id?: unknown; name?: unknown; price?: unknown };
+    const o = m as { id?: unknown; name?: unknown; price?: unknown; contextWindow?: unknown };
     const id = String(o.id ?? '').trim();
     if (!id) continue;
     const name = String(o.name ?? '').trim() || id;
-    out.push(o.price && typeof o.price === 'object' ? { id, name, price: o.price as TokenPrice } : { id, name });
+    const ctx = Number(o.contextWindow);
+    if (Number.isFinite(ctx) && ctx > 0) out.push({ id, name, contextWindow: Math.floor(ctx) });
+    else out.push({ id, name });
+    if (o.price && typeof o.price === 'object') out[out.length - 1].price = o.price as TokenPrice;
   }
   return out;
 }
@@ -422,14 +444,31 @@ export function catalog(): CatalogProvider[] {
   }));
 }
 
-export function resolvePick(pick: string): { baseUrl: string; apiKey: string; model: string; provider: string } | null {
+export function resolvePick(pick: string): { baseUrl: string; apiKey: string; model: string; provider: string; api: string } | null {
   const i = pick.indexOf('::');
   if (i < 0) return null;
   const key = pick.slice(0, i);
   const model = pick.slice(i + 2);
   const p = load().find((x) => x.key === key);
   if (!p || !model) return null;
-  return { baseUrl: p.baseUrl, apiKey: p.apiKey, model, provider: p.key };
+  return { baseUrl: p.baseUrl, apiKey: p.apiKey, model, provider: p.key, api: p.api };
+}
+
+/** 模型条目没填 contextWindow 时的兜底窗口 —— 压缩阈值那个分母的最后一道保险 */
+export const DEFAULT_CONTEXT_WINDOW = 128_000;
+
+/**
+ * 这个 pick 的上下文窗口（token）。条目没填就落回 DEFAULT_CONTEXT_WINDOW。
+ *
+ * 压缩阈值拿它当分母，**逐条模型生效**：同一台机器上换个模型，门槛就跟着换，
+ * 不再是一个数管到底（32K 的免费模型和 1M 的长窗口模型共用一个分母，两边都是错的）。
+ */
+export function contextWindowOf(pick: string): number {
+  const i = pick.indexOf('::');
+  if (i < 0) return DEFAULT_CONTEXT_WINDOW;
+  const p = load().find((x) => x.key === pick.slice(0, i));
+  const n = p?.models.find((m) => m.id === pick.slice(i + 2))?.contextWindow;
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_CONTEXT_WINDOW;
 }
 
 /**

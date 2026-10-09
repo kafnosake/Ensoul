@@ -202,6 +202,45 @@
   background: rgba(229, 100, 95, 0.12);
 }
 
+/* 折叠行上的窗口值：跟右边的单价摘要一样安静，只是个读数，不摆输入框 */
+.pv-ctx-sum {
+  flex: none;
+  padding: 0 6px;
+  font-size: 11px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 展开区里的窗口字段：跟价目区同一个节奏（标签 + 输入 + 说明） */
+.pv-ctx-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 6px;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.pv-ctx-field span {
+  flex: none;
+  width: 30px;
+  color: var(--faint);
+}
+
+.pv-ctx-field input.pv-ctx {
+  flex: 0 0 96px;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.pv-ctx-field em {
+  flex: 1;
+  min-width: 0;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--faint);
+}
+
 .pv-price-sum {
   flex: none;
   font-size: 11px;

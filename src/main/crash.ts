@@ -59,9 +59,29 @@ function writeReport(kind: string, detail: unknown): string | null {
   }
 }
 
-function announce(title: string, detail: string) {
-  if (!app.isReady()) return;
-  void dialog.showMessageBox({ type: 'error', title, message: title, detail, buttons: [t('知道了')] }).catch(() => {});
+/** 同一个错反复抛，别糊用户一屏原生框：同类一分钟内只弹一次，且同时只留一个框 */
+const ANNOUNCE_WINDOW_MS = 60_000;
+const announcedAt = new Map<string, number>();
+let announceOpen = false;
+
+function canAnnounce(key: string): boolean {
+  if (!app.isReady()) return false;
+  const now = Date.now();
+  if (now - (announcedAt.get(key) || 0) < ANNOUNCE_WINDOW_MS) return false;
+  if (announceOpen) return false;
+  announcedAt.set(key, now);
+  announceOpen = true;
+  return true;
+}
+
+function announce(key: string, title: string, detail: string) {
+  if (!canAnnounce(key)) return;
+  void dialog.showMessageBox({ type: 'error', title, message: title, detail, buttons: [t('知道了')] }).catch(() => {}).finally(announceDone);
+}
+
+/** 框关掉了（或弹失败了），放行下一次 */
+function announceDone() {
+  announceOpen = false;
 }
 
 /** 装一次，尽量早调 —— 晚一秒就有一秒的死法是静默的 */
@@ -69,7 +89,7 @@ export function installCrashGuard() {
   process.on('uncaughtException', (err) => {
     const file = writeReport('uncaught-exception', err);
     console.error('[崩溃] 主进程未捕获异常：', err);
-    announce(t('主进程出错了'), `现场已经记下来了${file ? `：\n${file}` : ''}\n\n软件还活着，但状态可能不干净 —— 建议重启一次。`);
+    announce('uncaught-exception', t('主进程出错了'), `现场已经记下来了${file ? `：\n${file}` : ''}\n\n软件还活着，但状态可能不干净 —— 建议重启一次。`);
   });
 
   process.on('unhandledRejection', (reason) => {

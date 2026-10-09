@@ -25,8 +25,12 @@ interface MonitorUnit {
    */
   status: 'working' | 'waiting' | 'deliverable' | 'idle' | 'offline' | 'confirm' | 'error';
   statusText: string;
-  /** 核心挂着"等你点头"的请求（重启用的是这条路，见 plugins/restart-approval） */
+  /** 核心挂着"等你点头"或"等待选择"的请求（见 plugins/restart-approval 与 plugins/ask-user） */
   ask?: boolean;
+  /** 是否存在待回答的问题表单（来自 ask_user_question 等） */
+  askQuestions?: boolean;
+  /** 询问的标题或具体问题内容 */
+  askText?: string;
   /** 还没看过的回信条数 —— 绿点 + 数字徽章就是它 */
   unread?: number;
   /** 最后一条助手回信的**消息 id** —— 已读水位锚在它上面（不用时间戳，理由见 SeenRec） */
@@ -275,6 +279,11 @@ export function sortUnits(list: MonitorUnit[], pins: Set<string>): MonitorUnit[]
     const pb = pins.has(b.id) ? 0 : 1;
     if (pa !== pb) return pa - pb;
 
+    // 1 级：等待选择/等待点头（ask）拥有最高紧急度，自动浮在最上方，绝不沉底！
+    const askA = a.ask ? 0 : 1;
+    const askB = b.ask ? 0 : 1;
+    if (askA !== askB) return askA - askB;
+
     // 所有会话严格按最新送信/回信时间倒序排列
     const ta = getLatestTime(a);
     const tb = getLatestTime(b);
@@ -284,14 +293,13 @@ export function sortUnits(list: MonitorUnit[], pins: Set<string>): MonitorUnit[]
 
 /**
  * 一个单位只画一个点，按这个优先级取一个：
- *   正在输出(working) > 等你点头(ask) > 等你回话(confirm) > 上一轮失败(error) > 有回信没看(unread) > 成果可交付(deliverable) > 空闲(idle) > 未开班(offline)
+ *   等你选择/等你点头(ask) > 正在输出(working) > 等你回话(confirm) > 上一轮失败(error) > 有回信没看(unread) > 成果可交付(deliverable) > 空闲(idle) > 未开班(offline)
  * 
- * 铁律：正在输出/运转具有绝对的实时物理性！
- * 即使后台还挂着重启或等待点头的事务，只要会话当前正在运转输出（用户追加了会话或智能体在跑），必须呈现青色光流与运转微点！
+ * 阻断式等待用户确认或选择题具有第一优先级，必须亮黄灯提醒，避免用户误以为正在输出而无限期等待！
  */
 function dotOf(u: MonitorUnit): string {
-  if (u.status === 'working') return 'working';
   if (u.ask) return 'ask';
+  if (u.status === 'working') return 'working';
   if (u.status === 'confirm') return 'confirm';
   if (u.status === 'error') return 'error';
   if (u.unread && u.unread > 0) return 'unread';
@@ -1104,22 +1112,35 @@ export function SidebarMonitor({
           });
         }
 
-        // 核心那边挂着"等你点头"的请求 —— 只有主进程知道，文件里看不出来，所以每拍问一次
+        // 核心挂着"等你点头"或"等待选择"的请求 —— 只有主进程知道，每拍查一次
         const askIds = list.filter((u) => u.panelId).map((u) => u.panelId as string);
         if (askIds.length) {
           const asks = await Promise.all(askIds.map((id) => api.chat.askState(id).catch(() => null)));
           askIds.forEach((id, i) => {
             const hit = asks[i];
             if (!hit || !hit.ask) return;
-            const u = list.find((x) => x.panelId === id);
+            const u = list.find((x) => x.panelId === id || x.id === id);
             if (u) {
               u.ask = true;
-              u.statusText = t('等你点头');
+              const hasQ = Array.isArray(hit.ask.questions) && hit.ask.questions.length > 0;
+              u.askQuestions = hasQ;
+              if (hasQ) {
+                u.statusText = t('等待选择');
+                const firstQ = hit.ask.questions![0];
+                const qText = firstQ ? (firstQ.header ? `${firstQ.header}: ${firstQ.question}` : firstQ.question) : '';
+                u.askText = qText;
+                u.taskSnippet = `${t('【等待选择】')} ${cleanText(qText, 40)}`;
+              } else {
+                u.statusText = t('等你确认');
+                const tText = hit.ask.text || '';
+                u.askText = tText;
+                u.taskSnippet = `${t('【待确认】')} ${cleanText(tText, 40)}`;
+              }
             }
           });
         }
 
-        // 置顶 > 有回信(1) > 正在输出(2) > 只被提问(3)，同层内正在输出优先、时间倒序
+        // 置顶 > 等待选择/确认(ask) > 有回信(1) > 正在输出(2) > 只被提问(3)
         saveSeen(seenRef.current); // 这一拍里起底/推过的水位要落盘
         setUnits(sortUnits(list, pinsRef.current));
       } catch {}
@@ -1127,9 +1148,15 @@ export function SidebarMonitor({
 
     loadData();
     const timer = setInterval(loadData, 1000);
+    const unbindAsk = api.chat?.onAsk
+      ? api.chat.onAsk(() => {
+          loadData();
+        })
+      : undefined;
     return () => {
       unmounted = true;
       clearInterval(timer);
+      if (unbindAsk) unbindAsk();
     };
   }, []);
 
@@ -1717,6 +1744,10 @@ export function SidebarMonitor({
                 <div className={`sbm-dot ${dot}`} />
                 {unit.unread && unit.unread > 0 ? (
                   <span className="sbm-badge">{unit.unread}</span>
+                ) : unit.ask ? (
+                  <span className="sbm-badge is-ask" title={unit.statusText}>
+                    {unit.askQuestions ? '?' : '!'}
+                  </span>
                 ) : null}
               </div>
 
@@ -1744,7 +1775,16 @@ export function SidebarMonitor({
                   </button>
                   <span className="sbm-time">{formatRelativeTime(Math.max(unit.replyAt || 0, unit.askingAt || 0, unit.at || 0))}</span>
                 </div>
-                <div className="sbm-snippet">{unit.taskSnippet || t('暂无动态')}</div>
+                <div className={`sbm-snippet ${unit.ask ? 'is-ask-snippet' : ''}`}>
+                  {unit.ask ? (
+                    <>
+                      <span className="sbm-ask-tag">{unit.askQuestions ? t('待选择') : t('待确认')}</span>
+                      <span className="sbm-ask-text">{unit.askText || unit.taskSnippet}</span>
+                    </>
+                  ) : (
+                    unit.taskSnippet || t('暂无动态')
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -1851,7 +1891,16 @@ export function SidebarMonitor({
                 </div>
               )}
 
-              {currentDisplay.popoverText ? (
+              {currentDisplay.ask ? (
+                <div className="sbm-pop-block is-ask">
+                  <div className="sbm-pop-block-label" style={{ color: '#eab308', fontWeight: 600 }}>
+                    {currentDisplay.askQuestions ? t('【等待您的选择】') : t('【请您确认】')}
+                  </div>
+                  <div className="sbm-pop-block-text" style={{ fontWeight: 500 }}>
+                    {currentDisplay.askText || currentDisplay.taskSnippet || t('有待处理的提问，请进入面板选择或确认')}
+                  </div>
+                </div>
+              ) : currentDisplay.popoverText ? (
                 <div className={`sbm-pop-block ${currentDisplay.status === 'working' ? 'is-active' : ''}`}>
                   <div className="sbm-pop-block-label">{currentDisplay.status === 'working' ? t('正在推进') : t('最新内容')}</div>
                   <div className="sbm-pop-block-text">{currentDisplay.popoverText}</div>

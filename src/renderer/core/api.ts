@@ -526,6 +526,11 @@ export interface AskView {
 export interface CatalogModel {
   /** 单价（元 / 百万 token）：公开信息，照发给前台 —— 设置面板要靠它来编辑 */
   price?: TokenPrice;
+  /**
+   * 这个模型的上下文窗口（token），设置面板里可编辑。
+   * 压缩阈值拿它当分母，**逐条模型生效** —— 留空按 128K 兜底。
+   */
+  contextWindow?: number;
   id: string;
   name: string;
 }
