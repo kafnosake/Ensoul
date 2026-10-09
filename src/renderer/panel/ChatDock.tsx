@@ -3,15 +3,18 @@ import type { ChatResponse, LiveTask, Panel, PanelNote } from '../../shared/type
 import { api } from '../core/api';
 import type { AskView } from '../core/api';
 import { IconChevron } from '../ui/icons';
-import { onAppearance } from '../ui/theme';
+import { onAppearance, getToolStepMode } from '../ui/theme';
 import { PanelZoomChip } from '../ui/ZoomOverlay';
 import { Composer } from './chat/Composer';
 import { Message } from './chat/Message';
+import { ToolGroup } from './chat/toolgroup';
 import { applyChatStreamEvent, buildChatTimeline, emptyChatStream, restoreChatStream } from './chat/timeline';
 import type { ChatStreamEvent } from './chat/timeline';
 import { renderMarkdown } from '../ui/markdown';
 import { LiveCard } from './chat/LiveCard';
 import { NoteGauge } from './chat/NoteGauge';
+import { AskBar } from './chat/AskBar';
+import type { AskAnswerDraft } from './chat/AskBar';
 import { GitPackagerDock } from './chat/GitPackagerDock';
 import { HistRail } from './chat/HistRail';
 import { FOLLOW_SLACK, PAGE, PEEK_W } from './chat/constants';
@@ -81,6 +84,7 @@ const writeHistOpen = (id: string, on: boolean) => {
 export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Panel; hostKey?: string; full?: boolean }) {
   const [, setAppearanceTick] = useState(0);
   useEffect(() => onAppearance(() => setAppearanceTick(t => t + 1)), []);
+  const stepMode = getToolStepMode();
   const [stream, setStream] = useState('');
   const [liveResponses, setLiveResponses] = useState<ChatResponse[]>([]);
   /** 这一轮模型想的过程（思维链）：不进正文、不进历史，只给用户看它没在发呆 */
@@ -101,18 +105,31 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
    */
   const [live, setLive] = useState<{ tasks: LiveTask[]; images: string[] }>({ tasks: [], images: [] });
   const [askErr, setAskErr] = useState('');
+
+  /** 有一批题要答时：问题卡片接管输入框那一格，Composer 让位（dsh 的附着式卡片就该这样） */
+  const hasQuestions = Boolean(ask && ask.questions && ask.questions.length > 0);
   /**
    * 全局挂着"等全部会话结束就重启" —— 这件事不在本面板上判（它盯的是整个软件），
    * 主进程说了算。它一旦为真，这个输入框整个换一套手势（见 Composer）。
    */
   const [restartArmed, setRestartArmed] = useState(false);
-  /** 历史会话抽屉开着没有 —— **按面板记**（localStorage），重启不丢。默认开着 */
+  /**
+   * 贴底部时历史会话开着没有 —— **按面板记**（localStorage），重启不丢。默认开着：
+   * 贴底部那会儿消息列居中、左右各一大片留白，它住在留白里，一点代价都没有。
+   */
   const [hist, setHist] = useState(() => readHistOpen(panel.id));
   useEffect(() => setHist(readHistOpen(panel.id)), [panel.id]);
-  const persistHist = (on: boolean) => {
-    setHist(on);
-    writeHistOpen(panel.id, on);
-  };
+  /**
+   * 停到侧面时的历史会话 —— **默认收起，不常驻**。
+   *
+   * 侧面是把一条窄栏（默认 360）一切两半：历史栏一展开，正文就只剩一半 ——
+   * 贴底部那套「默认开着」的理由在这儿不成立。所以这个停法下一律从收起开始，
+   * 要看得自己点头栏那颗 ☰。这个开合**只活在当前停法里**，不动上面那份按面板
+   * 记着的偏好：换回底部，该怎么显示还怎么显示。
+   */
+  const [histSide, setHistSide] = useState(false);
+  /** 换面板、换停法 —— 侧栏里一律回到「收起」 */
+  useEffect(() => { setHistSide(false); }, [panel.id, panel.chatSide]);
   const input = useRef<HTMLTextAreaElement>(null);
   const log = useRef<HTMLDivElement>(null);
   /** 会话区那一块 —— 会话列的上下限按它的实际宽度算 */
@@ -178,13 +195,43 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
     io.observe(el);
     return () => io.disconnect();
   }, [panel.id, needBody]);
+  type TimelineItem =
+    | { type: 'msg'; msg: (typeof messages)[number] }
+    | { type: 'tool-group'; id: string; tools: typeof messages };
+
+  const timeline = React.useMemo(() => {
+    if (stepMode !== 'compact') {
+      return messages.map((m) => ({ type: 'msg' as const, msg: m }));
+    }
+    const res: TimelineItem[] = [];
+    let curTools: typeof messages = [];
+    for (const m of messages) {
+      if (m.role === 'tool') {
+        curTools.push(m);
+      } else {
+        if (curTools.length > 0) {
+          res.push({ type: 'tool-group', id: 'tg-' + curTools[0].id, tools: curTools });
+          curTools = [];
+        }
+        res.push({ type: 'msg', msg: m });
+      }
+    }
+    if (curTools.length > 0) {
+      res.push({ type: 'tool-group', id: 'tg-' + curTools[0].id, tools: curTools });
+    }
+    return res;
+  }, [messages, stepMode]);
+
   /**
-   * 从第几条开始渲染 —— 这是"长对话干什么都卡"的正解。
+   * 从第几个条目开始渲染 —— 这是"长对话干什么都卡"的正解。
    *
    * 卡的不是宽度这个数字，是这一列里挂着多少条 DOM：上千条全在文档里，
    * 改一次宽度就要把上千条重新排版一遍，拖起来一帧一卡，滚动和流式也一样。
    * 所以老的那些**先不放进文档**，上面挂一个按钮，点一下再放一段
    * （只给最近的一段，更早的手动点开）。
+   *
+   * 在简洁模式（compact）下，连续的工具步骤已折叠为 ToolGroup，
+   * 折叠的步骤不挂载内部 DOM，整个工具组只占 1 个展示条目，不逐条吃掉这 100 条渲染配额。
    *
    * null = 还跟着尾巴走（起点永远是"末尾往前数 PAGE 条"）。一旦点过按钮，
    * 就钉在具体的下标上 —— 钉住之后来了新消息，窗口往下长，**下面进新的、
@@ -195,9 +242,10 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
    */
   const [from, setFrom] = useState<number | null>(null);
   useEffect(() => setFrom(null), [panel.id]); // 换一块面板 = 换一段对话
-  const tail = Math.max(0, messages.length - PAGE);
+  const tail = Math.max(0, timeline.length - PAGE);
   const start = from == null ? tail : Math.min(from, tail);
-  const visible = messages.slice(start);
+  const visibleTimeline = timeline.slice(start);
+
   /**
    * 没钉住的时候，窗口是"末尾往前数 PAGE 条"—— 来一条新消息，整个窗口就往后滑一格，
    * 最上面那一条被挤出去。用户刚好在往回读，就会看见自己读的那行突然往上跳。
@@ -207,12 +255,12 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
    * 用新值等于什么都没钉（新的起点已经把最上面那条挤掉了）。
    */
   const startRef = useRef(start);
-  const prevLen = useRef(messages.length);
+  const prevLen = useRef(timeline.length);
   useEffect(() => {
-    if (messages.length > prevLen.current && !follow.current) setFrom(startRef.current);
-    prevLen.current = messages.length;
+    if (timeline.length > prevLen.current && !follow.current) setFrom(startRef.current);
+    prevLen.current = timeline.length;
     startRef.current = start;
-  }, [messages.length, start]);
+  }, [timeline.length, start]);
   /** 往上放一段的时候记一下"视口离底部多远"，补回去就看不见跳动 */
   const keepAt = useRef(0);
   const showMore = () => {
@@ -254,6 +302,23 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
    * **跟便签没有关系**：那是这一列的事，存 panel.chatW（见 useSessionWidth）。
    */
   const sess = useSessionWidth(panel);
+  /** 会话区停哪一边 —— 没这个字段（老面板）就是一直的样子：贴底部 */
+  const side = full ? null : panel.chatSide ?? null;
+  /**
+   * 历史栏此刻该不该露出来，以及头栏那颗 ☰ 管的是哪个开关：
+   * 贴底部用按面板记住的那份（默认开），停侧面用 histSide（默认关）。
+   */
+  const histOn = side ? histSide : hist;
+  const persistHist = (on: boolean) => {
+    if (side) return setHistSide(on);
+    setHist(on);
+    writeHistOpen(panel.id, on);
+  };
+  /** 轮转：底部 → 右侧 → 左侧 → 底部 */
+  const cycleSide = () => {
+    const next = side === null ? 'right' : side === 'right' ? 'left' : undefined;
+    void api.panel.patch(panel.id, next ? { chatSide: next } : { chatSide: undefined });
+  };
   /** 鼠标停在哪一格刻度上 —— 那一条的内容要浮出来 */
   const [peek, setPeek] = useState<{ note: PanelNote; top: number; left: number } | null>(null);
   /** 点住的那一格：鼠标移开也不消失，可以慢慢看、滚、选中文字 */
@@ -636,7 +701,7 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
     // 旧格式记录 / 消息被改写后重新定位到真实位置 → 回填，一次收敛
     if (mig.length) migrateHighlights(mig);
     return () => clearHighlights(panel.id);
-  }, [highlights, visible.length, !stream]);
+  }, [highlights, visibleTimeline.length, !stream]);
 
   /** 单击已标记的文字 → 把这一整段（哪怕跨节点、跨格式）完整选中并弹浮窗 */
   const clickSelectMark = (clientX: number, clientY: number): boolean => {
@@ -781,11 +846,18 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
 
   return (
     <div
-      className={`chatdock${full ? ' is-full' : ''}${restartArmed ? ' is-restart-armed' : ''}`}
+      className={`chatdock${full ? ' is-full' : ''}${side ? ` is-side-${side}` : ''}${restartArmed ? ' is-restart-armed' : ''}`}
       ref={sess.root}
       /* 会话列的有效宽度由它算（CSS 里的 --col-w / --col-in，见 chat.css）。
          拖动中这个变量由 useSessionWidth 直接写，不走 React —— 见那边的说明。 */
-      style={{ '--chat-w': `${sess.width}px` } as React.CSSProperties}
+      style={
+        {
+          '--chat-w': `${sess.width}px`,
+          // 只有**用户拖出来过**才写死这个值；没拖过就走 CSS 里那个 25%。
+          // 一律写死像素值等于把「按面板比例」废掉 —— 面板缩放了它不跟，越看越别扭。
+          ...(panel.chatWSide ? { '--chat-w-side': `${panel.chatWSide}px` } : {}),
+        } as React.CSSProperties
+      }
     >
       <div className="dock-head" onClick={() => !full && setOpen((v) => !v)}>
         <span className={`dock-caret${open ? ' is-open' : ''}`}>
@@ -795,15 +867,35 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
         {/* 历史会话抽屉的开合 —— 就摆在头栏这里（deepseek 那颗也在左上角）。
             收起之后**左边什么都不留**：不看历史的人一点代价都没有。 */}
         <button
-          className={`dock-hist${hist ? ' on' : ''}`}
-          title={t(hist ? '收起历史' : '展开历史')}
+          className={`dock-hist${histOn ? ' on' : ''}`}
+          title={t(histOn ? '收起历史' : '展开历史')}
           onClick={(e) => {
             e.stopPropagation();
-            persistHist(!hist);
+            // 拨的是**此刻露着的那个**开关（histOn）：侧栏里 hist 还是贴底部那份记忆，
+            // 拿它取反会让 ☰ 点了没反应。
+            persistHist(!histOn);
           }}
         >
           ☰
         </button>
+        {!full && (
+          <button
+            className={`dock-side${side ? ' on' : ''}`}
+            title={t(
+              side === 'left'
+                ? '会话区在左侧，点一下放回底部'
+                : side === 'right'
+                  ? '会话区在右侧，点一下挪到左侧'
+                  : '会话区在底部，点一下停到右侧',
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              cycleSide();
+            }}
+          >
+            {side === 'left' ? '◧' : side === 'right' ? '◨' : '▭'}
+          </button>
+        )}
         <span className="dock-note">{messages.length > 0 ? t('{n} 条', { n: messages.length }) : ''}</span>
         <SubAgentHeader panelId={panel.id} />
         
@@ -811,7 +903,7 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
           {/* 插件挂的顶上状态（git 分支这类）：插件跑在主进程、画不了界面，
               所以它只说「显示什么」，画由这里来 —— 关掉那个插件，这块干净消失。 */}
           {(ws?.status?.[panel.id] ?? [])
-            .filter((s) => s.slot === 'head')
+            .filter((s) => s.slot === 'head' && Boolean(s.text?.trim()))
             .map((s) => (
               <span className="head-status" key={s.id} title={s.title}>
                 {s.text}
@@ -868,7 +960,8 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
           数据是插件写的 .ensoul/state/histconv/<面板 id>.json，
           动作写 .ensoul/state/histconv.cmd.json 递回插件（见 useHist）。
           开合由头栏那颗 ☰ 管（histOpen）；它自己量位置，挤不下就让位。 */}
-      {open && hist && <HistRail panel={panel} />}
+      {/* 侧栏里它**默认不摆**（见 histSide）：窄栏经不起一半给历史，要看再点 ☰。 */}
+      {open && histOn && <HistRail panel={panel} />}
 
       {/* 消息列这一块（列 + 那两条可拖的边 + 便签刻度）。
           **单独包一层**：历史那一栏是它的兄弟、绝对定位在它左边，两者谁也不覆盖谁。 */}
@@ -877,6 +970,7 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
       {open && (
         <div
           className="dock-log"
+          data-step-mode={stepMode}
           ref={log}
           onMouseUp={(e) => {
             setTimeout(() => {
@@ -977,23 +1071,36 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
               {t('显示更早的 {n} 条', { n: Math.min(start, PAGE) })}<span className="dock-more-rest">{t('（还有 {n} 条）', { n: start })}</span>
             </button>
           )}
-          {visible.map((m) => (
-            <Message
-              key={m.id}
-              panel={panel}
-              id={m.id}
-              role={m.role}
-              content={m.displayContent ?? m.content}
-              edited={m.edited}
-              at={m.createdAt}
-              stats={m.stats}
-              images={m.images}
-              steer={m.steer}
-              onQuoteImage={(img) => addQuote({ type: 'image', content: img })}
-              onEditUserMsg={handleEditUserMsg}
-              onResendUserMsg={handleResendUserMsg}
-            />
-          ))}
+          {visibleTimeline.map((item) =>
+            item.type === 'tool-group' ? (
+              <ToolGroup
+                key={item.id}
+                tools={item.tools}
+                panel={panel}
+                stepMode={stepMode}
+                onQuoteImage={(img) => addQuote({ type: 'image', content: img })}
+                onEditUserMsg={handleEditUserMsg}
+                onResendUserMsg={handleResendUserMsg}
+              />
+            ) : (
+              <Message
+                key={item.msg.id}
+                panel={panel}
+                id={item.msg.id}
+                role={item.msg.role}
+                content={item.msg.displayContent ?? item.msg.content}
+                edited={item.msg.edited}
+                at={item.msg.createdAt}
+                stepMode={stepMode}
+                stats={item.msg.stats}
+                images={item.msg.images}
+                steer={item.msg.steer}
+                onQuoteImage={(img) => addQuote({ type: 'image', content: img })}
+                onEditUserMsg={handleEditUserMsg}
+                onResendUserMsg={handleResendUserMsg}
+              />
+            )
+          )}
           {/* 这一轮**正在发生的事**：已经吐出来的正文 / 此刻在干什么 / 慢活跑到哪了。
               合成**一块**（.run-block），顺序就是这个时间线 —— 上面的都已经发生过了，
               最下面那条说的是"现在"。以前是三个兄弟节点各飘一处、顺序还是反的
@@ -1045,7 +1152,16 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
 
       {/* 会话列的那两条边：**中轴对称**、几乎看不见，拖它就是改会话区的宽度（双击复位）。
           它们只属于消息列 —— 便签那条刻度是另一件东西，落在列的留白里，谁也不挡谁。 */}
-      {open && (
+      {open && side && (
+        <div
+          className="dock-gutter"
+          onPointerDown={(e) => sess.startSide(e, body.current)}
+          onDoubleClick={sess.resetSide}
+          title={t('拖动改宽度，双击回到默认')}
+        />
+      )}
+
+      {open && !side && (
         <>
           <div
             className="dock-edge dock-edge-l"
@@ -1072,8 +1188,34 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
       </div>
       </div>
 
+      {/*
+       * 模型卡在一次工具调用上等人回答 —— 问题表单。
+       *
+       * 跟下面那条「请用户点头」的老横条是两种东西：那个是审批（一句话 + 按钮，
+       * 点了核心替插件跑一次工具）；这个是**问答**（一批题、翻页、单选选中即前进、
+       * 能多选、能填自定义、能跳过），提交之后结构化答案顺 then 那条路回到提问方。
+       * 所以先判 questions：有题目就走表单，没有才落到老横条。
+       */}
+      {ask && ask.questions && ask.questions.length > 0 && (
+        <AskBar
+          ask={{ text: ask.text, confirm: ask.confirm, cancel: ask.cancel, questions: ask.questions }}
+          err={askErr}
+          onSubmit={(answers: AskAnswerDraft[]) => {
+            setAskErr('');
+            void api.chat.askConfirm(panel.id, { answers }).then((r) => {
+              if (!r?.ok && r?.error) setAskErr(r.error);
+            });
+          }}
+          onCancel={() => {
+            setAskErr('');
+            // 右上角 ✕ —— 整张问卷作废（askCancel）。题内「跳过」不走这里
+            void api.chat.askCancel(panel.id);
+          }}
+        />
+      )}
+
       {/* 插件挂的请求：它自己按不下去这个按钮 —— 按下去等于把这一轮还没落盘的回复一起收掉 */}
-      {ask && (
+      {ask && !(ask.questions && ask.questions.length > 0) && (
         <div className="ask-bar">
           <div className="ask-bar-text">
             {ask.text}
@@ -1127,6 +1269,8 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
         </div>
       )}
 
+      {/* 有问题卡片时它**占掉输入框这一格**（dsh 就是这么做的：附着式卡片接管编辑器位置） */}
+      {!hasQuestions && (
       <Composer
         panel={panel}
         hostKey={hostKey}
@@ -1141,6 +1285,7 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
         onRemoveQuote={removeQuote}
         onClearQuotes={clearQuotes}
       />
+      )}
 
       {/* 划词小浮窗：引用、复制、标记（高亮） */}
       {selectionPos && (

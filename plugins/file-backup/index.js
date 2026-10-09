@@ -5,7 +5,7 @@
  * 面板有 revisions 能回退，源码文件什么都没有。这个插件挂在写文件之前，
  * 把旧内容存一份，并给出列备份 / 回滚两个工具。
  *
- * 备份放在工作区的 .ensoul/backups/ 下，按文件分槽：
+ * 备份放在应用数据根的项目分区 .ensoul/backups/ 下，按文件分槽：
  *   业务/前端/index.ts  ->  .ensoul/backups/业务__前端__index.ts/<时间戳>.bak
  */
 
@@ -24,13 +24,14 @@ const PARAMS = {
 module.exports = {
   params: PARAMS,
   name: 'file-backup',
+  storage: { project: ['.ensoul/state/file-backup.json', '.ensoul/backups'] },
   description: t('写文件前自动备份旧内容，并提供 list_backups / restore_backup 两个工具'),
 
   setup(api) {
     const root = api.workspace;
     /** 留几份是参数（改了参数这个插件会重新 setup，所以 setup 时读一次就够） */
     const maxKeep = Math.max(1, Math.round(Number(api.param('keep')) || 40));
-    const box = path.join(root, '.ensoul', 'backups');
+    const box = api.dataPath('.ensoul/backups');
 
     const stamp = () => new Date().toISOString().replace(/[:.]/g, '-');
     const slot = (rel) => path.join(box, String(rel || '').replace(/[\\/]/g, '__'));

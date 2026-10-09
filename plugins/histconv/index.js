@@ -125,7 +125,7 @@ function fileOf(pid) {
 /** 绝对路径（插件落盘用） */
 function absOf(pid) {
   const rel = fileOf(pid);
-  return rel ? path.join(api.workspace || '.', rel) : '';
+  return rel ? api.dataPath(rel) : '';
 }
 
 /**
@@ -510,7 +510,7 @@ function sweepArchive(box, p) {
 function knownPanels() {
   try {
     return fs
-      .readdirSync(path.join(api.workspace || '.', DIR))
+      .readdirSync(api.dataPath(DIR))
       .filter((f) => f.endsWith('.json'))
       .map((f) => f.slice(0, -5));
   } catch {
@@ -548,7 +548,7 @@ function prune(alive, now) {
  * 只在第一回跑的时候做一次；搬完就没了，之后这函数几乎不干活。
  */
 function migrateLegacy() {
-  const legacy = path.join(api.workspace || '.', LEGACY);
+  const legacy = api.dataPath(LEGACY);
   let raw;
   try {
     raw = JSON.parse(fs.readFileSync(legacy, 'utf8'));
@@ -579,7 +579,7 @@ function migrateLegacy() {
 
 /** 命令文件在哪 */
 function cmdPath() {
-  return path.join(api.workspace || '.', CMD_FILE);
+  return api.dataPath(CMD_FILE);
 }
 
 /**

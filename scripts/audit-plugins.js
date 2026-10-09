@@ -71,6 +71,7 @@ const RULES = [
 /** 确实不该按面板分的，写明白为什么 —— 这是给人看的，不是给判据开的后门 */
 const EXEMPT = [
   { plugin: 'dispatch', rule: 'memory', why: 'panelStamp 是**按面板 id** 存的（applyPending 里 get/set 都用 p.id，就是面板 id）—— 它记的是"这块面板的对话长度 / 压到哪了"，用来判提示词缓存还热不热；判据认的字面是 panelId，那两处离声明 95 行、超出「附近」的 60 行' },
+  { plugin: 'restart-guard', rule: 'memory', why: 'SHELL_TOOLS / SCRIPT_EXT 是工具名与后缀名白名单（哪些工具能起任意命令、哪些文件当脚本读）—— 定义域是工具名/文件类型不是面板，全局一份才对，跟 work-ledger 的 WRITE_TOOLS、ui-refresh 的 EXTS 同一条道理' },
   { plugin: 'remote', rule: 'state', why: '远程访问的开关/端口/隧道属于整台机器一份，不属于任何一块面板' },
   { plugin: 'remote', rule: 'cmd', why: '同上：remote 的命令是"开/关/换端口"，改的是机器的状态，不是某块面板的活' },
   { plugin: 'work-ledger', rule: 'state', why: '台账按**文件**分槽（files[路径] = 谁改的、什么时候），不按面板 —— 它记的就是"这个文件被别的面板动过"这个跨面板事实，按面板分槽等于把台账切成 N 份，正好看不见别人。' },

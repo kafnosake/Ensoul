@@ -4,6 +4,7 @@ import { AsyncLocalStorage } from 'async_hooks';
 import { t } from '../shared/i18n';
 import { fileWrites } from './file-writes';
 import type { JsonSnapshot } from '../shared/json-snapshot';
+import { isRuntimePath, logicalRuntimePath, projectDataPath, runtimePath } from './storage';
 
 /**
  * 工作区文件访问 —— 让"文件"面板和"文本"面板有真东西可看。
@@ -129,10 +130,10 @@ export function panelSpaceDir(panelId: string): string {
  */
 export function dropPanelSpace(panelId: string): void {
   const rel = panelSpaceDir(panelId);
-  if (!rel || !ROOT) return;
+  if (!rel) return;
   try {
-    const base = path.join(ROOT, ".ensoul", "panels");
-    const abs = path.resolve(ROOT, rel);
+    const base = runtimePath('.ensoul/panels', ROOT);
+    const abs = runtimePath(rel, ROOT);
     // 下面一个是递归删：落点但凡不是 panels 底下的那一层，宁可什么都不删，
     // 也不能像 ".." 那样把整个 .ensoul（state、backups 全在里面）端掉。
     if (!abs.startsWith(base + path.sep)) return;
@@ -143,6 +144,7 @@ export function dropPanelSpace(panelId: string): void {
 }
 
 export function safePath(rel: string): string {
+  if (isRuntimePath(rel)) return runtimePath(rel, ROOT);
   if (isUnconfined()) return path.resolve(ROOT, rel || '.');
   if (!ROOT) throw new Error(t('还没选工作区：点左上角「选工作区」挑一个目录'));
   const abs = path.resolve(ROOT, rel || '.');
@@ -165,6 +167,29 @@ export interface DirEntry {
 
 export function listDir(rel = '.'): DirEntry[] {
   const abs = safe(rel);
+  const logical = isRuntimePath(rel) ? logicalRuntimePath(rel) : '';
+  if (logical) {
+    const entries = new Map<string, DirEntry>();
+    const candidates = [abs];
+    if (ROOT) candidates.push(projectDataPath(logical, ROOT), path.join(ROOT, logical));
+    for (const dir of new Set(candidates)) {
+      if (!fs.existsSync(dir)) continue;
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (SKIP.has(entry.name)) continue;
+        const child = logical + '/' + entry.name;
+        const full = path.join(dir, entry.name);
+        if (!entry.isDirectory() && runtimePath(child, ROOT) !== full) continue;
+        if (entry.isDirectory() && runtimePath(child, ROOT) !== full && !candidates.includes(runtimePath(child, ROOT))) {
+          const selected = runtimePath(child, ROOT);
+          if (!fs.existsSync(selected) && dir === path.join(ROOT, logical)) continue;
+        }
+        let size = 0;
+        try { size = entry.isDirectory() ? 0 : fs.statSync(full).size; } catch { /* 文件刚被移走 */ }
+        entries.set(entry.name, { name: entry.name, dir: entry.isDirectory(), path: child, size });
+      }
+    }
+    return [...entries.values()].sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name, 'zh'));
+  }
   return fs
     .readdirSync(abs, { withFileTypes: true })
     .filter((d) => !SKIP.has(d.name))

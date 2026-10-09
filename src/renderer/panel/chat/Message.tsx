@@ -18,7 +18,7 @@ import { shotUrl } from './format';
 import { openImage } from '../../ui/image-open';
 import { panelType } from '../registry';
 import { IconCheck, IconCopy, IconEdit, IconQuote, IconResend } from '../../ui/icons';
-import { getToolStepMode } from '../../ui/theme';
+import { getToolStepMode, type ToolStepMode } from '../../ui/theme';
 import { t } from '../../core/i18n';
 
 /**
@@ -56,6 +56,7 @@ export const Message = React.memo(function Message({
   edited,
   at,
   streaming,
+  stepMode,
   stats,
   images,
   steer,
@@ -70,6 +71,7 @@ export const Message = React.memo(function Message({
   edited?: boolean;
   at: number;
   streaming?: boolean;
+  stepMode?: ToolStepMode;
   stats?: ChatStats;
   /** 这条消息带的图（磁盘路径） */
   images?: string[];
@@ -193,23 +195,54 @@ export const Message = React.memo(function Message({
       }
     }
 
-    const stepMode = getToolStepMode();
+    const activeMode = stepMode ?? getToolStepMode();
+    const isCompact = activeMode === 'compact';
+    const isDetailed = activeMode === 'detailed';
+    const isExpanded = activeMode === 'expanded';
+
+    // 变更/运行类操作（写、改、运行、启停等）
+    const isMutatingOrRun = /^(run|edit|write|build|start|restart|stop|delete|rm|mkdir|install|exec|bash|cmd)/i.test(verb);
+
+    // 梯度展开策略：
+    // - expanded: 全部展开
+    // - detailed: 变更/运行类及出错操作自动展开，只读类操作折叠
+    // - standard: 仅出错操作自动展开
+    // - compact: 全折叠，保持 Codex 式极简单行（即使失败也保持紧凑单行，标红点提示，点击展开）
     const isOpen =
-      stepMode === 'expanded'
+      isExpanded
         ? true
-        : stepMode === 'compact'
+        : isDetailed
+        ? (bad || isMutatingOrRun)
+        : isCompact
         ? false
-        : stepMode === 'detailed'
-        ? true
         : bad;
+
+    const outLines = out ? out.split('\n').length : 0;
+    const rowClass = [
+      'tool-row',
+      `mode-${activeMode}`,
+      isCompact && 'is-compact',
+      isDetailed && 'is-detailed',
+      bad && 'is-bad',
+    ].filter(Boolean).join(' ');
+
     return (
-      <details className={`tool-row${bad ? ' is-bad' : ''}`} open={isOpen}>
+      <details className={rowClass} open={isOpen}>
         <summary>
-          <span className="tool-arrow" />
+          {isCompact ? (
+            <span className="tool-dot" title={bad ? t('执行异常 (点击展开)') : t('点击展开输出')} />
+          ) : (
+            <span className="tool-arrow" />
+          )}
           <span className="tool-head">
             <span className={`tool-verb${isSlash ? ' is-cmd' : ''}`}>{verb}</span>
-            {target && <span className="tool-target">{target}</span>}
+            {target && <span className="tool-target" title={target}>{target}</span>}
           </span>
+          {isDetailed && (
+            <span className="tool-badge">
+              {bad ? t('异常') : isMutatingOrRun ? t('已执行') : `${outLines}L`}
+            </span>
+          )}
           <span className="tool-time">{time}</span>
         </summary>
         <pre className="tool-out">{out || t('（没有输出）')}</pre>

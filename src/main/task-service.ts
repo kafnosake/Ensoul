@@ -2,6 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import type { TaskApi, TaskContext, TaskRecord, TaskRequest } from '../shared/types';
+import { projectDataPath, registerProjectStorage } from './storage';
+
+registerProjectStorage('tasks', ['.ensoul/state/tasks.json']);
 
 interface TaskQueue {
   enqueue(task: TaskRecord): void;
@@ -24,7 +27,7 @@ export class TaskService implements TaskApi {
     const key = path.resolve(root);
     const known = this.journals.get(key);
     if (known) return known;
-    const file = path.join(key, '.ensoul/state/tasks.json');
+    const file = projectDataPath('.ensoul/state/tasks.json', key);
     const data = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : { version: 1, tasks: [] };
     if (data.version !== 1 || !Array.isArray(data.tasks)) throw new Error('任务记录格式不支持，请检查 tasks.json');
     const journal = { root: key, records: data.tasks as TaskRecord[] };
@@ -33,7 +36,7 @@ export class TaskService implements TaskApi {
   }
 
   private commit(journal: Journal, records: TaskRecord[]): void {
-    const file = path.join(journal.root, '.ensoul/state/tasks.json');
+    const file = projectDataPath('.ensoul/state/tasks.json', journal.root);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const tmp = `${file}.${randomUUID()}.tmp`;
     try {

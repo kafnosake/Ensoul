@@ -26,6 +26,17 @@ whenToUse: 当遇到报错、改了代码界面没反应、edit 工具匹配失�
 2. **edit 工具报"没找到这段原文"**
    - 原因：Windows 下 `src/main/index.ts`、`plugins.ts` 等核心文件是 **CRLF** (\r\n)，多行匹配因 \n 失败。
    - 对策：改用单行唯一锚点；或者编写 node 临时脚本读取实际行尾进行局部替换。
+   - **注意**：写入工具用错大小写的路径（`chatdock.tsx` 而不是 `ChatDock.tsx`）会在 NTFS 上留下
+     幽灵目录项，报错形态完全不同 —— 见下面第 6 条。
+
+6. **TS1261 "differs ... only in casing"（Windows 幽灵文件）**
+   - 现象：tsc 说 `PanelSurface.tsx` 和 `panelsurface.tsx` 都被纳入了，但源码里明明只有一个。
+   - 原因：NTFS 不区分大小写；写入工具用了与仓库不同的大小写，目录里就有了两个只差大小写的
+     目录项。**Node 的 `readdirSync` / `fs.existsSync` 看不见幽灵项，只有 cmd 看得见。**
+   - 查：`cmd /c "dir /a /b <目录>"`（别信 `list_dir` 和 `readdir`）。
+   - **致命坑：`del 小写名` 删掉的是真身。** 先 `git status` 确认（出现 ` D` 就是被删了），
+     `git checkout -- <路径>` 恢复；搬回正确名字要用 `unlink(幽灵)` + `writeFile(正确名)`，
+     不能 `del` 再 `ren`。
 
 3. **类型报错 Property does not exist / BUILTIN_KINDS 冲突**
    - 原因：改动跨进程契约漏掉了三件套同步。

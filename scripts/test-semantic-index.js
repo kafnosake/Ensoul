@@ -8,13 +8,15 @@ const { SemanticIndex } = require('../plugins/semantic-search/engine');
 
 test('做法扫描只索引角色经验正文并标记 work 文档，删除经验移除映射', async t => {
   const workspace = await temporary(t);
+  const userData = await temporary(t);
   await put(workspace, '.gitignore', '.ensoul/\n');
   await put(workspace, 'work/recovery.md', '适用：下载中断。步骤：复用缓存继续下载。验收：依赖导入成功。');
   const card = { id: 'engineer', name: '工程师', secret: '不应索引的凭据', learned: [{ name: '断点恢复', how: '先更新安装工具，再安装依赖；导入成功才算完成。', at: 123 }] };
-  await put(workspace, '.ensoul/state/agents/engineer.json', card);
-  const args = { workspace, features: { documents: true } };
+  await put(userData, '.ensoul/state/agents/engineer.json', card);
+  const args = { workspace, userData, features: { documents: true } };
   const first = await scanCorpus(args);
   const learned = first.items.find(item => item.source.recipeType === 'learned');
+  assert.ok(learned, 'global employee experience must be indexed');
   assert.match(learned.text, /更新安装工具/);
   assert.equal(learned.source.learnedName, '断点恢复');
   assert.ok(first.items.some(item => item.source.recipeType === 'work'));
@@ -22,7 +24,7 @@ test('做法扫描只索引角色经验正文并标记 work 文档，删除经�
   const sample = fixture(path.join(workspace, '.ensoul/index'), first.items);
   await sample.index.update();
   card.learned = [];
-  await put(workspace, '.ensoul/state/agents/engineer.json', card);
+  await put(userData, '.ensoul/state/agents/engineer.json', card);
   sample.setItems((await scanCorpus(args)).items);
   assert.equal((await sample.index.update()).removed, 1);
   assert.equal((await scanCorpus({ ...args, features: { documents: false } })).items.length, 0);

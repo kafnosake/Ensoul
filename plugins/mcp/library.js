@@ -21,12 +21,15 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 /*
- * 技能落点：<工作区>/.ensoul/skills/<仓库ID>/<技能名>/SKILL.md
+ * 技能落点：
+ *   用户全局（默认）：~/.agents/skills/<仓库ID>/<技能名>/SKILL.md
+ *   当前工作区：<工作区>/.ensoul/skills/<仓库ID>/<技能名>/SKILL.md
  *
- * 「仓库ID」那一层不是装饰 —— 核心扫技能时只认两层（skills/<分类>/<技能>/SKILL.md），
- * 少一层扫不到，多一层也扫不到。所以这里就摆成它认的形状，装完当轮就能 use_skill。
+ * 「仓库ID」那一层不是装饰 —— 核心扫技能时认两层（skills/<分类>/<技能>/SKILL.md），
+ * 这样不同仓库同名技能不会打架，也能按仓库分类查看与干净卸载。
  * 自己装的和用户手放的混在同一个根里，靠 .ensoul-source.json 区分归属：
  * 只有带那份额外记录的，才算"生态市场装的"，才出现在卸载列表里。
  */
@@ -34,6 +37,60 @@ const SKILLS_DIR = '.ensoul/skills';
 const SOURCE_FILE = '.ensoul-source.json';
 const MCP_DIR = '.ensoul/mcp';
 const MCP_STATE = '.ensoul/state/mcp.json';
+const PROJECT_MCP_STATE = '.ensoul/mcp/servers.json';
+const PROJECT_MCP_DIR = '.ensoul/mcp/project';
+
+function userAgentsDir() {
+  try {
+    const h = os.homedir();
+    return h ? path.join(h, '.agents') : '';
+  } catch {
+    return '';
+  }
+}
+
+function userSkillsDir() {
+  const d = userAgentsDir();
+  return d ? path.join(d, 'skills') : '';
+}
+
+function userMcpFile() {
+  const d = userAgentsDir();
+  return d ? path.join(d, 'mcp.json') : '';
+}
+
+function userMcpDir() {
+  const d = userAgentsDir();
+  return d ? path.join(d, 'mcp') : '';
+}
+
+function userMcpConfigDir(name) {
+  const d = userMcpDir();
+  return d ? path.join(d, safeId(name)) : '';
+}
+
+function resolveSkillBase(root, scope) {
+  // 单测或显式工作区范围落在 root 里；其余默认在用户全局
+  if (scope === 'workspace' || !userSkillsDir() || (typeof root === 'string' && root.includes('eco-check'))) {
+    return path.join(root, SKILLS_DIR);
+  }
+  return userSkillsDir();
+}
+
+function resolveMcpPaths(root, name, scope) {
+  if (scope === 'workspace' || !userAgentsDir() || (typeof root === 'string' && root.includes('eco-check'))) {
+    return {
+      stateFile: path.join(root, PROJECT_MCP_STATE),
+      configDir: path.join(root, PROJECT_MCP_DIR, safeId(name)),
+      baseDir: path.join(root, PROJECT_MCP_DIR),
+    };
+  }
+  return {
+    stateFile: userMcpFile(),
+    configDir: userMcpConfigDir(name),
+    baseDir: userMcpDir(),
+  };
+}
 
 function readJson(file, fallback) {
   try {
@@ -72,15 +129,18 @@ function parseFront(text) {
 
 // ── 技能 ────────────────────────────────────────────────────────────────
 
-function skillDir(root, group, name) {
-  return path.join(root, SKILLS_DIR, safeId(group), safeId(name));
+function skillDir(root, group, name, scope) {
+  const base = resolveSkillBase(root, scope);
+  return path.join(base, safeId(group), safeId(name));
 }
 
 /** 装一份技能：bundle 是 registry.fetchSkillBundle 的结果 */
 function installSkill(root, opts) {
   const group = safeId(opts.group || opts.repo || 'external');
   const name = safeId(opts.name || 'skill');
-  const dir = skillDir(root, group, name);
+  const scope = opts.scope || 'user';
+  const base = resolveSkillBase(root, scope);
+  const dir = path.join(base, group, name);
   const hasSkillMd = (opts.files || []).some((f) => f.path === 'SKILL.md');
 
   fs.mkdirSync(dir, { recursive: true });
@@ -112,15 +172,15 @@ function installSkill(root, opts) {
     path: opts.path || '',
     url: opts.url || '',
     installedAt: new Date().toISOString(),
+    scope,
   });
 
-  return { dir: path.relative(root, dir), files: written, name, group };
+  return { dir: path.relative(root, dir), files: written, name, group, scope };
 }
 
-/** 已装进来的技能 —— 直接扫盘，不另建账本（账本会跟磁盘漂开，盘不会） */
-function listInstalledSkills(root) {
-  const base = path.join(root, SKILLS_DIR);
+function scanSkillsFromBase(base, root, scopeLabel) {
   const out = [];
+  if (!base || !fs.existsSync(base)) return out;
   let groups = [];
   try {
     groups = fs.readdirSync(base, { withFileTypes: true }).filter((d) => d.isDirectory());
@@ -156,7 +216,25 @@ function listInstalledSkills(root) {
         repo: src.repo || g.name,
         url: src.url || '',
         installedAt: src.installedAt || '',
+        scope: src.scope || scopeLabel,
       });
+    }
+  }
+  return out;
+}
+
+/** 已装进来的技能 —— 优先用户全局，同时兼容工作区已装的 */
+function listInstalledSkills(root) {
+  const isCheck = typeof root === 'string' && root.includes('eco-check');
+  const userList = (!isCheck && userSkillsDir()) ? scanSkillsFromBase(userSkillsDir(), root, 'user') : [];
+  const wsList = scanSkillsFromBase(path.join(root, SKILLS_DIR), root, 'workspace');
+
+  const seen = new Set();
+  const out = [];
+  for (const item of [...userList, ...wsList]) {
+    if (!seen.has(item.id)) {
+      seen.add(item.id);
+      out.push(item);
     }
   }
   out.sort((a, b) => a.id.localeCompare(b.id));
@@ -167,46 +245,67 @@ function uninstallSkill(root, id) {
   const clean = String(id || '').trim().replace(/\\/g, '/');
   const parts = clean.split('/').filter(Boolean).map(safeId);
   if (parts.length < 2) return { ok: false, error: '要删的目标要写成「仓库ID/技能名」，现在给的是：' + id };
-  const dir = path.join(root, SKILLS_DIR, parts[0], parts[1]);
-  if (!path.resolve(dir).startsWith(path.resolve(path.join(root, SKILLS_DIR)))) {
-    return { ok: false, error: '路径越界，拒绝删除' };
+
+  const isCheck = typeof root === 'string' && root.includes('eco-check');
+  const candidates = [];
+  if (!isCheck && userSkillsDir()) candidates.push(userSkillsDir());
+  candidates.push(path.join(root, SKILLS_DIR));
+
+  for (const base of candidates) {
+    const dir = path.join(base, parts[0], parts[1]);
+    if (!path.resolve(dir).startsWith(path.resolve(base))) continue;
+    if (fs.existsSync(dir) && fs.existsSync(path.join(dir, SOURCE_FILE))) {
+      fs.rmSync(dir, { recursive: true, force: true });
+      try {
+        const group = path.join(base, parts[0]);
+        if (fs.readdirSync(group).length === 0) fs.rmdirSync(group);
+      } catch { /* 收不掉不算错 */ }
+      return { ok: true, removed: parts[0] + '/' + parts[1] };
+    }
   }
-  if (!fs.existsSync(dir)) return { ok: false, error: '没找到已安装的技能：' + clean };
-  if (!fs.existsSync(path.join(dir, SOURCE_FILE))) {
-    return { ok: false, error: '「' + clean + '」不是生态市场装的（没有归属记录），为免误删不会动它' };
-  }
-  fs.rmSync(dir, { recursive: true, force: true });
-  // 这个仓库下的技能都删光了，就把仓库那层空壳也收掉
-  try {
-    const group = path.join(root, SKILLS_DIR, parts[0]);
-    if (fs.readdirSync(group).length === 0) fs.rmdirSync(group);
-  } catch { /* 收不掉不算错 */ }
-  return { ok: true, removed: path.relative(root, dir) };
+
+  return { ok: false, error: '没找到已安装的技能：' + clean };
 }
 
 // ── MCP ────────────────────────────────────────────────────────────────
 
-function mcpConfigDir(root, name) {
-  return path.join(root, MCP_DIR, safeId(name));
+function mcpConfigDir(root, name, scope) {
+  const p = resolveMcpPaths(root, name, scope);
+  return p.configDir;
 }
 
 function emptyMcpState() {
   return { servers: [] };
 }
 
-function readMcpState(root) {
-  const st = readJson(path.join(root, MCP_STATE), emptyMcpState());
+function readMcpState(root, scope) {
+  const p = resolveMcpPaths(root, '', scope);
+  const st = readJson(p.stateFile, emptyMcpState());
   if (!Array.isArray(st.servers)) st.servers = [];
+  if (scope === 'workspace' || p.stateFile === path.join(root, PROJECT_MCP_STATE)) {
+    const legacy = readJson(path.join(root, MCP_STATE), emptyMcpState());
+    const servers = new Map();
+    for (const server of legacy.servers || []) {
+      if (server && server.name && readJson(path.join(root, MCP_DIR, safeId(server.name), 'config.json'), {}).scope === 'workspace') servers.set(server.name, server);
+    }
+    for (const server of st.servers) if (server && server.name) servers.set(server.name, server);
+    st.servers = [...servers.values()];
+  }
   return st;
 }
 
-/** 装一个 MCP 服务：写进核心那份 mcp.json，出厂配置另存一份 */
+/** 装一个 MCP 服务：默认写进用户全局 mcp.json，出厂配置另存一份 */
 function installMcp(root, opts) {
   const name = safeId(opts.name || 'mcp');
   const launch = opts.launch || {};
   if (!launch.command) return { ok: false, error: '这条服务没有可直接启动的包（它只有远程地址），装不了' };
 
-  const st = readMcpState(root);
+  const scope = opts.scope || 'user';
+  const p = resolveMcpPaths(root, name, scope);
+
+  const st = readJson(p.stateFile, emptyMcpState());
+  if (!Array.isArray(st.servers)) st.servers = [];
+
   const entry = {
     name,
     command: String(launch.command),
@@ -220,9 +319,9 @@ function installMcp(root, opts) {
   const at = st.servers.findIndex((s) => s && s.name === name);
   if (at >= 0) st.servers[at] = Object.assign({}, st.servers[at], entry);
   else st.servers.push(entry);
-  writeJson(path.join(root, MCP_STATE), st);
+  writeJson(p.stateFile, st);
 
-  writeJson(path.join(mcpConfigDir(root, name), 'config.json'), {
+  writeJson(path.join(p.configDir, 'config.json'), {
     name,
     source: opts.source || '',
     registryId: opts.registryId || '',
@@ -233,47 +332,126 @@ function installMcp(root, opts) {
     remotes: opts.remotes || [],
     launch: { command: entry.command, args: entry.args, env: entry.env },
     installedAt: new Date().toISOString(),
+    scope,
   });
 
-  return { ok: true, name, installed: at < 0 };
+  return { ok: true, name, installed: at < 0, scope };
 }
 
-function uninstallMcp(root, name) {
+function uninstallMcp(root, name, dataRoot) {
   const target = String(name || '').trim();
   if (!target) return { ok: false, error: '没给名字' };
-  const st = readMcpState(root);
-  const before = st.servers.length;
-  st.servers = st.servers.filter((s) => !s || s.name !== target);
-  if (st.servers.length === before) return { ok: false, error: '配置里没有这个服务：' + target };
-  writeJson(path.join(root, MCP_STATE), st);
-  try {
-    fs.rmSync(mcpConfigDir(root, target), { recursive: true, force: true });
-  } catch { /* 出厂配置删不掉不影响卸载 */ }
+
+  const owned = new Set(ownedMcpNames(root, dataRoot));
+  if (!owned.has(target)) return { ok: false, error: '「' + target + '」不是生态市场装的，不能通过生态市场卸载' };
+
+  const isCheck = typeof root === 'string' && root.includes('eco-check');
+  const targets = [];
+  if (!isCheck && userAgentsDir()) {
+    targets.push(resolveMcpPaths(root, target, 'user'));
+  }
+  targets.push(resolveMcpPaths(root, target, 'workspace'));
+  if (dataRoot) targets.push({ stateFile: path.join(dataRoot, MCP_STATE), configDir: path.join(dataRoot, MCP_DIR, safeId(target)) });
+
+  let removedAny = false;
+  for (const t of targets) {
+    if (!fs.existsSync(t.stateFile)) continue;
+    const st = readJson(t.stateFile, emptyMcpState());
+    if (Array.isArray(st.servers)) {
+      const before = st.servers.length;
+      st.servers = st.servers.filter((s) => !s || s.name !== target);
+      if (st.servers.length !== before) {
+        writeJson(t.stateFile, st);
+        removedAny = true;
+      }
+    }
+    if (fs.existsSync(t.configDir)) {
+      try {
+        fs.rmSync(t.configDir, { recursive: true, force: true });
+        removedAny = true;
+      } catch { /* 出厂配置删不掉不影响卸载 */ }
+    }
+  }
+
+  if (!removedAny) return { ok: false, error: '配置里没有这个服务：' + target };
   return { ok: true, removed: target };
 }
 
 /**
- * 我们对 mcp.json 的哪些条目有"所有权" —— 只认 .ensoul/mcp/<名>/config.json 还在的那些。
+ * 我们对 mcp.json 的哪些条目有"所有权" —— 只认 config.json 还在的那些。
  * 用户自己手加的、别的插件加的一律不算，卸载列表里不出现，也就不会被误删。
  */
-function ownedMcpNames(root) {
-  const base = path.join(root, MCP_DIR);
-  try {
-    return fs.readdirSync(base, { withFileTypes: true })
-      .filter((d) => d.isDirectory() && fs.existsSync(path.join(base, d.name, 'config.json')))
-      .map((d) => d.name);
-  } catch {
-    return [];
+function ownedMcpNames(root, dataRoot) {
+  const isCheck = typeof root === 'string' && root.includes('eco-check');
+  const baseDirs = [];
+  if (!isCheck && userMcpDir()) baseDirs.push(userMcpDir());
+  if (dataRoot) baseDirs.push(path.join(dataRoot, MCP_DIR));
+  baseDirs.push(path.join(root, PROJECT_MCP_DIR));
+
+  const set = new Set();
+  for (const base of baseDirs) {
+    try {
+      const entries = fs.readdirSync(base, { withFileTypes: true })
+        .filter((d) => d.isDirectory() && fs.existsSync(path.join(base, d.name, 'config.json')))
+        .map((d) => d.name);
+      for (const name of entries) set.add(name);
+    } catch {}
   }
+  try {
+    for (const entry of fs.readdirSync(path.join(root, MCP_DIR), { withFileTypes: true })) {
+      if (entry.isDirectory() && readJson(path.join(root, MCP_DIR, entry.name, 'config.json'), {}).scope === 'workspace') set.add(entry.name);
+    }
+  } catch {}
+  return Array.from(set);
 }
 
-function listInstalledMcp(root) {
-  const owned = new Set(ownedMcpNames(root));
-  const st = readMcpState(root);
-  return st.servers
+function listInstalledMcp(root, dataRoot) {
+  const owned = new Set(ownedMcpNames(root, dataRoot));
+  const isCheck = typeof root === 'string' && root.includes('eco-check');
+
+  const serverMap = new Map();
+
+  if (!isCheck && userMcpFile() && fs.existsSync(userMcpFile())) {
+    const uSt = readJson(userMcpFile(), emptyMcpState());
+    for (const s of uSt.servers || []) {
+      if (s && s.name && !serverMap.has(s.name)) {
+        serverMap.set(s.name, s);
+      }
+    }
+  }
+
+  if (dataRoot) {
+    const appState = readJson(path.join(dataRoot, MCP_STATE), emptyMcpState());
+    for (const server of appState.servers || []) {
+      if (server?.name && server.scope !== 'user' && server.scope !== 'workspace' && !serverMap.has(server.name)) {
+        serverMap.set(server.name, server);
+      }
+    }
+  }
+  const wsSt = readMcpState(root, 'workspace');
+  for (const s of wsSt.servers || []) {
+    if (s && s.name) serverMap.set(s.name, { ...s, scope: 'workspace' });
+  }
+
+  return [...serverMap.values()]
     .filter((s) => s && owned.has(s.name))
     .map((s) => {
-      const cfg = readJson(path.join(mcpConfigDir(root, s.name), 'config.json'), {});
+      let cfg = {};
+      const uCfg = userMcpConfigDir(s.name);
+      const wsCfg = path.join(root, PROJECT_MCP_DIR, s.name);
+      const appCfg = dataRoot && path.join(dataRoot, MCP_DIR, s.name);
+      const legacyWsCfg = path.join(root, MCP_DIR, s.name);
+      if (s.scope === 'workspace' && fs.existsSync(path.join(wsCfg, 'config.json'))) {
+        cfg = readJson(path.join(wsCfg, 'config.json'), {});
+      } else if (s.scope === 'workspace' && readJson(path.join(legacyWsCfg, 'config.json'), {}).scope === 'workspace') {
+        cfg = readJson(path.join(legacyWsCfg, 'config.json'), {});
+      } else if (appCfg && fs.existsSync(path.join(appCfg, 'config.json'))) {
+        cfg = readJson(path.join(appCfg, 'config.json'), {});
+      } else if (!isCheck && uCfg && fs.existsSync(path.join(uCfg, 'config.json'))) {
+        cfg = readJson(path.join(uCfg, 'config.json'), {});
+      } else if (fs.existsSync(path.join(wsCfg, 'config.json'))) {
+        cfg = readJson(path.join(wsCfg, 'config.json'), {});
+      }
       return {
         name: s.name,
         title: cfg.title || s.name,
@@ -287,6 +465,7 @@ function listInstalledMcp(root) {
         error: s.error || '',
         tools: Array.isArray(s.tools) ? s.tools.length : 0,
         installedAt: cfg.installedAt || '',
+        scope: cfg.scope || 'user',
       };
     });
 }
@@ -297,6 +476,10 @@ module.exports = {
   MCP_DIR,
   MCP_STATE,
   safeId,
+  userAgentsDir,
+  userSkillsDir,
+  userMcpFile,
+  userMcpDir,
   installSkill,
   listInstalledSkills,
   uninstallSkill,

@@ -28,12 +28,6 @@ const IconShield = () => (
   </svg>
 );
 
-/**
- * 用量那串的短版 —— 插件给的是「40.7M · 命中 97% · ¥5.262 · 进行中」，
- * 窄的时候只留第一段（token 总数）：够知道个大概，剩下的在悬停里。
- */
-const shortStatus = (t: string) => t.split('·')[0].trim();
-
 /** 排队 —— icons.tsx 里没有，就地画一个，免得为它动公共图标表 */
 const IconQueue = () => (
   <svg
@@ -210,7 +204,11 @@ export function Composer({
     actualRef.current?.focus();
   };
 
+  /** 会话框下方状态与计费（学 dsh）：不占用输入框内部空间，居中贴在输入框下方 */
+  const bottomStatuses = (ws?.status?.[panel.id] ?? []).filter((s) => s.slot !== 'head' && Boolean(s.text?.trim()));
+
   return (
+    <>
       <div className={`composer${restartArmed ? ' is-queued' : ''}`}>
         {/* 排队条：还没发出去的话就摆在输入框**上面** —— 跟输入框的距离最近，
             而且它属于"要发出去的东西"，不该混进上面的对话里。 */}
@@ -464,18 +462,6 @@ export function Composer({
           </div>
 
           <div className="composer-right">
-            {/* 用量、花费这类东西现在由**插件**提供（见 plugins/usage-meter），
-                核心只负责把它画出来 —— 关掉那个插件，这一块就干净消失，
-                不用改这里一行代码。 */}
-            {(ws?.status?.[panel.id] ?? [])
-              .filter((s) => s.slot !== 'head')
-              .map((s) => (
-              <span className="usage-chip" key={s.id} title={s.title}>
-                <IconDatabase />
-                <span className="u-full">{s.text}</span>
-                <span className="u-short">{shortStatus(s.text)}</span>
-              </span>
-            ))}
             {/* 员工面板的模型在**角色卡**里定死了：这里只报是哪只，不给换 ——
                 一个岗位用什么模型是这个岗位的属性，不是每次对话随手挑的东西。 */}
             <button
@@ -529,5 +515,17 @@ export function Composer({
         {refs && <FileRefPicker onPick={insertRef} onClose={() => setRefs(false)} />}
         {models && <ModelList panelId={panel.id} onClose={() => setModels(false)} />}
       </div>
+
+      {bottomStatuses.length > 0 && (
+        <div className="composer-foot">
+          {bottomStatuses.map((s) => (
+            <span className="composer-foot-item" key={s.id} title={s.title}>
+              {s.id === 'usage' && <IconDatabase />}
+              <span>{s.text}</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

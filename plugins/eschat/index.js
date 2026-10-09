@@ -157,7 +157,7 @@ const at = (m) => Number((m && (m.createdAt || m.at)) || 0);
 
 /** `.ensoul/state` 下的一个文件 */
 function statePath(...rest) {
-  return path.join(api.workspace, '.ensoul', 'state', ...rest);
+  return api.dataPath(path.join('.ensoul', 'state', ...rest));
 }
 
 /**
@@ -173,7 +173,7 @@ function avaUrl(v) {
   if (!s) return '';
   // 过渡期兜底：还没迁移的老卡（data URL）、已经算好的 file://、外链 —— 原样给
   if (s.startsWith('data:') || s.startsWith('file://') || /^(https?|blob):/i.test(s)) return s;
-  const abs = path.isAbsolute(s) ? s : path.resolve(api.workspace || '.', s);
+  const abs = path.isAbsolute(s) ? s : s.replace(/\\/g, '/').startsWith('.ensoul/') ? api.dataPath(s) : path.resolve(api.workspace || '.', s);
   return `file:///${abs.replace(/\\/g, '/')}`;
 }
 
@@ -831,7 +831,7 @@ const NO_HIST = { entries: [] };
 function histMeta(pid) {
   const id = String(pid || '');
   if (!id) return NO_HIST;
-  const file = path.join(api.workspace, HIST_DIR, id.replace(/[^\w.-]+/g, '_') + '.json');
+  const file = api.dataPath(path.join(HIST_DIR, id.replace(/[^\w.-]+/g, '_') + '.json'));
   let stamp = '';
   try {
     const st = fs.statSync(file);

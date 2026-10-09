@@ -98,6 +98,7 @@ function relevant(rel) {
 }
 
 module.exports = {
+  storage: { project: ['.ensoul/state/ui-refresh.json'] },
   params: PARAMS,
   name: 'ui-refresh',
   description: t('界面源码一改就自己重建并刷新窗口，不用重启也不用来问用户'),
@@ -262,9 +263,9 @@ module.exports = {
     /** 最近一次结果落盘：想知道"到底重建了没有"，读这个文件就行，不用翻日志 */
     function note(ok, secs, out) {
       try {
-        fs.mkdirSync(path.join(root, '.ensoul', 'state'), { recursive: true });
+        fs.mkdirSync(path.dirname(api.dataPath('.ensoul/state/ui-refresh.json')), { recursive: true });
         fs.writeFileSync(
-          path.join(root, '.ensoul', 'state', 'ui-refresh.json'),
+          api.dataPath('.ensoul/state/ui-refresh.json'),
           JSON.stringify(
             {
               at: Date.now(),

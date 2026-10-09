@@ -55,6 +55,7 @@ function userDataDirectory() {
 
 module.exports = {
   name: 'semantic-search',
+  storage: { project: ['.ensoul/state/semantic-search.json', '.ensoul/semantic-search'] },
   description: 'EmbeddingGemma 2 本地多模态检索、内容比较、分类和分组',
   panel: { kind: 'semantic-search', label: '语义搜索', title: '语义搜索', hint: '用描述或素材寻找工作区内容' },
 
@@ -62,10 +63,10 @@ module.exports = {
     const t = api.t || (text => text);
     const state = loadState(api.state.load(null));
     const workspace = api.workspace || '';
-    const directory = path.join(workspace, '.ensoul', 'semantic-search');
+    const directory = api.dataPath('.ensoul/semantic-search');
     const envBase = api.environments?.directory('semantic-search') || path.join(userDataDirectory(), 'env', 'semantic-search');
     const envDir = path.join(envBase, `${process.platform}-${process.arch}`);
-    const legacyModels = path.join(workspace, '.ensoul', 'runtime', 'semantic-search', 'models');
+    const legacyModels = api.dataPath('.ensoul/runtime/semantic-search/models');
     const commands = path.join(directory, 'commands');
     let disposed = false, runtime = null, engine = null, job = null, reading = false, lastWrite = 0;
     let nextUpdate = Date.now() + 60000, modelProxy = state.config.proxy;
@@ -104,7 +105,7 @@ module.exports = {
     function getEngine() {
       if (!engine) engine = new SemanticIndex({
         directory: path.join(directory, 'index'), runtime: getRuntime(), getFeatures: () => state.features,
-        scan: ({ signal } = {}) => scanCorpus({ workspace, userData: userDataDirectory(), features: state.features, roots: state.config.roots, signal,
+        scan: ({ signal } = {}) => scanCorpus({ workspace, userData: userDataDirectory(), agentsDirectory: api.dataPath('.ensoul/state/agents'), features: state.features, roots: state.config.roots, signal,
           extract: (file, options) => extractDocument(pythonPath(), file, options),
           onProgress: progress => { if (!disposed && job && !job.controller.signal.aborted) { state.index.progress = progress; save(false); } },
         }),

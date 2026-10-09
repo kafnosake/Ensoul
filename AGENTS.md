@@ -11,7 +11,7 @@
 
 - 包管理器 npm：`npm run build`（tsc 编主进程 + vite 编渲染层）、`npm run dev`。
 - **验证与生效按改动范围选择**：主进程 / preload / shared 运行时代码通常需要 build + restart；纯界面改动用渲染构建 + reload；插件后端验证重挂；文档不构建、不重启。当前构建工具仍有重复构建和范围判断缺口，详见 `docs/development.md`。
-- 插件放 `plugins/<名>/index.js`；状态写 `.ensoul/state/<名>.json`，界面去读那个文件，两边不用互相认识。
+- 插件放 `plugins/<名>/index.js`；数据归属见 `docs/storage-scope.md`：工作区只存白名单数据，其余默认写固定应用数据根。`api.state` 默认全局；项目记录声明 `storage.project`，直接文件使用 `api.dataPath`；界面与插件始终读写同一真源。
 - 加功能的判断顺序：插件能不能做 → 现成面板类型能不能表达 → 都不行才动核心。
 - 构建/启动环境：这个目录两台机器共用，Electron 本体各平台各放一份；启动器只有 `scripts/launch.js` 一份
   （`启动.cmd` 只许一行、必须纯 ASCII）；`npm` 报 "Could not determine Node.js install directory" 时直接调

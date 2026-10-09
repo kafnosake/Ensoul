@@ -28,18 +28,18 @@
 /**
  * 屏幕 px ↔ 面板内部 px 的倍率。
  *
- * 从元素往上找**第一个真的带 zoom 的祖先**（就是面板那层壳）：zoom 本身不继承
+ * 从元素往上把**每一层** zoom 乘起来（面板壳一层 uiZoom、侧停会话区又一层）：zoom 不继承
  * —— 实测壳里没设 zoom 的孩子，计算值读到的就是 1 —— 所以只能这样上溯。
  *
- * 眼下全项目只有一层缩放壳，「第一个非 1」就是全部；哪天真出现嵌套的两层 zoom，
- * 这里得改成连乘。
+ * 现在不止一层了（面板壳一层 uiZoom，侧停的会话区又叠了 0.8），所以是连乘。
  */
 export function zoomScale(el: Element | null): number {
+  let total = 1;
   for (let n: Element | null = el; n; n = n.parentElement) {
     const z = parseFloat(getComputedStyle(n).zoom);
-    if (z && z !== 1) return z;
+    if (z && z !== 1) total *= z;
   }
-  return 1;
+  return total;
 }
 
 /**

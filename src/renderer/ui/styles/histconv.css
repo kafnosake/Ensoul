@@ -268,3 +268,55 @@
   color: var(--tint-f);
   cursor: default;
 }
+
+/* 停靠侧面（面板横排）时，这一栏**自己占一栏**，不再盖在消息上。
+   原来它是绝对定位的浮层 —— 侧面本来就只有一条窄栏，再糊上一层历史列表，
+   正文就被压住了（用户原话："挡视线"）。现在它就是 .dock-body 里的一个
+   flex 兄弟：历史栏在一侧、消息列在另一侧，谁也不压谁。
+   宽度由 HistRail 按栏宽算出来（见那边侧栏那段）—— 这是**用户点开的**，
+   不想看就点头栏那颗 ☰ 收掉。 */
+.chatdock.is-side-left .hist-rail,
+.chatdock.is-side-right .hist-rail {
+  position: static;
+  flex: 0 0 auto;
+  align-self: stretch;
+  /* 从上往下排（不再垂直居中：列表长了两头都得看得到） */
+  justify-content: flex-start;
+  min-width: 0;
+  pointer-events: auto;
+  background: var(--panel-2);
+  border-right: 1px solid var(--line-soft);
+  border-left: none;
+}
+
+.chatdock.is-side-right .hist-rail {
+  border-right: none;
+  border-left: 1px solid var(--line-soft);
+}
+
+/* 列表在这栏里自己滚到底（72vh 那个上限是给贴底部那种矮会话区算的） */
+.chatdock.is-side-left .hist-scroll,
+.chatdock.is-side-right .hist-scroll {
+  flex: 1 1 auto;
+  max-height: none;
+}
+
+/* 贴底部时行是**右对齐**的（它的右缘要去贴消息列左缘，见上面 .hist-row 那段）——
+   侧栏里它是一条独立的列表，右对齐反而让每条都飘着。改成正常的左对齐。 */
+.chatdock.is-side-left .hist-row,
+.chatdock.is-side-right .hist-row {
+  justify-content: flex-start;
+}
+
+.chatdock.is-side-left .hist-group,
+.chatdock.is-side-right .hist-group {
+  text-align: left;
+}
+
+/* 每行标题在这栏里铺满（贴底部时它得让出那颗 ⋯，右端对齐列缘） */
+.chatdock.is-side-left .hist-name,
+.chatdock.is-side-right .hist-name {
+  flex: 1 1 auto;
+  text-align: left;
+}
+

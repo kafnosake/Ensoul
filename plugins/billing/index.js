@@ -468,7 +468,7 @@ module.exports = {
   },
 
   setup(api) {
-    const root = api.workspace || '.';
+    const root = path.dirname(api.dataPath('.ensoul'));
     const summaryPath = path.join(root, SUMMARY_FILE);
     const feedPath = path.join(root, FEED_FILE);
     const livePath = path.join(root, LIVE_FILE);

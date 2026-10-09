@@ -337,8 +337,8 @@ export interface EvolveApi {
      * 渲染层没有 require / zlib，从前那条 await import 一跑就 require is not defined。
      * inspect 只算清单（先给用户过目），install 才写盘。
      */
-    inspectPack(bytes: ArrayBuffer): Promise<PackInspectResult>;
-    installPack(bytes: ArrayBuffer): Promise<PackInstallResult>;
+    inspectPack(bytes: ArrayBuffer, scope?: import('../../shared/storage').ExtensionInstallScope): Promise<PackInspectResult>;
+    installPack(bytes: ArrayBuffer, scope?: import('../../shared/storage').ExtensionInstallScope): Promise<PackInstallResult>;
     /** 改一个插件的可调参数（null = 恢复默认）—— 回来的是新的插件清单 */
     setParam(
       plugin: string,
@@ -423,7 +423,7 @@ export interface EvolveApi {
     }>;
     /** 盘上躺着、名单里已经没有的解释器目录（只列不删） */
     listOrphans(): Promise<Array<{ name: string; dir: string; bytes: number; files: number }>>;
-    removeOrphan(dir: string): Promise<{ ok: boolean; error?: string; bytes: number; files: number; leftovers: string[] }>;
+    removeOrphan(dir: string): Promise<{ ok: boolean; error?: string; bytes: number; files: number; leftovers: string[]; killed?: number[] }>;
   };
 
   /** 看图：把一张图交给系统（打开不了时回一段错误文本） */
@@ -462,7 +462,8 @@ export interface EvolveApi {
     rate(panelId: string, messageId: string, rating: 'up' | 'down'): Promise<boolean>;
     /** 插件提出的"请用户点头"的请求（重启用的是这条路，见 plugins/restart-approval） */
     askState(panelId: string): Promise<{ ask: AskView | null; restartArmed?: boolean }>;
-    askConfirm(panelId: string): Promise<{ ok: boolean; error?: string }>;
+    /** 提交答案：结构化问答把 answers 一并带过去；老路（请用户点头）不传 */
+    askConfirm(panelId: string, answer?: unknown): Promise<{ ok: boolean; error?: string }>;
     /** 选了「等所有会话结束」：挂起来，整个软件都闲下来再自动做 */
     askDefer(panelId: string): Promise<{ ok: boolean; error?: string }>;
     askCancel(panelId: string): Promise<boolean>;
@@ -490,12 +491,34 @@ export interface EvolveApi {
  * 一条待用户点头的请求：插件提的，核心画的。
  * 界面上只知道这几句话 —— 是谁提的、点了之后跑什么，它不用认识。
  */
+/** 一道题的可选项 */
+export interface AskViewOption {
+  label: string;
+  description?: string;
+}
+
+/** 一道题 —— 跟主进程下发的 AskQuestionItem 同形（dsh 的 ask_user_question 对齐） */
+export interface AskViewQuestion {
+  id: string;
+  question: string;
+  detail?: string;
+  header?: string;
+  options?: AskViewOption[];
+  multiSelect?: boolean;
+}
+
 export interface AskView {
   text: string;
   confirm: string;
   cancel: string;
   /** 第三个按钮：「等所有会话结束再做」。空串 = 没这个选项 */
   defer?: string;
+  /**
+   * 结构化的问题清单 —— 有它，界面上画的是问题表单（翻页 / 单选多选 /
+   * 自定义答案 / 跳过），提交之后问答一并回到提问方。
+   * 没有它就是那条老路：一句话 + 两个按钮。
+   */
+  questions?: AskViewQuestion[];
   /** 已经选了"等所有会话结束"，正等时机 */
   armed?: boolean;
 }
@@ -515,7 +538,8 @@ export interface PackInspectResult {
   name?: string;
   /** 包里声明的版本 —— 只为在确认框里念一句，不参与任何判断 */
   version?: string;
-  /** 相对 .ensoul/plugins/<id> 的路径清单 */
+  dir?: string;
+  /** 相对安装目录的路径清单 */
   files?: string[];
 }
 
@@ -539,6 +563,7 @@ export interface ExtSnapshot {
   pluginsDir: string;
   /** 这个工作区自己的插件目录：`.ensoul/plugins` */
   workspacePluginsDir: string;
+  userPluginsDir: string;
 }
 
 /** 一个提供方（下发给前台的脱敏版本：只有"配没配密钥"） */

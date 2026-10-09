@@ -409,11 +409,12 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
    */
   const rawPlugins = ext?.plugins ?? [];
   const allPlugins = rawPlugins;
-  const officialPlugins = allPlugins.filter((p) => p.source === 'app');
-  const installedPlugins = allPlugins.filter((p) => p.source === 'workspace');
+  const officialPlugins = allPlugins.filter((p) => p.source === 'app' || p.source === t('软件自带'));
+  const installedPlugins = allPlugins.filter((p) => p.source !== 'app' && p.source !== t('软件自带'));
   const tunable = allPlugins.filter((p) => p.params.length > 0);
   const fixed = allPlugins.filter((p) => p.params.length === 0);
   const [showAddPluginModal, setShowAddPluginModal] = useState(false);
+  const [packScope, setPackScope] = useState<import('../../shared/storage').ExtensionInstallScope>('user');
   const [npmOrUrl, setNpmOrUrl] = useState('');
   const [installMsg, setInstallMsg] = useState('');
   const [installing, setInstalling] = useState(false);
@@ -454,29 +455,31 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
     const file = e.target.files?.[0];
     e.target.value = ""; // 同一个文件连选两次也得能再触发一次
     if (!file) return;
+    const scope = packScope;
     try {
       setMoreLoading(true);
       setMoreFeedback(t("正在解析扩展包..."));
       const bytes = await file.arrayBuffer();
-      const look = await api.ext.inspectPack(bytes);
+      const look = await api.ext.inspectPack(bytes, scope);
       if (!look.ok) {
         setMoreFeedback(t("安装失败：") + (look.error || ""));
         return;
       }
       const files = (look.files || []).map((f) => "  • " + f).join("\n");
       const yes = window.confirm(
-        t("安装插件「{name}」({id} v{ver})\n\n即将写入文件：\n{files}\n\n是否确认安装到工作区扩展目录？", {
+        t("安装插件「{name}」({id} v{ver})\n\n即将写入文件：\n{files}\n\n安装位置：{dir}\n\n是否确认安装？", {
           name: String(look.name || look.id || ''),
           id: String(look.id || ''),
           ver: look.version || "1.0.0",
           files,
+          dir: look.dir || '',
         }),
       );
       if (!yes) {
         setMoreFeedback(t("已取消安装"));
         return;
       }
-      const r = await api.ext.installPack(bytes);
+      const r = await api.ext.installPack(bytes, scope);
       if (!r.ok) {
         setMoreFeedback(t("安装失败：") + (r.error || ""));
         return;
@@ -972,7 +975,7 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
                 {selfWs?.dir && selfWs.dir !== selfWs.workspace && (
                   <div className="set-note set-note-hi">
                     这份软件自己住在 <code>{selfWs.dir}</code>，工作区现在却指着{' '}
-                    <code>{selfWs.workspace || '（还没选）'}</code>。组件、做法、技能全是按工作区找的 ——
+                    <code>{selfWs.workspace || '（还没选）'}</code>。个人组件与做法现在跨工作区保存；项目专属技能仍按工作区查找 ——
                     指着别处，这一页就是空的。
                     <button onClick={() => void useSelfWs()} title={t('把这个目录设成工作区 —— 换完立刻重扫一遍')}>
                       {t('把工作区换成这份软件所在的目录')}
@@ -1904,7 +1907,7 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
                 <div style={{ marginTop: '12px', border: '1px solid var(--line)', borderRadius: '6px', padding: '10px 12px' }}>
                   <div className='more-section-title' style={{ margin: 0 }}>{t('残留解释器目录')}</div>
                   <div style={{ fontSize: '12px', opacity: 0.75, margin: '4px 0 8px' }}>
-                    {t('这些解释器已经不在上面的名单里了，文件却还躺在 .ensoul/env 下面占着盘。清掉它们不影响任何已登记的解释器。')}
+                    {t('这些解释器已经不在上面的名单里了，文件仍占着应用环境目录。清掉它们不影响任何已登记的解释器。')}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {pyOrphans.map((o) => (
@@ -2028,6 +2031,13 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
               <div className="more-section-desc">{t('输入 npm 包名或 Git 仓库地址，直接拉取并加载：')}</div>
               
               <div style={{ marginBottom: 12 }}>
+                <label style={{ marginRight: 12 }}>
+                  {t('安装位置')} {' '}
+                  <select value={packScope} disabled={moreLoading} onChange={(e) => setPackScope(e.target.value as import('../../shared/storage').ExtensionInstallScope)}>
+                    <option value="user">{t('全局，所有工作区可用')}</option>
+                    <option value="workspace" disabled={!info?.workspace}>{t('仅当前工作区')}</option>
+                  </select>
+                </label>
                 <label className="more-action-btn" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', padding: '6px 14px' }}>
                   {t('📦 选择并安装 .ensoulpack 扩展包')}
                   <input type="file" accept=".ensoulpack,.zip" style={{ display: 'none' }} onChange={handleInstallEnsoulPack} />
@@ -2127,7 +2137,9 @@ function SkillRow({
       <div className="ext-skill-head" onClick={onOpen} title={open ? '收起' : '展开：说明、正文、它在哪个目录'}>
         <span className="plg-caret">▸</span>
         <span className="ext-name">{skill.name}</span>
-        <span className="ext-desc">{t(skill.description) || t('（没写说明）')}</span>
+        <span className="ext-desc" title={skill.description ? t(skill.description) : undefined}>
+          {t(skill.description) || t('（没写说明）')}
+        </span>
         <span className="ext-src" title={skill.root}>
           {skill.source}
         </span>

@@ -549,6 +549,25 @@
   box-shadow: 0 0 0 2px var(--bg-soft);
 }
 
+/* 阻塞等待用户选择/确认的醒目呼吸徽标（明黄色） */
+.sbm-badge.is-ask {
+  background: #eab308;
+  color: #1e293b;
+  font-weight: 800;
+  box-shadow: 0 0 0 2px var(--bg-soft), 0 0 8px rgba(234, 179, 8, 0.7);
+  animation: sbm-badge-pulse 2s infinite ease-in-out;
+}
+@keyframes sbm-badge-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 2px var(--bg-soft), 0 0 6px rgba(234, 179, 8, 0.6);
+  }
+  50% {
+    transform: scale(1.15);
+    box-shadow: 0 0 0 2px var(--bg-soft), 0 0 12px rgba(234, 179, 8, 0.95);
+  }
+}
+
 .sbm-item.is-unread .sbm-name,
 .sbm-item.is-ask .sbm-name,
 .sbm-item.is-error .sbm-name,
@@ -668,6 +687,11 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sbm-snippet.is-ask-snippet {
+  color: #fde047;
+  font-weight: 500;
 }
 
 /* ══════════════════════════════════════════════════
@@ -894,6 +918,11 @@
 
 .sbm-pop-block.is-active {
   border-left: 2px solid var(--accent);
+}
+
+.sbm-pop-block.is-ask {
+  border-left: 2px solid #eab308;
+  background: rgba(234, 179, 8, 0.08);
 }
 
 .sbm-pop-block-label {

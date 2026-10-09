@@ -30,6 +30,18 @@ function cachedZip(version) {
   }
 }
 
+function brandedEntrySource(applicationDirectory, sourceRoot = ROOT) {
+  const relativeRoot = path.relative(applicationDirectory, sourceRoot);
+  return `const fs = require('node:fs');
+const path = require('node:path');
+const root = process.env[${JSON.stringify(appIdentity.sourceRootEnv)}] || path.resolve(__dirname, ${JSON.stringify(relativeRoot)});
+const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+if (pkg.name !== 'ensoul') throw new Error('ensoul 源码目录无效。');
+process.env[${JSON.stringify(appIdentity.sourceRootEnv)}] = root;
+require(path.join(root, pkg.main));
+`;
+}
+
 async function prepareBrandedRuntime() {
   const target = plan();
   const ready = path.join(target.output, 'ready.json');
@@ -39,14 +51,10 @@ async function prepareBrandedRuntime() {
   catch { throw new Error('缺少应用命名工具 @electron/packager，请运行安装入口更新依赖。'); }
   const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'ensoul-brand-shell-'));
   fs.writeFileSync(path.join(stage, 'package.json'), JSON.stringify({ name: 'ensoul', productName: 'ensoul', author: target.pkg.author || 'ensoul', version: target.pkg.version, main: 'index.js' }));
-  fs.writeFileSync(path.join(stage, 'index.js'), `const fs = require('node:fs');
-const path = require('node:path');
-const root = process.env[${JSON.stringify(appIdentity.sourceRootEnv)}];
-if (!root) throw new Error('请通过 ensoul 启动入口打开应用。');
-const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-if (pkg.name !== 'ensoul') throw new Error('ensoul 源码目录无效。');
-require(path.join(root, pkg.main));
-`);
+  const applicationDirectory = process.platform === 'darwin'
+    ? path.join(path.dirname(path.dirname(target.exe)), 'Resources', 'app')
+    : path.join(path.dirname(target.exe), 'resources', 'app');
+  fs.writeFileSync(path.join(stage, 'index.js'), brandedEntrySource(applicationDirectory));
   console.log('[应用身份] 准备 ensoul 应用壳与系统图标（首次生成，随后复用）…');
   process.env.ELECTRON_GET_USE_PROXY ||= '1';
   process.env.GLOBAL_AGENT_HTTP_PROXY ||= process.env.HTTPS_PROXY || process.env.HTTP_PROXY || 'http://127.0.0.1:7897';
@@ -72,5 +80,5 @@ require(path.join(root, pkg.main));
   }
 }
 
-module.exports = { prepareBrandedRuntime, brandedExecutable: () => plan().exe };
+module.exports = { prepareBrandedRuntime, brandedExecutable: () => plan().exe, brandedEntrySource };
 if (require.main === module) prepareBrandedRuntime().then((exe) => console.log(`[应用身份] ${exe}`)).catch((error) => { console.error(`[应用身份] ${error.message}`); process.exitCode = 1; });

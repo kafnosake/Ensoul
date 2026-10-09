@@ -149,6 +149,12 @@ test('dimensions and disabled encoders fail before process startup; space finger
   assert.notEqual(runtime.fingerprint(), runtimeFor(t, { dimensions: 256 }).fingerprint());
 });
 
+test('default model cache stays outside the current working directory', () => {
+  const runtime = new ModelRuntime();
+  assert.ok(!runtime.cacheDir.startsWith(path.join(process.cwd(), '.ensoul') + path.sep));
+  runtime.close();
+});
+
 test('missing Python process returns an actionable startup error', async t => {
   const runtime = runtimeFor(t, { python: path.join(os.tmpdir(), 'missing-ensoul-python-executable') });
   await assert.rejects(runtime.probe(), { code: 'ENOENT' });

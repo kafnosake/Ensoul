@@ -53,6 +53,16 @@ export function ComponentBar({
   const [open, setOpen] = useState(false);
   /** 条上只画**钉住的** —— 声明过但没收进收纳区的，只在 设置 → 组件 里躺着 */
   const items: ComponentRef[] = (ws?.componentRefs ?? []).filter((c) => c.pinned);
+  /**
+   * 条目的**内容指纹** —— 只有这几个字段变了，才该重测宽度、重做位移动画。
+   *
+   * 主进程广播很勤（面板被更新、状态部件每 1~2 秒刷一次），但那些都**不改收纳区条目**。
+   * 若直接拿 items（每轮渲染都是新数组引用）当依赖，每次广播都会重跑一遍测量与 FLIP，
+   * 顶栏宽度一旦卡在临界值上，条目就会在「平铺」与「»」下拉之间来回横跳 —— 这就是"老是跳"的来源。
+   */
+  const itemsKey = items.map((c) => `${c.id}:${c.name}:${c.pinned ? 1 : 0}`).join('|');
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
   /** 这些入口里哪些面板此刻开着 —— 开着的名字要点亮（跟任务栏一个道理） */
   const live = new Set(Object.keys(ws?.panels ?? {}));
 
@@ -62,10 +72,11 @@ export function ComponentBar({
 
   /** 动态测量顶栏剩余宽度，计算最多能平铺摆几个，放不下的进下拉 */
   const updateFit = useCallback(() => {
+    const list = itemsRef.current;
     const slot = slotRef.current;
     const measure = measureRef.current;
-    if (!slot || !measure || items.length === 0) {
-      setMaxFit(items.length);
+    if (!slot || !measure || list.length === 0) {
+      setMaxFit(list.length);
       return;
     }
 
@@ -74,8 +85,8 @@ export function ComponentBar({
     if (availWidth <= 0) return;
 
     const children = Array.from(measure.children) as HTMLElement[];
-    const itemEls = children.slice(0, items.length);
-    const moreEl = children[items.length];
+    const itemEls = children.slice(0, list.length);
+    const moreEl = children[list.length];
     const moreWidth = (moreEl?.offsetWidth || 24) + 4; // 更多按钮宽度 + gap
 
     const gap = 4;
@@ -90,7 +101,7 @@ export function ComponentBar({
 
     // 全量能放下，不需要「»」更多按钮
     if (totalAllWidth <= availWidth) {
-      setMaxFit(items.length);
+      setMaxFit(list.length);
       return;
     }
 
@@ -109,8 +120,17 @@ export function ComponentBar({
       }
     }
 
-    setMaxFit(count);
-  }, [items]);
+    /*
+     * 迟滞（上下沿分开）：减少一格是"确实放不下"，照做；
+     * 但要**增**一格时必须有 8px 余量才肯动 —— 顶栏右侧的状态部件是活的（每 1~2 秒刷新），
+     * slot 宽度会在零点几像素上抖，没有余量就会一直横跳。
+     */
+    setMaxFit((prev) => {
+      if (count === prev) return prev;
+      if (count > prev && currentWidth + 8 > targetWidth) return prev;
+      return count;
+    });
+  }, [itemsKey]);
 
   useLayoutEffect(() => {
     updateFit();
@@ -161,7 +181,8 @@ export function ComponentBar({
       if (id) nextMap.set(id, el.getBoundingClientRect());
     });
     prevCmpRects.current = nextMap;
-  }, [items]);
+    // 依赖条目指纹而不是 items：广播更新面板内容时不该重做位移动画
+  }, [itemsKey]);
 
   const selfShownIndex = draggingComponentId ? shown.findIndex((c) => c.id === draggingComponentId) : -1;
   const isSameBarDrag = selfShownIndex >= 0;

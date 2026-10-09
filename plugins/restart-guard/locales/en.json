@@ -1,0 +1,12 @@
+{
+  "不许用命令行杀或拉起 ensoul 本体：重启走 restart_project，启动走 start_project": "Never kill or relaunch ensoul itself from the shell: use restart_project to restart, start_project to start",
+  "没有执行：这条命令在动 ensoul 应用自身的进程。": "Not executed: this command touches ensoul's own process.",
+  "用命令行杀 / 拉 ensoul 在这个运行时里成不了 —— run_command / job_start 起的进程都是 ensoul 的子进程，命令一返回就被连坐收走，你只会以为「发了」，实际一行日志都没有。": "Killing / relaunching ensoul from the shell cannot work here — processes started by run_command / job_start are children of ensoul and get reaped as soon as the command returns; you will think it was sent when nothing ran at all.",
+  "让改动生效：调 restart_project（会先构建，再摆一条界面请求等用户点头）。": "To apply changes: call restart_project (it builds first, then posts an in-app request awaiting the user's OK).",
+  "只是想把应用拉起来：start_project；想让它停下：stop_project。": "Just want to start the app: start_project. Want it stopped: stop_project.",
+  "【重启 / 启动本应用，只有这几条路】": "[Restarting / starting this app — the only allowed routes]",
+  "· 让改动生效：调 restart_project（它先构建，再在界面上摆一条确认请求，用户点头才真做）。": "· To apply changes: call restart_project (it builds first, then posts a confirm request in the UI; it only runs after the user approves).",
+  "· 只是想把应用拉起来：start_project；想让它停下：stop_project。": "· To just start the app: start_project. To stop it: stop_project.",
+  "· 不要用 run_command / job_start 去杀或拉起本应用本体（taskkill、Stop-Process、schtasks、start ensoul.exe、scripts/launch.js 都一样）—— 那些命令起的进程会被连坐收走，你看着像\"发了\"，实际一行日志都没有，用户只会看到\"你没发\"。": "· Never use run_command / job_start to kill or relaunch the app itself (taskkill, Stop-Process, schtasks, `start ensoul.exe`, scripts/launch.js — all the same): processes those commands start get reaped along with them; it looks like it was sent but no log line is written, and the user just sees \"you didn't send it\".",
+  "· 改了 src/main 必须真重启；只改界面（src/renderer、src/shared、插件里的 panel.tsx）不用重启，界面会自动重建上屏。": "· Changes under src/main require a real restart; UI-only changes (src/renderer, src/shared, a plugin's panel.tsx) do not — the UI rebuilds and re-paints automatically."
+}

@@ -13,7 +13,7 @@
  *
  * ── 落成什么 ──────────────────────────────────────────────────────────
  *
- *   <工作区>/.ensoul/state/thinking/<YYYY-MM-DD>.jsonl
+ *   <应用数据根>/.ensoul/state/thinking/<YYYY-MM-DD>.jsonl
  *
  * 一行一段思考：`{ at, panel, text }`（时间、哪块面板、原样的思考全文）。
  * 为什么是 JSONL 而不是一个 JSON：思考又长又碎，一整份读出来才写回去太亏，
@@ -50,14 +50,7 @@ module.exports = {
   description: t('把模型的思考链原样落盘到 .ensoul/state/thinking/<日期>.jsonl（一行一段：at / panel / text）'),
 
   setup(api) {
-    const root = api.workspace || '';
-    if (!root) {
-      // 还没选工作区：不能把相对路径当真的用 —— 那会写进进程的 cwd。
-      api.log(t('没有工作区，思考先不落盘'));
-      return;
-    }
-
-    const box = path.join(root, '.ensoul', 'state', 'thinking');
+    const box = api.dataPath('.ensoul/state/thinking');
     const keepDays = Math.max(1, Math.round(Number(api.param('keep_days')) || 30));
     const idleMs = Math.max(300, Math.round(Number(api.param('idle_ms')) || 2000));
 
@@ -121,6 +114,6 @@ module.exports = {
       /* 目录还不存在，正常 */
     }
 
-    api.log(`思考落盘就绪：${path.relative(root, box) || box}（留 ${keepDays} 天，空闲 ${idleMs}ms 落一段）`);
+    api.log(`思考落盘就绪：${box}（留 ${keepDays} 天，空闲 ${idleMs}ms 落一段）`);
   },
 };

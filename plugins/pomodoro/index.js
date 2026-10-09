@@ -145,7 +145,7 @@ module.exports = {
   setup(api) {
     const defaults = defaultsFrom(api);
     const state = normalize(api.state.load(null), defaults);
-    const cmdPath = path.join(api.workspace || '.', CMD_FILE);
+    const cmdPath = api.dataPath(CMD_FILE);
     let lastSeq = 0;
 
     const save = () => {

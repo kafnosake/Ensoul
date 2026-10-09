@@ -22,7 +22,7 @@
  * 命令与参数**只从设置里读，模型不能临时传**：模型本来就有跑命令的手脚（run_command），
  * 这里再开一个"你说什么我跑什么"的口子，等于把用户配好的白名单换成任意命令。
  * 都是 detached + unref 起的（本机那条另加 windowsHide + CREATE_NO_WINDOW，别弹黑框）：
- * 交出去就归自己活，软件关了也不带走它；输出堆在 .ensoul/comfyui/launch.log，
+ * 交出去就归自己活，软件关了也不带走它；输出堆在应用资料目录 .ensoul/comfyui/launch.log，
  * 起不来时把 pid 和日志最后几行回给助手看。
  *
  * 工作流用标准占位符接收参数：
@@ -34,7 +34,7 @@
  *
  * 配置在插件参数里（地址、等待上限、出图目录）。产物落在工作区：
  *   .ensoul/comfyui/workflows/*.json   工作流
- *   .ensoul/comfyui/out/               出图
+ *   comfyui/out/                       项目出图
  */
 
 const fs = require('fs');
@@ -82,7 +82,7 @@ const PARAMS = {
   out: {
     label: t('出图保存目录'),
     type: 'text',
-    default: '.ensoul/comfyui/out',
+    default: 'comfyui/out',
     hint: t('相对工作区。想直接在文件面板里看见图，就改成 pics 这类普通目录'),
   },
   see: {
@@ -250,8 +250,8 @@ async function alive(target) {
 }
 
 /** 启动命令的输出都往这儿堆 —— 起不来时助手回的就是它最后几行 */
-function launchLog(root) {
-  const dir = path.join(root, '.ensoul', 'comfyui');
+function launchLog(api) {
+  const dir = api.dataPath('.ensoul/comfyui');
   fs.mkdirSync(dir, { recursive: true });
   return path.join(dir, 'launch.log');
 }
@@ -741,7 +741,7 @@ module.exports = {
         : ' 想让它能被起起来：本机填 python + main.py + base 目录（桌面版就填可执行文件），'
           + '远程在「启动命令」里填一条 ssh。';
 
-    const wfDir = () => path.join(root(), '.ensoul', 'comfyui', 'workflows');
+    const wfDir = () => api.dataPath('.ensoul/comfyui/workflows');
     const wfFile = (name) => path.join(wfDir(), `${name}.json`);
     const outDir = () => inside(root(), cfg().out);
 
@@ -784,7 +784,7 @@ module.exports = {
       },
     };
     /** 预览根目录（每次开跑时整个扫一遍，清掉上几轮的残留帧和 see 小图） */
-    const previewRoot = () => path.join(root(), '.ensoul', 'comfyui', 'preview');
+    const previewRoot = () => api.dataPath('.ensoul/comfyui/preview');
     /** 这一次跑的预览帧落在哪儿 —— 每次跑一个自己的子目录（最多留两张），
         并行跑几张就几个目录：互相不覆盖，谁跑完只扫自己那摊 */
     const previewDir = (slot) => path.join(previewRoot(), slot || 'x');
@@ -1162,7 +1162,7 @@ module.exports = {
       {
         name: 'comfyui_workflow', kits: ['art'],
         description:
-          t('管命名工作流（存在工作区 .ensoul/comfyui/workflows/，comfyui_run 就按名字找它们）。\n')
+          t('管命名工作流（存在应用资料目录 .ensoul/comfyui/workflows/，comfyui_run 就按名字找它们）。\n')
           + t('action=list 看有哪些；get 看某一份的 JSON；save 存一份（json 参数给 API 格式的 JSON 文本，')
           + t('在 ComfyUI 里用「工作流 → 导出（API）」拿到）；delete 删掉。'),
         parameters: {
@@ -1226,7 +1226,7 @@ module.exports = {
       {
         name: 'comfyui_run', kits: ['art'],
         description:
-          t('用一份工作流出图：提交给 ComfyUI，等它跑完，把输出图下载到工作区（默认 .ensoul/comfyui/out/），返回本地路径。')
+          t('用一份工作流出图：提交给 ComfyUI，等它跑完，把输出图下载到工作区（默认 comfyui/out/），返回本地路径。')
           + t('工作流里要有 ${PROMPT_PH} 作为提示词入口；图生图的工作流要在 LoadImage 的 image 字段写 ${IMAGE_PH}，再传 image 参数。')
           + t('等待上限默认 300 秒（可在插件参数里改）—— 会一直占着这一轮，急的话先 comfyui_status 看看队列。')
           + t('硬规矩：图的存在只认本工具的成功返回 —— 这一轮没拿到返回，就不许在回复里说"出了/发了/第 N 张"，不许报 seed、路径、张数，哪怕格式再像真的。'),
@@ -1439,7 +1439,7 @@ module.exports = {
         const target = origin((args && args.url) || cfg().url);
         const action = String((args && args.action) || 'start').toLowerCase();
         const conf = cfg();
-        const log = launchLog(root());
+        const log = launchLog(api);
         const tail = () => logTail(log) || t('（日志是空的）');
         const up = await alive(target);
 

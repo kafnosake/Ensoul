@@ -37,6 +37,24 @@ const t = typeof globalThis.t === 'function' ? globalThis.t : (str) => str;
 /** 常见硬坑规则库 */
 const PITFALL_RULES = [
   {
+    id: 'WIN_CASE_GHOST',
+    name: 'Windows 大小写不敏感 → 同名幽灵文件，TS1261 报错且删不得',
+    pattern: /(TS1261|only in casing|大小写|幽灵文件|casing)/i,
+    check(ctx) {
+      if (ctx.query && this.pattern.test(ctx.query)) return true;
+      return false;
+    },
+    cause: 'Windows 文件系统不区分大小写。当某个工具用与仓库不同的大小写路径写入（例如把 ChatDock.tsx 写成 chatdock.tsx），NTFS 不会建新文件，而会在目录里留一个**小写名的幽灵目录项**；同一份内容于是有两个目录项。tsc 枚举文件时看到两条只差大小写的路径，就报 TS1261 "Already included file name ... differs ... only in casing"。幽灵项用 Node 的 readdirSync / fs.existsSync 看不见，只有 cmd 的 dir 能看见。',
+    solution: [
+      '先用 cmd 确认：cmd /c "dir /a /b <目录>"（Node 的 readdir 会漏掉幽灵项，别信它）；',
+      '**绝对不要直接 del 那个小写名** —— 不区分大小写，del 删掉的是真身，会把源码真删了。先 git status 确认文件是否被标 D（deleted）；',
+      '文件被误删：git checkout -- <路径> 恢复，git 里存着未提交的改动；',
+      '要把小写名里的内容搬回正确文件名（不要 del+ren，那会连真身一起动）：node -e "const fs=require(\'fs\');const b=fs.readFileSync(a);fs.unlinkSync(a);fs.writeFileSync(correct,b)" —— 先 unlink 幽灵项，再 writeFile 正确名；',
+      '根因在写入工具一侧：用 edit / write_file 时路径大小写要与仓库完全一致，混用 node 脚本改大小写更容易触发。'
+    ],
+    reference: 'skills/fix-build/SKILL.md §Windows 上"删不掉的小写文件"'
+  },
+  {
     id: 'EDIT_CRLF',
     name: '行尾 CRLF / LF 混合导致 edit 工具找不到锚点',
     pattern: /(没找到这段原文|not found in file|failed to match|old_string)/i,
@@ -266,7 +284,7 @@ function checkFileEol(filePath) {
 }
 
 /** 运行健康体检 */
-function runHealthCheck(workspaceRoot) {
+function runHealthCheck(workspaceRoot, api) {
   const ws = workspaceRoot || process.cwd();
   const report = {
     timestamp: new Date().toISOString(),
@@ -369,7 +387,7 @@ function runHealthCheck(workspaceRoot) {
   });
 
   // 4. 状态文件合法性检查
-  const stateDir = path.join(ws, '.ensoul', 'state');
+  const stateDir = api.dataPath('.ensoul/state');
   let badJsonFiles = [];
   if (fs.existsSync(stateDir)) {
     try {
@@ -396,7 +414,7 @@ function runHealthCheck(workspaceRoot) {
 
   // 5. 最近日志异常过滤探测
   let recentErrors = [];
-  const logDir = path.join(ws, '.ensoul', 'logs');
+  const logDir = api.dataPath('.ensoul/logs');
   if (fs.existsSync(logDir)) {
     try {
       const logs = fs.readdirSync(logDir).filter(f => f.endsWith('.log'));
@@ -644,7 +662,7 @@ module.exports = {
       description: t('一键执行项目与运行时全景健康体检。涵盖构建产物时效、核心代码行尾(CRLF/LF)检查、插件健康度与语法校验、状态持久化JSON完整性及最近日志异常。'),
       parameters: { type: 'object', properties: {} }
     }, () => {
-      const hc = runHealthCheck(ws);
+      const hc = runHealthCheck(ws, api);
       let out = `# 🩺 项目健康体检报告\n\n`;
       out += `**体检时间**：${hc.timestamp} | **综合状态**：**${hc.overall === 'HEALTHY' ? '✅ 运行良好 (HEALTHY)' : hc.overall === 'WARN' ? '⚠️ 存在告警 (WARN)' : '❌ 存在异常 (FAIL)'}**\n\n`;
       out += `| 检查项 | 状态 | 详细事实 | 建议 |\n`;
@@ -682,7 +700,7 @@ module.exports = {
       label: t('项目体检'),
       hint: t('运行一键系统体检报告')
     }, () => {
-      const hc = runHealthCheck(ws);
+      const hc = runHealthCheck(ws, api);
       return JSON.stringify(hc, null, 2);
     });
   }

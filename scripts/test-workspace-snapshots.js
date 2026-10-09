@@ -21,7 +21,8 @@ require.extensions['.ts'] = (mod, file) => mod._compile(ts.transpileModule(fs.re
 }).outputText, file);
 const { setWorkspaceRoot, readJsonSnapshot } = require('../src/main/fsapi.ts');
 const { store } = require('../src/main/store.ts');
-const { loadPlugins } = require('../src/main/plugins.ts');
+const { loadPlugins, preparePluginStorage } = require('../src/main/plugins.ts');
+const { runtimePath, migrateRuntimeData } = require('../src/main/storage.ts');
 const { snapshotFailed, validateSnapshot } = require('../src/shared/json-snapshot.ts');
 function json(file, data) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -78,18 +79,40 @@ test('应用组件在外部工作区可见、能打开；同 id 的工作区做�
   assert.equal(store.componentCrafts().find((it) => it.id === 'shared').name, 'Application');
 });
 
-test('切换工作区重建自带插件；旧实例状态接口不会写入新工作区', () => {
+test('插件个人状态与参数跨工作区保留；项目数据与旧实例仍绑定原工作区', () => {
   const dir = path.join(app, 'plugins/fixture');
   fs.mkdirSync(dir, { recursive: true });
   global.__snapshotFixture = { hosts: [], disposed: 0 };
   fs.writeFileSync(path.join(dir, 'index.js'), `module.exports = {
     name: 'fixture',
-    setup(api) { global.__snapshotFixture.hosts.push(api); api.state.save({ workspace: api.workspace }); },
+    params: [{ key: 'mode', label: 'Mode', type: 'text', default: 'default' }, { key: 'shared', type: 'text', default: 'default' }],
+    storage: { project: ['.ensoul/state/fixture-project.json'] },
+    setup(api) {
+      global.__snapshotFixture.hosts.push(api);
+      api.state.save({ workspace: api.workspace });
+      const file = api.dataPath('.ensoul/state/fixture-project.json');
+      require('node:fs').mkdirSync(require('node:path').dirname(file), { recursive: true });
+      require('node:fs').writeFileSync(file, JSON.stringify({ workspace: api.workspace }));
+    },
     dispose() { global.__snapshotFixture.disposed++; }
   };`);
   setWorkspaceRoot(a, { trust: true });
+  json(path.join(a, '.ensoul/state/fixture-project.json'), { legacy: true });
+  assert.equal(typeof preparePluginStorage, 'function', '插件声明需要先于迁移注册');
+  preparePluginStorage(a);
+  migrateRuntimeData(a);
+  assert.deepEqual(JSON.parse(fs.readFileSync(runtimePath('.ensoul/state/fixture-project.json', a))), { legacy: true });
   loadPlugins([]);
   const first = global.__snapshotFixture.hosts.at(-1);
+  first.setParam('mode', 'personal');
+  first.setParam('shared', 'shared-personal');
+  loadPlugins([]);
+  json(path.join(a, '.ensoul/plugin-overrides.json'), { fixture: { mode: 'project-a' } });
+  loadPlugins([]);
+  assert.equal(global.__snapshotFixture.hosts.at(-1).param('mode'), 'project-a');
+  assert.equal(global.__snapshotFixture.hosts.at(-1).param('shared'), 'shared-personal');
+  assert.equal(JSON.parse(fs.readFileSync(runtimePath('.ensoul/state/plugin-params.json', a))).fixture.mode, 'personal');
+  json(path.join(b, '.ensoul/state/plugin-params.json'), { fixture: { mode: 'legacy-b' } });
   const count = global.__snapshotFixture.hosts.length;
   loadPlugins([]);
   assert.equal(global.__snapshotFixture.hosts.length, count);
@@ -101,9 +124,47 @@ test('切换工作区重建自带插件；旧实例状态接口不会写入新�
   assert.equal(second.workspace, b);
   assert.ok(global.__snapshotFixture.disposed > 0);
   assert.equal(first.state.save({ old: true }), true);
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(a, '.ensoul/state/fixture.json'))), { old: true });
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(b, '.ensoul/state/fixture.json'))), { workspace: b });
-  assert.equal(second.componentCrafts().find((it) => it.id === 'shared').source, 'app');
+  assert.deepEqual(second.state.load(), { old: true });
+  assert.equal(second.param('mode'), 'personal');
+  assert.equal(fs.existsSync(path.join(a, '.ensoul/state/fixture.json')), false);
+  assert.equal(fs.existsSync(path.join(b, '.ensoul/state/fixture.json')), false);
+  assert.deepEqual(JSON.parse(fs.readFileSync(first.dataPath('.ensoul/state/fixture-project.json'))), { workspace: a });
+  assert.deepEqual(JSON.parse(fs.readFileSync(second.dataPath('.ensoul/state/fixture-project.json'))), { workspace: b });
+  assert.notEqual(first.dataPath('.ensoul/state/fixture-project.json'), second.dataPath('.ensoul/state/fixture-project.json'));
+  assert.equal(second.componentCrafts().find((it) => it.id === 'shared').source, 'global');
+  assert.equal(second.componentCrafts().find((it) => it.id === 'shared').name, 'Workspace A');
+});
+
+test('声明只来自当前工作区胜出的插件；移除覆盖插件后撤销旧声明', () => {
+  const custom = path.join(a, '.ensoul/plugins/scoped');
+  const globalPlugin = path.join(box, 'userData/.ensoul/plugins/scoped');
+  const builtin = path.join(app, 'plugins/scoped');
+  const plugin = (dir, project, workspace = []) => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'index.js'), `module.exports = { name: 'scoped', storage: ${JSON.stringify({ project, workspace })}, setup() {} };`);
+  };
+  plugin(custom, ['.ensoul/state/scoped-local.json'], ['.ensoul/scoped/config.json']);
+  plugin(globalPlugin, ['.ensoul/state/scoped-global.json']);
+  plugin(builtin, ['.ensoul/state/scoped-app.json']);
+  setWorkspaceRoot(a);
+  loadPlugins([]);
+  preparePluginStorage(b);
+  assert.equal(runtimePath('.ensoul/state/scoped-local.json', b), path.join(box, 'userData/.ensoul/state/scoped-local.json'));
+  assert.equal(runtimePath('.ensoul/scoped/config.json', b), path.join(box, 'userData/.ensoul/scoped/config.json'));
+  assert.notEqual(runtimePath('.ensoul/state/scoped-local.json', a), runtimePath('.ensoul/state/scoped-local.json', b));
+  assert.equal(runtimePath('.ensoul/state/scoped-global.json', a), path.join(box, 'userData/.ensoul/state/scoped-global.json'));
+  assert.equal(runtimePath('.ensoul/state/scoped-app.json', a), path.join(box, 'userData/.ensoul/state/scoped-app.json'));
+  assert.notEqual(runtimePath('.ensoul/state/scoped-global.json', b), path.join(box, 'userData/.ensoul/state/scoped-global.json'));
+  fs.unlinkSync(path.join(custom, 'index.js'));
+  loadPlugins([]);
+  assert.equal(runtimePath('.ensoul/state/scoped-local.json', a), path.join(box, 'userData/.ensoul/state/scoped-local.json'));
+  assert.equal(runtimePath('.ensoul/scoped/config.json', a), path.join(box, 'userData/.ensoul/scoped/config.json'));
+  assert.notEqual(runtimePath('.ensoul/state/scoped-global.json', a), path.join(box, 'userData/.ensoul/state/scoped-global.json'));
+  fs.unlinkSync(path.join(globalPlugin, 'index.js'));
+  preparePluginStorage(a);
+  assert.equal(runtimePath('.ensoul/state/scoped-global.json', a), path.join(box, 'userData/.ensoul/state/scoped-global.json'));
+  assert.notEqual(runtimePath('.ensoul/state/scoped-app.json', a), path.join(box, 'userData/.ensoul/state/scoped-app.json'));
+  assert.notEqual(runtimePath('.ensoul/state/scoped-global.json', b), path.join(box, 'userData/.ensoul/state/scoped-global.json'), '预注册 A 不改写旧实例 B 的映射');
 });
 
 test('调度快照写入失败会重试；确认落盘后才缓存指纹；文件丢失可重建', () => {

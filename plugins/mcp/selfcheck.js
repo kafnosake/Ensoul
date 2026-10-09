@@ -138,14 +138,14 @@ ok('MCP：装进 mcp.json，并且只认自己装的那些', () => {
   assert.strictEqual(list[0].name, 'filesystem');
   // 用户自己手工加的：出现在 mcp.json 里，但不出现在我们的卸载列表里
   st.servers.push({ name: 'by-hand', command: 'node', args: [], enabled: true, status: 'disconnected', error: '', tools: [] });
-  fs.writeFileSync(path.join(tmp, '.ensoul', 'state', 'mcp.json'), JSON.stringify(st));
+  fs.writeFileSync(path.join(tmp, '.ensoul', 'mcp', 'servers.json'), JSON.stringify(st));
   assert.strictEqual(lib.listInstalledMcp(tmp).length, 1, '手工加的不该出现在这里');
   assert.strictEqual(lib.uninstallMcp(tmp, 'by-hand').ok, false, '也不该被我们删掉');
 });
 ok('MCP 卸载：配置和出厂记录一起走', () => {
   assert.strictEqual(lib.uninstallMcp(tmp, 'filesystem').ok, true);
   assert.strictEqual(lib.readMcpState(tmp).servers.filter((s) => s.name === 'filesystem').length, 0);
-  assert.ok(!fs.existsSync(path.join(tmp, '.ensoul', 'mcp', 'filesystem')));
+  assert.ok(!fs.existsSync(path.join(tmp, '.ensoul', 'mcp', 'project', 'filesystem')));
 });
 
 console.log('ecosystem.js');
@@ -166,9 +166,9 @@ ok('源清单：存过就照存的来，用户加的在里面', () => {
   assert.strictEqual(list[0].builtin, false);
 });
 ok('缓存写进去读得回来，且不抹掉别的字段', () => {
-  eco.patchCache(tmp, { skills: { repos: [{ id: 'a' }] } });
-  eco.patchCache(tmp, { mcp: { items: [] } });
-  const c = eco.readCache(tmp);
+  eco.patchCache({ dataPath: relative => path.join(tmp, relative) }, { skills: { repos: [{ id: 'a' }] } });
+  eco.patchCache({ dataPath: relative => path.join(tmp, relative) }, { mcp: { items: [] } });
+  const c = eco.readCache({ dataPath: relative => path.join(tmp, relative) });
   assert.strictEqual(c.skills.repos.length, 1);
   assert.ok(c.mcp);
 });

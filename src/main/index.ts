@@ -19,14 +19,14 @@ import { commitPromptBaseline, consumePromptDeltas } from './prompt-composer';
 import { askOnce, buildPanelSnapshot, buildSystemPrompt, extractEditProposal, failLabel, modeSection, runAgent, summarizeSession, conversationForSummary, type SteerItem } from './chat-core';
 import { archiveToolResult, describeTool, runTool, runToolConfirmed, setExtensions, toolsForPanel } from './agent';
 import { readSkill, scanSkills, skillRoots, skillsDir } from './skills';
-import { loadPlugins, pluginsDir, runSettingsAction, setAskHandler, setChatClearer, setChatCompressor, setChatSender, setChatSteerer, setLiveSink, setRunningProbe, setChatEnqueuer, setModelAsker, setModelCatalog, setPluginParam, setProviderUpserter, setCredentialReader, setCredentialWriter, setRefresher, setToolLister, settingsSectionView, settingsSections, type AskSpec, type SlashCommandReg, type StatusItem } from './plugins';
+import { loadPlugins, preparePluginStorage, pluginsDir, runSettingsAction, setAskHandler, setChatClearer, setChatCompressor, setChatSender, setChatSteerer, setLiveSink, setRunningProbe, setChatEnqueuer, setModelAsker, setModelCatalog, setPluginParam, setProviderUpserter, setCredentialReader, setCredentialWriter, setRefresher, setToolLister, settingsSectionView, settingsSections, type AskSpec, type SlashCommandReg, type StatusItem } from './plugins';
 import type { PluginPrompt, ToolContext } from './plugins';
 import { emitReasoning } from './plugins';
 import { describeLayout } from './layout-report';
 import { store } from './store';
 import { migrateUserData, migrateWorkspaceState } from './migrate';
 import { listDir, readText, readJsonSnapshot, setUnconfinedSource, setWorkspaceRoot as setFsRoot, workspaceRoot, writeBytes, writeText } from './fsapi';
-import { PRESETS, catalog, costOf, describePick, listModels, priceOf, providersPath, remove as removeProvider, resolvePick, upsert } from './providers';
+import { PRESETS, catalog, costOf, describePick, listModels, load as loadProviders, priceOf, providersPath, remove as removeProvider, resolvePick, upsert } from './providers';
 import { keyOf as credentialOf, setKey as setCredential } from './credentials';
 import { windows, type DropHit } from './windows';
 import { applyTo, getZoom, loadZoom, setZoom, ZOOM_MAX, ZOOM_MIN } from './zoom';
@@ -39,6 +39,9 @@ import { RunRegistry } from './run-registry';
 import { setProjectBuilder, setTaskApi } from './plugins';
 import { build as buildProject, buildRenderer, buildApp } from './project';
 import { TaskService } from './task-service';
+import { migrateRuntimeData, projectDataPath, registerProjectStorage, runtimePath } from './storage';
+import { installPluginFiles, pluginInstallDirectory } from './extension-storage';
+import type { ExtensionInstallScope } from '../shared/storage';
 
 // 同一个应用永远只留一个实例 —— 手跑一遍 启动.sh、npm run app、或者任何路径
 // 拉起来的第二份，都在这里直接退出（exit 而不是 quit：quit 走关闭流程，窗口会闪一下），
@@ -148,6 +151,14 @@ interface PendingAsk {
   defer?: string;
   /** 用户已经选了"等所有会话结束"——请求留在原地，核心替它盯着时机 */
   armed?: boolean;
+  /**
+   * 一批结构化的问题（dsh 的 ask_user_question 同形）——给界面画问题表单用。
+   *
+   * 有它 = 这是一条"阻塞式问答"：模型正卡在一次工具调用上等人回答，
+   * 所以用户提交答案时这一轮**本来就还在跑** —— 底下那个 running 守卫要放行它。
+   * 没有它 = 老样子（请用户点头，点了核心替插件跑一次工具调用）。
+   */
+  questions?: any[];
   then: { tool: string; args?: any };
 }
 const pendingAsk = new Map<string, PendingAsk>();
@@ -172,11 +183,13 @@ let bootResumeOutbox: () => void = () => {};
  */
 const TURN_JOURNAL = ".ensoul/state/turn-journal.json";
 let journalCache: any[] = [];
-let journalLoaded = false;
-const journalFile = () => path.join(workspaceRoot(), TURN_JOURNAL);
+let journalLoadedFor = '';
+registerProjectStorage('turn-journal', [TURN_JOURNAL]);
+const journalFile = () => projectDataPath(TURN_JOURNAL, workspaceRoot());
 function journalRead(): any[] {
-  if (journalLoaded) return journalCache;
-  journalLoaded = true;
+  const file = journalFile();
+  if (journalLoadedFor === file) return journalCache;
+  journalLoadedFor = file;
   try {
     const j = JSON.parse(fs.readFileSync(journalFile(), "utf8"));
     journalCache = Array.isArray(j && j.turns) ? j.turns : [];
@@ -231,7 +244,17 @@ function sweepJournal(): number {
 
 /** 只把该给界面看的那几个字段给界面：谁提的、点了之后跑什么，渲染层不用认识 */
 const askView = (a?: PendingAsk) =>
-  a ? { text: a.text, confirm: a.confirm, cancel: a.cancel, defer: a.defer ?? '', armed: Boolean(a.armed) } : null;
+  a
+    ? {
+        text: a.text,
+        confirm: a.confirm,
+        cancel: a.cancel,
+        defer: a.defer ?? '',
+        armed: Boolean(a.armed),
+        // 问题表单：渲染层照着它画（翻页 / 单选多选 / 自定义 / 跳过），核心不认识题目内容
+        ...(a.questions && a.questions.length ? { questions: a.questions } : {}),
+      }
+    : null;
 
 /** 推给所有窗口：每个窗口里的对话区自己挑自己那条 */
 function toAllWindows(channel: string, payload: any) {
@@ -1419,6 +1442,7 @@ function registerIpc() {
   // ------------------------------------------------------------ 设置
   ipcMain.handle('settings:get', () => ({
     workspace: workspaceRoot(),
+    dataPath: userDataPath(''),
     configPath: providersPath(),
     model: describePick(store.pickFor(MAIN_HOST)),
     /** 宿主版本 —— 装扩展包时拿它比 manifest 里声明的 host（见 docs/plugin-spec.md §5） */
@@ -1447,11 +1471,18 @@ function registerIpc() {
   /** 换工作区：写进 store、换 fsapi 的根、把新状态推给所有窗口 */
   const openWorkspace = (dir: string) => {
     if (running.size) throw new Error('请先结束当前任务，再切换工作区');
-    store.setWorkspaceRoot(dir);
-    // 这是人刚挑的目录：得信它。不信就会变成"标题栏显示已选、fs 说还没选"
+    const previousRoot = workspaceRoot();
+    try {
+      migrateWorkspaceState(dir);
+      preparePluginStorage(dir);
+      const migration = migrateRuntimeData(dir);
+      if (migration.errors.length) throw new Error(`应用数据迁移失败：${migration.errors.map(item => `${item.source}: ${item.error}`).join('; ')}`);
+    } catch (error) {
+      preparePluginStorage(previousRoot);
+      throw error;
+    }
     const root = setFsRoot(dir, { trust: true });
-    // 改名字留下的旧状态目录（.anycode → .ensoul）在这儿顺手搬正
-    migrateWorkspaceState(root);
+    store.setWorkspaceRoot(root);
     // 根换好了，才轮到做法那摊事（拆老的单文件、把本体里的做法搬进工作区）——
     // 反过来做会照旧根拼路径、写进上一个工作区
     store.syncCraftFiles();
@@ -2070,6 +2101,7 @@ function registerIpc() {
       skillsDirs: skillRoots().map((r) => ({ path: r.path, source: r.source, exists: fs.existsSync(r.path) })),
       pluginsDir: pluginsDir(),
       workspacePluginsDir: workspaceRoot() ? path.join(workspaceRoot(), '.ensoul', 'plugins') : '',
+      userPluginsDir: userDataPath('.ensoul', 'plugins'),
     };
   });
 
@@ -2096,13 +2128,13 @@ function registerIpc() {
    * 而清单只有懂包格式的那一侧算得出来 —— 渲染层现在不碰 zip 了。
    * 两趟走同一个 planPluginPack：看的和写的必然是同一批文件，不会各说各的。
    */
-  ipcMain.handle('ext:inspectPack', (_e, bytes: ArrayBuffer) => {
+  ipcMain.handle('ext:inspectPack', (_e, bytes: ArrayBuffer, scope: ExtensionInstallScope = 'user') => {
     try {
       const plan = planPluginPack(Buffer.from(bytes), {
         curVersion: appVersion(),
         installedPlugins: loadPlugins(store.disabledPlugins()).info.map((p) => p.name),
       });
-      return { ok: true, id: plan.id, name: plan.name, version: plan.version, files: plan.files.map((f) => f.rel) };
+      return { ok: true, id: plan.id, name: plan.name, version: plan.version, dir: pluginInstallDirectory(plan, workspaceRoot(), scope), files: plan.files.map((f) => f.rel) };
     } catch (e: any) {
       return { ok: false, error: String(e?.message ?? e) };
     }
@@ -2120,7 +2152,7 @@ function registerIpc() {
    * （不许 ..、不许绝对路径、不许盘符），任何一条不过就整包拒绝，一个字节都不落地。
    * 从前这两样都原样拼进路径，实测 ../../../src/main/index.ts 能覆盖到开源源码。
    */
-  ipcMain.handle('ext:installPack', (_e, bytes: ArrayBuffer) => {
+  ipcMain.handle('ext:installPack', (_e, bytes: ArrayBuffer, scope: ExtensionInstallScope = 'user') => {
     let plan;
     try {
       plan = planPluginPack(Buffer.from(bytes), {
@@ -2130,16 +2162,14 @@ function registerIpc() {
     } catch (e: any) {
       return { ok: false, error: String(e?.message ?? e) };
     }
+    let directory: string;
     try {
-      for (const f of plan.files) {
-        // 二进制写：包里可能有 png / 字体，过一遍 'utf8' 会静默写坏
-        writeBytes(plan.targetDir + '/' + f.rel, f.data);
-      }
+      directory = installPluginFiles(plan, workspaceRoot(), scope);
     } catch (e: any) {
       return { ok: false, error: t('写文件失败：') + String(e?.message ?? e) };
     }
     refresh();
-    return { ok: true, id: plan.id, name: plan.name, dir: plan.targetDir };
+    return { ok: true, id: plan.id, name: plan.name, dir: directory };
   });
 
   /**
@@ -2296,6 +2326,34 @@ function registerIpc() {
   
   /** 根自己不算（删根就是删所有解释器，不许） */
   const isEnvRootItself = (dir: string) => normPathKey(dir) === normPathKey(envRootDir());
+
+  /**
+   * 名单上的解释器到底"认领"了环境根下的哪些目录 —— 沿途**每一层祖先目录都算被认领**。
+   *
+   * 为什么不能只拿登记路径的 dirname 去比：插件用的是 api.environments.directory(name)，
+   * 真实布局是 env/<名字>/<平台-架构>/Scripts/python.exe —— 登记目录在第 3 层，
+   * 而扫描只遍历 env 下的第 1 层子目录，两边永远不相等，插件环境就被误判成"没人认领的残留"。
+   * 用户一旦点了清理，正在用的环境（几 GB、几万个文件）会被真删，插件的常驻进程还把文件抱着，
+   * 结果就是删一半留一半、环境报废。所以改成"归属判定"：登记路径往上爬到 env 根，沿途每层都算已认领。
+   */
+  const claimedEnvDirs = (list: any[]): Set<string> => {
+    const root = normPathKey(envRootDir());
+    const claimed = new Set<string>();
+    for (const item of Array.isArray(list) ? list : []) {
+      const exe = String(item?.path || '').trim();
+      if (!looksLikeInterpreterExe(exe)) continue;
+      let dir = path.dirname(path.resolve(exe));
+      for (let depth = 0; depth < 16; depth += 1) {
+        const key = normPathKey(dir);
+        if (!key || key === root || !key.startsWith(root + '/')) break;
+        claimed.add(key);
+        const parent = path.dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+      }
+    }
+    return claimed;
+  };
   
   /** 只认解释器可执行文件本身；别拿一个 system32 下的怪东西去查「谁在用它」 */
   const looksLikeInterpreterExe = (p: string) => /^python(w)?(\.exe)?$/i.test(path.basename(p || ''));
@@ -2348,6 +2406,34 @@ function registerIpc() {
     }
   };
   
+  /**
+   * 查有哪些活着的进程正跑在这个目录**里面**（做成插件环境那种常驻 python 会落在这）。
+   * 跟 findUsingProcesses 的区别：那个按可执行文件精确比对，这个按目录前缀归属。
+   * 用途只有一个 —— 删环境之前先把抱着它的进程收掉，否则 Windows 上必定删不干净。
+   * 查不动就返回空数组：宁可不报，也不把用户引去杀错进程。
+   */
+  const findUsingProcessesUnder = async (dir: string): Promise<Array<{ pid: number; path: string; memMB: number }>> => {
+    try {
+      const { exec } = await import('child_process');
+      const cmd = String.raw`powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name LIKE 'python%'\" | Select-Object ProcessId,ExecutablePath,WorkingSetSize | ConvertTo-Json -Compress"`;
+      const stdout = await new Promise<string>((res) => {
+        exec(cmd, { encoding: 'utf8', timeout: 8000 }, (_err: any, so: string) => res(so || ''));
+      });
+      const raw = JSON.parse((stdout || '').trim() || '[]');
+      const arr = Array.isArray(raw) ? raw : [raw];
+      const prefix = normPathKey(dir);
+      return arr
+        .filter((it: any) => it && it.ExecutablePath && normPathKey(it.ExecutablePath).startsWith(prefix + '/'))
+        .map((it: any) => ({
+          pid: Number(it.ProcessId) || 0,
+          path: String(it.ExecutablePath),
+          memMB: Math.round((Number(it.WorkingSetSize) || 0) / 1048576),
+        }));
+    } catch {
+      return [];
+    }
+  };
+
   /** 递归清一个目录；返回**还删不掉**的残留路径（Windows 上被进程占着的 .pyd 会卡在这） */
   const purgeDir = (dir: string, limit = 6): string[] => {
     const left: string[] = [];
@@ -2467,10 +2553,9 @@ function registerIpc() {
   ipcMain.handle('env:listOrphans', () => {
     const cfg = readEnvConfig();
     const list: any[] = Array.isArray(cfg.pythons) ? cfg.pythons : [];
-    const claimed = list
-      .map((x: any) => String(x.path || '').trim())
-      .filter((x: string) => looksLikeInterpreterExe(x))
-      .map((x: string) => normPathKey(path.dirname(path.resolve(x))));
+    // 认领判定走「归属」而不是「相等」：插件环境的登记目录埋在 env/<名字>/<平台-架构>/Scripts 下，
+    // 拿它跟 env 的第 1 层子目录比相等永远不成立，会被误报成残留。详见 claimedEnvDirs 的注释。
+    const claimed = claimedEnvDirs(list);
     const root = envRootDir();
     let names: string[] = [];
     try { names = fs.readdirSync(root); } catch { return []; }
@@ -2479,21 +2564,49 @@ function registerIpc() {
       .filter((it) => {
         try { return fs.statSync(it.dir).isDirectory(); } catch { return false; }
       })
-      .filter((it) => !claimed.includes(normPathKey(it.dir)))
+      .filter((it) => !claimed.has(normPathKey(it.dir)))
       .map((it) => {
         const size = measureDir(it.dir);
         return { name: it.name, dir: it.dir, bytes: size.bytes, files: size.files };
       });
   });
   
-  /** 清一个孤儿目录（同样只认 .ensoul/env 底下的东西） */
+  /**
+   * 清一个孤儿目录（同样只认 .ensoul/env 底下的东西）。
+   *
+   * 动手前的两道闸，都是被真事故逼出来的：
+   * ① **名单上还有人认领的目录一律拒绝** —— 判定走 claimedEnvDirs 的归属逻辑。
+   *    以前只比「目录相等」，插件环境 env/<名字>/<平台-架构>/ 必被误判成残留；
+   *    界面一点「清理」就真删几 GB 的活环境，而且删除走的还是 force 直删。
+   *    这里再判一次，是界面之外的最后一道闸：即便列错了、或者有人直接调这条 IPC，也删不掉活环境。
+   * ② **还抱着目录的进程先收掉**，删完复检，删不干净的如实回执给界面。
+   *    插件环境常有常驻 python（语音 daemon 那类）抱着 torch 的 .dll/.pyd，
+   *    不一并杀掉就是「删一半留一半」，包管理器的记录全乱。
+   */
   ipcMain.handle('env:removeOrphan', async (_e, dirIn: string) => {
     const dir = String(dirIn || '').trim();
     if (!dir || !insideEnvRoot(dir) || isEnvRootItself(dir)) return { ok: false, error: t('这个目录不在受管的解释器根目录里，拒绝删除') };
+    const live = readEnvConfig();
+    const liveList: any[] = Array.isArray(live.pythons) ? live.pythons : [];
+    if (claimedEnvDirs(liveList).has(normPathKey(dir))) {
+      return { ok: false, error: t('这个目录还被名单上的解释器用着，拒绝删除。要清它请先在上面把那条解释器删掉。'), bytes: 0, files: 0, leftovers: [] as string[] };
+    }
     if (!fs.existsSync(dir)) return { ok: true, bytes: 0, files: 0, leftovers: [] as string[] };
     const size = measureDir(dir);
+    // 抱着这个目录的 python 进程（插件自己起的常驻解释器）不收掉，目录永远删不干净
+    const inUse = await findUsingProcessesUnder(dir);
+    for (const proc of inUse) {
+      if (!proc.pid) continue;
+      try {
+        const { exec } = await import('child_process');
+        await new Promise<void>((res) => {
+          exec(`taskkill /PID ${proc.pid} /T /F`, { windowsHide: true }, () => res());
+        });
+      } catch { /* 杀不掉也照删，删不动会如实报残留 */ }
+    }
+    if (inUse.length) await new Promise((r) => setTimeout(r, 500)); // 给 Windows 一点时间松开文件句柄
     const leftovers = purgeDir(dir);
-    return { ok: true, bytes: size.bytes, files: size.files, leftovers };
+    return { ok: true, bytes: size.bytes, files: size.files, leftovers, killed: inUse.map((p) => p.pid) };
   });
 
   ipcMain.handle('env:detect', async () => {
@@ -2576,7 +2689,7 @@ function registerIpc() {
       }
     };
 
-    const cacheFile = path.join(workspaceRoot() || process.cwd(), '.ensoul', 'state', 'env-data.json');
+    const cacheFile = runtimePath('.ensoul/state/env-data.json', workspaceRoot());
     const prev = readEnvDataCache(cacheFile);
     const probeRes = await probe();
     // 真查到了才更新缓存；查不到就沿用上次那份 —— 总比给出一个假的"未安装"强
@@ -2880,6 +2993,7 @@ function registerIpc() {
       confirm: spec.confirm || t('确认'),
       cancel: spec.cancel || t('先不'),
       defer: spec.defer ? String(spec.defer.label || t('等所有会话结束')) : undefined,
+      questions: Array.isArray(spec.questions) && spec.questions.length ? spec.questions : undefined,
       then: { tool: spec.then.tool, args: spec.then.args },
       armed: alreadyRestartArmed ? true : undefined,
     });
@@ -3678,7 +3792,12 @@ function registerIpc() {
       if (typeof proposal.kind === 'string' && proposal.kind) live.kind = proposal.kind;
       if (typeof proposal.title === 'string' && proposal.title) live.title = proposal.title;
       if (proposal.look) live.look = { ...live.look, ...proposal.look };
-      if (proposal.spec) live.spec = { ...live.spec, ...proposal.spec };
+      if (proposal.spec) live.spec = proposal.spec;
+      if (proposal.chatSide === 'left' || proposal.chatSide === 'right' || proposal.chatSide === null) {
+        if (proposal.chatSide === null) delete live.chatSide;
+        else live.chatSide = proposal.chatSide;
+      }
+      if (typeof proposal.chatWSide === 'number') live.chatWSide = proposal.chatWSide;
       /**
        * 面板定型这一瞬，顺手把**头像家族**定下来，冻进 look.avatarKey。
        *
@@ -3923,13 +4042,15 @@ function registerIpc() {
   setProviderUpserter((p) => {
     if (!p?.key || !p.baseUrl) return false;
     try {
+      const existing = loadProviders().find((x) => x.key === String(p.key));
+      const hasCustomModels = existing && Array.isArray(existing.models) && existing.models.length > 0;
       upsert({
         key: String(p.key),
         label: String(p.label || p.key),
         api: String(p.api || 'openai-completions'),
         baseUrl: String(p.baseUrl),
         apiKey: String(p.apiKey || ''),
-        models: Array.isArray(p.models) ? p.models : [],
+        models: hasCustomModels ? existing.models : (Array.isArray(p.models) ? p.models : []),
       });
       refresh();
       return true;
@@ -4046,12 +4167,24 @@ function registerIpc() {
    * 跑的是 runToolConfirmed（**不过插件钩子**）：请求本来就是钩子提的，
    * 回头再问一遍就是个死循环。
    */
-  ipcMain.handle('chat:askConfirm', async (_e, panelId: string) => {
+  ipcMain.handle('chat:askConfirm', async (_e, panelId: string, answer?: any) => {
     const ask = pendingAsk.get(panelId);
     if (!ask) return { ok: false, error: t('没有待确认的请求。') };
-    // 这一轮还在写就别动手：回复在内存里，收掉进程等于这一轮白跑
-    if (running.has(panelId)) {
+    /*
+     * 三件事同时成立时**不能**拦：
+     *   · 这是一条结构化问答（ask.questions）；
+     *   · 模型正卡在一次工具调用上等人回答 —— 这一轮本来就是 running 的；
+     *   · 用户答的正是那道题。
+     * 那种情况下 running.has() 拦的是'别人的一轮'才该拦。
+     * 老路（请用户点头、点头之后跑一次工具）仍然照拦：那一次调用真可能把进程收掉。
+     */
+    const blocked = running.has(panelId) && !(ask.questions && ask.questions.length);
+    if (blocked) {
       return { ok: false, error: t('这一轮还没写完 —— 等它停下再点，否则这段回复会跟着进程一起没。') };
+    }
+    // 用户提交的答案原样并进 then.args：插件那个 then.tool 就是来收这一份的
+    if (answer !== undefined) {
+      ask.then.args = { ...(ask.then.args || {}), ...((answer && typeof answer === 'object') ? answer : { answer }) };
     }
     /*
      * 同一件事（重启）别处也躺着一条时：**把别处那几条清掉，这一条照常执行**。
@@ -4060,9 +4193,16 @@ function registerIpc() {
      * 请求消失了、重启却没发生，看着就是「点了没用」。
      * 用户按下这个键的意思只有一个：现在重启。所以既清掉重复的，也必须真的重启一次。
      */
-    const twin = [...pendingAsk.entries()].find(
-      ([pid, a2]) => pid !== panelId && a2.then.tool === ask.then.tool,
-    );
+    /*
+     * 孪生去重只对"同一件事"（重启）成立。结构化问答是按面板各问各的 ——
+     * 两块面板同时等人回答时，同一把 then.tool 会互相认成孪生而把对方清掉，
+     * 那正是"A 的活被 B 接走"的串味来路，所以问答一律不参与去重。
+     */
+    const twin = ask.questions && ask.questions.length
+      ? undefined
+      : [...pendingAsk.entries()].find(
+          ([pid, a2]) => pid !== panelId && a2.then.tool === ask.then.tool,
+        );
     if (twin) {
       for (const [pid, other] of [...pendingAsk.entries()]) {
         if (pid === panelId || other.then.tool !== ask.then.tool) continue;
@@ -4084,6 +4224,8 @@ function registerIpc() {
   ipcMain.handle('chat:askDefer', (_e, panelId: string) => {
     const ask = pendingAsk.get(panelId);
     if (!ask) return { ok: false, error: t('没有待确认的请求。') };
+    // 结构化问答天生要当场答（模型正卡着等）—— '等全部会话结束'对它没有意义
+    if (ask.questions && ask.questions.length) return { ok: false, error: t('这个问题要现在回答。') };
     ask.armed = true;
     // 同一件事（重启）只该挂一次：别的面板上要是也躺着一条没点的重启请求，
     // 就跟着一起挂起来 —— 否则它们会一直摆在那儿等用户逐个点，越堆越多。
@@ -4102,11 +4244,35 @@ function registerIpc() {
   });
 
   /** 用户按下「先不」—— 请求作废，并且留下一条记录 */
-  ipcMain.handle('chat:askCancel', (_e, panelId: string) => {
+  ipcMain.handle('chat:askCancel', async (_e, panelId: string) => {
     const ask = pendingAsk.get(panelId);
     if (!ask) return false;
     pendingAsk.delete(panelId);
     toAllWindows('chat:ask', { panelId, ask: null, restartArmed: isRestartArmed() });
+    /*
+     * 结构化问答：用户点「不回答，跳过」时**必须把挂着的那次调用解开** ——
+     * 模型正卡在 ask_user_question 上等它。不解开的话这次调用会一直挂到
+     * timeoutMs 超时，界面上看着就是「点了跳过，模型还在那儿发呆」。
+     * 老路（请用户点头）没有等待者，照旧只落一张纸条。
+     */
+    if (ask.questions && ask.questions.length) {
+      const out = await runToolConfirmed(
+        ask.then.tool,
+        { ...(ask.then.args || {}), cancelled: true },
+        { panelId, host: ask.host, kind: ask.kind },
+      );
+      const skipped: ChatMessage = {
+        id: W.newId('m'),
+        role: 'tool',
+        content: `**${ask.cancel}** —— ${out}`,
+        createdAt: Date.now(),
+      };
+      store.panel(panelId)?.chat.push(skipped);
+      store.save();
+      refresh();
+      toAllWindows('chat:message', { panelId, message: skipped });
+      return true;
+    }
     const note: ChatMessage = {
       id: W.newId('m'),
       role: 'tool',
@@ -4187,6 +4353,19 @@ app.whenReady().then(() => {
   setFsRoot(store.state.workspace, { trust: true });
   // 工作区里的旧状态目录（.anycode → .ensoul）也顺手搬正
   migrateWorkspaceState(store.state.workspace);
+  const migrationRoots = [...new Set([store.state.workspace, ...(store.state.recentWorkspaces ?? [])])].filter(dirAlive);
+  for (const root of migrationRoots) {
+    migrateWorkspaceState(root);
+    preparePluginStorage(root);
+    const migration = migrateRuntimeData(root);
+    if (migration.errors.length) {
+      const detail = migration.errors.map(item => `${item.source}: ${item.error}`).join('; ');
+      if (path.resolve(root) === path.resolve(store.state.workspace)) throw new Error(`应用数据迁移失败：${detail}`);
+      console.warn(`[数据迁移] 最近工作区部分文件未迁移：${detail}`);
+    }
+    console.log(`[数据迁移] ${root}: ${migration.reportFile}`);
+  }
+  preparePluginStorage(store.state.workspace);
   // 根就位之后：把老的单文件拆开、还留在组件本体里的做法搬进工作区的做法文件。
   // 这件事以前挂在「换工作区」那条路上，而启动根本没人走那条路 ——
   // 于是插件和核心都改好了，工作区里却一直是空的。

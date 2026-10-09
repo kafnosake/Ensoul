@@ -377,12 +377,13 @@ function reviewDiffChanges(ws, targetFiles) {
 
 module.exports = {
   name: 'code-intelligence',
+  storage: { project: ['.ensoul/state/code-intelligence.json', '.ensoul/state/investigation.json'] },
   description: '代码智能检索、精准切片、变更审查与排查证据账本（自研 MIT 友好）',
 
   setup(api) {
     const t = api.t || ((s) => s);
     const ws = getWorkspace(api);
-    const ledgerFile = path.join(ws, '.ensoul', 'state', 'investigation.json');
+    const ledgerFile = api.dataPath('.ensoul/state/investigation.json');
     const readLedger = () => {
       const state = api.state.load(null);
       if (state && state.schemaVersion === 1 && state.panels) return state;

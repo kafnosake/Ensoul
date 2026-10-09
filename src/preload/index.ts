@@ -31,6 +31,28 @@ interface SteerItemView {
   at?: number;
 }
 
+
+/**
+ * 过 IPC 的那一份待答请求。字段与 src/renderer/core/api.ts 的 AskView 对齐 ——
+ * 两边都从主进程的 askView() 收；各写各的只为不互相引包。
+ */
+interface AskWireView {
+  text: string;
+  confirm: string;
+  cancel: string;
+  defer?: string;
+  armed?: boolean;
+  /** 结构化问答的题目；没有它就是那条老路：两个按钮 */
+  questions?: {
+    id: string;
+    question: string;
+    detail?: string;
+    header?: string;
+    options?: { label: string; description?: string }[];
+    multiSelect?: boolean;
+  }[];
+}
+
 const api = {
   mode: (queryOf('mode') as 'main' | 'floating' | 'widget') ?? 'main',
   windowId: queryOf('window'),
@@ -274,8 +296,8 @@ const api = {
      * contextIsolation），zip 那条链整个住在主进程。
      * 两趟 —— inspect 先算清单（要念给用户听），install 才落盘。
      */
-    inspectPack: (bytes: ArrayBuffer) => ipcRenderer.invoke('ext:inspectPack', bytes),
-    installPack: (bytes: ArrayBuffer) => ipcRenderer.invoke('ext:installPack', bytes),
+    inspectPack: (bytes: ArrayBuffer, scope?: import('../shared/storage').ExtensionInstallScope) => ipcRenderer.invoke('ext:inspectPack', bytes, scope),
+    installPack: (bytes: ArrayBuffer, scope?: import('../shared/storage').ExtensionInstallScope) => ipcRenderer.invoke('ext:installPack', bytes, scope),
     /** 设置里的插件分区：有哪些页 / 某一页的内容 / 点一个动作 */
     sections: () => ipcRenderer.invoke('ext:sections'),
     section: (plugin: string, id: string) => ipcRenderer.invoke('ext:section', plugin, id),
@@ -344,11 +366,15 @@ const api = {
     /** 这个面板有没有待用户点头的请求（换窗口、刷新之后界面靠它找回来） */
     askState: (panelId: string) =>
       ipcRenderer.invoke('chat:askState', panelId) as Promise<{
-        ask: { text: string; confirm: string; cancel: string; defer?: string; armed?: boolean } | null;
+        ask: AskWireView | null;
         restartArmed?: boolean;
       }>,
-    /** 用户按下「确认」—— 插件请求的那次工具调用只能从这儿发起 */
-    askConfirm: (panelId: string) => ipcRenderer.invoke('chat:askConfirm', panelId),
+    /**
+     * 用户按下「确认」/ 提交答案 —— 插件请求的那次工具调用只能从这儿发起。
+     * 结构化问答把答案一并带过去；老路（请用户点头）不传。
+     */
+    askConfirm: (panelId: string, answer?: unknown) =>
+      ipcRenderer.invoke('chat:askConfirm', panelId, answer),
     /** 用户选了「等所有会话结束」：挂起来，等整个软件都闲下来再自动做 */
     askDefer: (panelId: string) => ipcRenderer.invoke('chat:askDefer', panelId),
     askCancel: (panelId: string) => ipcRenderer.invoke('chat:askCancel', panelId),
@@ -356,7 +382,7 @@ const api = {
     onAsk: (
       cb: (p: {
         panelId: string;
-        ask: { text: string; confirm: string; cancel: string; defer?: string; armed?: boolean } | null;
+        ask: AskWireView | null;
         /** 全局是不是有"等全部会话结束才重启"挂着 —— 挂上了，输入框要换手势 */
         restartArmed?: boolean;
       }) => void,

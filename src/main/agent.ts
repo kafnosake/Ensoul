@@ -262,6 +262,8 @@ function toolsForAll(level: ToolLevel, kind?: string): ToolSpec[] {
   /** 插件工具默认按「最高权限」算；自己声明了 level 就按声明来 */
   const rank: Record<ToolLevel, number> = { read: 0, write: 1, full: 2 };
   const pluginSpecs = pluginTools
+    // 内部件不发给模型：它只在 runToolConfirmed 那条路上被跑到（见 PluginToolSpec.hidden）
+    .filter((t) => !t.spec.hidden)
     .filter((t) => rank[(t.spec.level ?? 'full') as ToolLevel] <= rank[level])
     .filter((t) => inScope(t.spec, kind))
     .map((t) => ({
@@ -857,7 +859,7 @@ function spill(name: string, text: string, ctx: ToolContext | null, threshold = 
     `\n\n…（中间 ${s.length - headLength - tailLength} 字没显示。完整输出 ${s.length} 字已存到 ` +
     `${rel.split(path.sep).join('/')}；要中间那一段就用 read_file 带 offset/limit 去读，别整份读）\n\n`;
   try {
-    const abs = path.join(workspaceRoot(), rel);
+    const abs = safePath(rel);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     fs.writeFileSync(abs, s, 'utf8');
   } catch (e: any) {

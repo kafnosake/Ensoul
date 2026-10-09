@@ -257,7 +257,7 @@ module.exports = {
   },
 
   setup(api) {
-    const root = () => api.workspace || '.';
+    const root = () => path.dirname(api.dataPath('.ensoul'));
     const bodyFile = (pid) => path.join(root(), fileOf(pid));
 
     /** 读一块面板的便签；文件不在（或读坏了）返回 null，跟"空数组"分得开 */
@@ -526,7 +526,7 @@ module.exports = {
     };
     const seenTokens = new Set();
     try {
-      const initInbox = JSON.parse(fs.readFileSync(path.join(api.workspace || '.', INBOX_FILE), 'utf8'));
+      const initInbox = JSON.parse(fs.readFileSync(api.dataPath(INBOX_FILE), 'utf8'));
       const entries = Array.isArray(initInbox?.entries) ? initInbox.entries : [];
       for (const e of entries) {
         if (e && e.token && e.status === 'done') seenTokens.add(e.token);
@@ -535,7 +535,7 @@ module.exports = {
 
     const inboxCheck = () => {
       try {
-        const raw = fs.readFileSync(path.join(api.workspace || '.', INBOX_FILE), 'utf8');
+        const raw = fs.readFileSync(api.dataPath(INBOX_FILE), 'utf8');
         const inbox = JSON.parse(raw);
         const entries = Array.isArray(inbox?.entries) ? inbox.entries : [];
         const boardId = pickBoard();

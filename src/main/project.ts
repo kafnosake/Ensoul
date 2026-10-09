@@ -117,10 +117,10 @@ export function status() {
     // 自管理的工作区里，跑着的这个进程本身就是实例（设计上 child 恒为 null，
     // runningMainIsStale 的注释也是这么假设的）。只看 child 会谎报"没在跑" ——
     // 谁信了这句谎报去调 start，就会拉出一个孪生窗口：两份实例抢同一份 .ensoul/state。
-    running: Boolean(child) || isSelf(),
+    running: Boolean(child) || selfManaged(),
     command: currentCommand(),
     startedAt,
-    workspace: workspaceRoot(),
+    workspace: buildRoot(),
     log: log.slice(-200),
   };
 }
@@ -156,7 +156,7 @@ function newestSource(dir: string, depth = 0, pluginRoot = ''): number {
  * 启动脚本只看 `dist` 在不在，改了 src 它会照样跑旧产物 —— 这个判断只能放在这儿。
  */
 export function needsBuild(): boolean {
-  const root = workspaceRoot();
+  const root = buildRoot();
   const stamp = (rel: string) => {
     try {
       return fs.statSync(path.join(root, rel)).mtimeMs;
@@ -246,12 +246,12 @@ export function buildApp(target: BuildTarget): Promise<{ ok: boolean; out: strin
 
 /** 构建全部：主进程 + 界面；同一工作区的构建串行，成功版本可复用。 */
 export function build(): Promise<{ ok: boolean; out: string }> {
-  return buildAt(workspaceRoot(), 'full');
+  return buildAt(buildRoot(), 'full');
 }
 
 /** 只构建界面。改渲染层走这条最快，之后只要刷新窗口就行 */
 export function buildRenderer(): Promise<{ ok: boolean; out: string }> {
-  return buildAt(workspaceRoot(), 'renderer');
+  return buildAt(buildRoot(), 'renderer');
 }
 
 /**
@@ -264,11 +264,11 @@ export function buildRenderer(): Promise<{ ok: boolean; out: string }> {
 export function mainNeedsBuild(): boolean {
   let out = 0;
   try {
-    out = fs.statSync(path.join(workspaceRoot(), 'dist', 'main', 'index.js')).mtimeMs;
+    out = fs.statSync(path.join(buildRoot(), 'dist', 'main', 'index.js')).mtimeMs;
   } catch {
     return true; // 主进程产物都不在，当然得构建
   }
-  const root = workspaceRoot();
+  const root = buildRoot();
   const stamp = (file: string) => fs.existsSync(path.join(root, file)) ? fs.statSync(path.join(root, file)).mtimeMs : 0;
   return Math.max(...['main', 'preload', 'shared'].map((dir) => newestSource(path.join(root, 'src', dir))),
     ...['package.json', 'package-lock.json', 'tsconfig.main.json'].map(stamp)) > out;
@@ -298,7 +298,7 @@ function runningMainIsStale(): boolean {
   if (!born) return false;
   let out = 0;
   try {
-    out = fs.statSync(path.join(workspaceRoot(), 'dist', 'main', 'index.js')).mtimeMs;
+    out = fs.statSync(path.join(buildRoot(), 'dist', 'main', 'index.js')).mtimeMs;
   } catch {
     return true; // 产物都不在了，那现在跑的更不可能是对的
   }
@@ -384,7 +384,7 @@ export function stop(): ReturnType<typeof status> {
     }
     child = null;
     push(t('（已停止）'));
-  } else if (isSelf()) {
+  } else if (selfManaged()) {
     push(t('（自管理：跑着的就是当前这个进程，stop 收不掉自己 —— 要退出就关窗口）'));
   }
   return status();
@@ -397,12 +397,63 @@ function isSelf(): boolean {
   return exe === root || exe.startsWith(root + path.sep);
 }
 
+/**
+ * 这个进程是从**源码树**里跑起来的吗 —— 开发实例跑的是自己那份 checkout。
+ *
+ * 为什么要单独问这一句：工作区（workspaceRoot）和源码树（appDir）可以是两个地方 ——
+ * 用户把工作区设成自己的项目、而这份应用是从源码里跑起来的，就是这种局面。
+ */
+function runsFromSource(): boolean {
+  let app = '';
+  try {
+    app = appDir().toLowerCase();
+  } catch {
+    return false;
+  }
+  if (!app) return false;
+  const exe = process.execPath.toLowerCase();
+  return exe === app || exe.startsWith(app + path.sep);
+}
+
+/** 工作区里有没有一个真能构建的项目 —— 判据和 detectCommand 同一套 */
+function workspaceHasProject(): boolean {
+  const root = workspaceRoot();
+  if (!root) return false;
+  const has = (f: string) => {
+    try {
+      return fs.existsSync(path.join(root, f));
+    } catch {
+      return false;
+    }
+  };
+  return has('package.json') || has(t('启动.cmd')) || has('start.cmd') || has(t('启动.sh')) || has('start.sh');
+}
+
+/**
+ * 自管理：跑着的这个实例就是「要重启的那个项目」。
+ *
+ * 两条来路 —— 工作区本来就是源码树自己；或者工作区里根本没有能构建的项目，
+ * 而进程又是从源码树里跑起来的（这时「重启项目」只可能是在重启这份应用自己）。
+ *
+ * 少了第二条，就是 2026-10-09 那个「关掉后没重启」：工作区是个空目录，
+ * restart 在它里面跑 npm run build 直接 ENOENT，built=false，一声不吭地停在原地 ——
+ * 界面上那条确认请求点了也没用，窗口既不关也不换。
+ */
+function selfManaged(): boolean {
+  return isSelf() || (runsFromSource() && !workspaceHasProject());
+}
+
+/** 该构建哪个根：自管理时构建源码树自己，否则构建工作区里的项目 */
+function buildRoot(): string {
+  return runsFromSource() && !workspaceHasProject() ? appDir() : workspaceRoot();
+}
+
 export async function start(cmd?: string): Promise<ReturnType<typeof status>> {
   if (child) return status();
   // 自管理：当前进程就是这个实例，再 launch 一份只会多开一个窗口 —— 两份实例
   // 抢同一份 .ensoul/state，谁把谁覆盖了都看不出来。让改动生效是 restart 的活
   // （外部脚本先确认杀旧、再起新，窗口只换不叠）。
-  if (isSelf()) {
+  if (selfManaged()) {
     push(t('（自管理：当前进程就是这个实例，不再另起一份 —— 改动生效请用 restart_project）'));
     return status();
   }
@@ -465,9 +516,9 @@ export async function restart(cmd?: string): Promise<RestartResult> {
   // 先把挂着的防抖改动同步落盘，否则最后 250ms 里的改动会随进程一起没了。
   store.flushNow();
 
-  const root = workspaceRoot();
+  const root = selfManaged() ? appDir() : workspaceRoot();
 
-  if (isSelf()) {
+  if (selfManaged()) {
     // 工作区就是 ensoul 自己 —— 要走的就是当前这个进程。
     //
     // 这一支以前交给「外部脚本里 taskkill 自己 + start」：它能成的前提是脚本比被杀的进程活得久，

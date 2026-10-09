@@ -2,6 +2,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { ensureEnvironment } = require('./bootstrap');
+const { userDataDirectory } = require('./paths');
 
 function aborted(message = '语义模型操作已取消') {
   const error = new Error(message);
@@ -122,7 +123,7 @@ class ModelRuntime {
     this.python = python;
     this.model = model;
     this.dimensions = dimensions;
-    this.cacheDir = path.resolve(cacheDir || path.join(process.cwd(), '.ensoul/runtime/semantic-search/models'));
+    this.cacheDir = path.resolve(cacheDir || path.join(userDataDirectory(), '.ensoul/runtime/semantic-search/models'));
     this.config = { model, cacheDir: this.cacheDir, dimensions, vision: !!vision, audio: !!audio, device };
     this.onStatus = onStatus;
     this.workerPath = workerPath;

@@ -31,6 +31,7 @@ function syntaxErr(rel, text) {
 
 module.exports = {
   params: PARAMS, name: 'tx-guard',
+  storage: { project: ['.ensoul/state/tx-guard'] },
   description: t('按工具调用记录写入，验收失败时核对版本再回滚；版本冲突保留文件与恢复记录'),
   setup(api) {
     if (!api.onFileWrite || !api.files) {
@@ -40,7 +41,7 @@ module.exports = {
     const root = path.resolve(api.workspace);
     const on = api.param('guard') !== false, checkSyntax = api.param('syntax') !== false;
     const staleMs = Math.max(5, Number(api.param('stale')) || 120) * 1000;
-    const base = path.join(root, '.ensoul/state/tx-guard');
+    const base = api.dataPath('.ensoul/state/tx-guard');
     const box = path.join(base, 'open'), conflicts = path.join(base, 'conflicts'), saved = path.join(base, 'recovered');
     const pending = new Map();
     const inside = (file) => {

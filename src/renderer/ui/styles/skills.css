@@ -189,6 +189,15 @@
   background: var(--tint-a);
 }
 
+.ext-skill-head .ext-desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .ext-skill.is-open .plg-caret {
   transform: rotate(90deg);
 }

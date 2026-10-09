@@ -29,6 +29,7 @@ const CMD_FILE = '.ensoul/state/mcp.cmd.json';
 const TICK_INTERVAL = 800;
 /** 面板上能调的（助手改参数走 plugin_params，见 plugins/plugin-kit） */
 const PARAMS = {
+  installScope: { label: t('默认安装位置'), type: 'select', default: 'user', options: ['user', 'workspace'], hint: t('user = 用户全局 (~/.agents/)，跨所有项目生效；workspace = 仅当前项目 (.ensoul/)') },
   allowLlmInstall: { label: t('允许助手自行装载'), type: 'bool', default: false, hint: t('打开后助手能自己装技能和 MCP 服务（装了哪些在面板「已装载」里，随时能卸）；关着就只能查、不能装') },
   proxy: { label: t('代理地址'), type: 'text', default: '', hint: t('联网走这条代理（http:// 或 socks5://），本机常见的填 http://127.0.0.1:7897；留空 = 跟系统代理走') },
   githubToken: { label: t('GitHub token'), type: 'text', default: '', hint: t('不填也能用，填了搜索顺畅很多（匿名每小时只有几次）') },
@@ -53,7 +54,9 @@ function normalize(raw) {
   const r = raw && typeof raw === 'object' ? raw : {};
   const servers = Array.isArray(r.servers) ? r.servers : [];
   return {
+    ...r,
     servers: servers.map((s) => ({
+      ...s,
       name: String(s.name || '').trim(),
       command: String(s.command || '').trim(),
       args: Array.isArray(s.args) ? s.args.map(String) : [],
@@ -68,7 +71,24 @@ function normalize(raw) {
 }
 
 function loadState(api) {
-  return api.state.load(normalize({ servers: [] }));
+  const appState = api.state.load(normalize({ servers: [] }));
+  const projectState = library.readMcpState(api.workspace, 'workspace');
+  const globalFile = library.userMcpFile ? library.userMcpFile() : '';
+  let globalServers = [];
+  if (globalFile && fs.existsSync(globalFile)) {
+    try {
+      const gRaw = JSON.parse(fs.readFileSync(globalFile, 'utf8'));
+      if (Array.isArray(gRaw.servers)) globalServers = gRaw.servers;
+    } catch {}
+  }
+  const map = new Map();
+  for (const s of globalServers) if (s && s.name) map.set(s.name, { ...s, scope: 'user' });
+  for (const s of appState.servers || []) {
+    if (!s || !s.name || s.scope === 'user' || s.scope === 'workspace') continue;
+    map.set(s.name, s);
+  }
+  for (const s of projectState.servers) if (s && s.name) map.set(s.name, { ...s, scope: 'workspace', workspace: api.workspace });
+  return normalize({ ...appState, servers: Array.from(map.values()), lastActive: appState.lastActive || Date.now() });
 }
 
 function saveState(api, st) {
@@ -76,6 +96,20 @@ function saveState(api, st) {
     api.state.save(st);
   } catch (e) {
     api.log(t('[MCP] 保存状态失败:'), e.message);
+  }
+  const globalFile = library.userMcpFile ? library.userMcpFile() : '';
+  if (globalFile && fs.existsSync(globalFile)) {
+    try {
+      const gRaw = JSON.parse(fs.readFileSync(globalFile, 'utf8'));
+      if (Array.isArray(gRaw.servers) && gRaw.servers.length > 0) {
+        const currentMap = new Map((st.servers || []).filter((s) => s.scope !== 'workspace').map((s) => [s.name, s]));
+        const updated = gRaw.servers.map((s) => {
+          const live = currentMap.get(s.name);
+          return live ? Object.assign({}, s, { status: live.status, error: live.error, tools: live.tools }) : s;
+        });
+        fs.writeFileSync(globalFile, JSON.stringify({ ...gRaw, servers: updated }, null, 2), 'utf8');
+      }
+    } catch {}
   }
 }
 
@@ -132,6 +166,38 @@ function handleStdoutChunk(serverEntry, chunk, serverName, onToolsUpdate) {
   }
 }
 
+// 修复 Windows 下缺少 shebang 的 npm 包垫片，防止调用裸 .js 唤起系统默认编辑器（如 VS Code）
+function sanitizeWindowsNpxShim(serverConf) {
+  if (process.platform !== 'win32') return;
+  if (serverConf.command !== 'npx' || !Array.isArray(serverConf.args)) return;
+
+  const localAppData = process.env.LOCALAPPDATA;
+  if (!localAppData) return;
+  const npxCacheDir = path.join(localAppData, 'npm-cache', '_npx');
+  if (!fs.existsSync(npxCacheDir)) return;
+
+  try {
+    const hashes = fs.readdirSync(npxCacheDir);
+    for (const h of hashes) {
+      const binDir = path.join(npxCacheDir, h, 'node_modules', '.bin');
+      if (!fs.existsSync(binDir)) continue;
+      const cmdFiles = fs.readdirSync(binDir).filter((f) => f.endsWith('.cmd'));
+      for (const cmdFile of cmdFiles) {
+        const cmdPath = path.join(binDir, cmdFile);
+        const cmdContent = fs.readFileSync(cmdPath, 'utf8');
+        const nakedJsRegex = /^(\s*)"(%dp0%[^"\r\n]+\.js)"(\s*%\*.*)$/m;
+        if (nakedJsRegex.test(cmdContent)) {
+          const fixed = cmdContent.replace(
+            nakedJsRegex,
+            '$1IF EXIST "%dp0%\\\\node.exe" (\r\n  "%dp0%\\\\node.exe" "$2"$3\r\n) ELSE (\r\n  node "$2"$3\r\n)'
+          );
+          fs.writeFileSync(cmdPath, fixed, 'utf8');
+        }
+      }
+    }
+  } catch (_) {}
+}
+
 // 连接单个 MCP 服务器
 async function connectServer(serverConf, api) {
   const name = serverConf.name;
@@ -141,6 +207,8 @@ async function connectServer(serverConf, api) {
     // 如果存在但未就绪，先关闭
     disconnectServer(name);
   }
+
+  sanitizeWindowsNpxShim(serverConf);
 
   const serverEntry = {
     process: null,
@@ -243,7 +311,7 @@ function refreshMarket(reason) {
 
 // 轮询命令通道
 function checkCommands(api) {
-  const cmdPath = path.join(api.workspace, CMD_FILE);
+  const cmdPath = api.dataPath(CMD_FILE);
   if (!fs.existsSync(cmdPath)) return;
   try {
     const raw = fs.readFileSync(cmdPath, 'utf8');
@@ -298,6 +366,7 @@ function checkCommands(api) {
 
 module.exports = {
   name: 'mcp',
+  storage: { workspace: ['.ensoul/mcp/servers.json', '.ensoul/mcp/project'] },
   params: PARAMS,
   description: t('生态入口：联网找技能与 MCP 服务，装进来即用，不想要了能撤'),
   panel: {
@@ -330,9 +399,10 @@ module.exports = {
       }
     }
 
-    // 状态栏显示连接数
+    // 状态栏显示连接数（挂在面板右上角）
     api.addStatusItem({
       id: 'mcp-status',
+      slot: 'head',
       text() {
         let count = 0;
         for (const [_, entry] of activeServers) {

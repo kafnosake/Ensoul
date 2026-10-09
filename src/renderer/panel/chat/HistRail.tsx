@@ -105,6 +105,13 @@ export function HistRail({ panel }: { panel: Panel }) {
       // rect 是屏幕单位，而下面要跟 chatW / SESSION_W / GUTTER 这些内部 px 比大小 —— 先换算
       const w = el.getBoundingClientRect().width / zoomScale(el);
       if (!w) return;
+      // 停靠侧面时消息列铺满整栏，「列左边那条缝」没有了 —— room 会算成负数、
+      // 整栏被 is-hidden 藏掉。这一栏于是改成盖在消息上的浮层（见 histconv.css），
+      // 宽度按它自己来，不必再从留白里量。
+      // 停靠侧面：这一栏**自己占一栏**（不再浮在消息上，见 histconv.css 侧栏那段），
+      // 宽度不能按"留白"算 —— 那是给贴底部那种居中列准备的。侧面取栏宽的一半，
+      // 上限仍是 176：栏被拖窄时它跟着让，别把消息区挤没。
+      if (panel.chatSide) return setRoom(Math.max(RAIL_MIN, Math.min(RAIL_W, w * 0.5)));
       const col = Math.min(panel.chatW ?? SESSION_W, w - SESSION_GUTTER * 2);
       setRoom((w - col) / 2 - GAP);
     };
@@ -112,7 +119,7 @@ export function HistRail({ panel }: { panel: Panel }) {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [panel.chatW, panel.id]);
+  }, [panel.chatW, panel.chatSide, panel.id]);
 
   // 关掉小菜单：点别处、按 Esc 都收
   useEffect(() => {

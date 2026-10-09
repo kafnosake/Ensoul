@@ -5,6 +5,12 @@ import { api } from '../../core/api';
 import { SESSION_GUTTER, SESSION_W, SESSION_W_MIN } from './constants';
 import { zoomScale, toPanelUnits } from '../../ui/zoom-space';
 
+/** 停靠侧面时这一栏的默认宽（跟贴底部的 SESSION_W 分开 —— 两种停法量纲不同） */
+export const SESSION_W_SIDE = 360;
+// 侧停会话区的 80% 缩放定在 CSS（chat.css），这里只管宽度本身。
+/** 侧栏时再窄就只剩输入框了 */
+export const SESSION_W_SIDE_MIN = 260;
+
 /**
  * 会话列的宽度 —— 会话区左右各一条**几乎看不见**的竖边，中轴对称。
  *
@@ -99,12 +105,87 @@ export function useSessionWidth(panel: Panel) {
     window.addEventListener('pointerup', up);
   };
 
+  /**
+   * 停靠侧面时拖分隔线：这一栏的宽 = 指针离面板那一边有多远。
+   *
+   * 与贴底部那套完全分开算：贴底部量的是「离中轴多远的两倍」（列是居中的），
+   * 侧栏量的是「离面板边多远」（栏就贴在边上）—— 量纲不同，混用必错。
+   */
+  const startSide = (e: React.PointerEvent, el: HTMLElement | null) => {
+    if (!el) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = el.getBoundingClientRect();
+    /**
+     * 栏贴**左**边时，分隔线是它的右缘（宽度 = 指针离左边界多远）。
+     * 贴右边时反过来，从右边界往左量。
+     *
+     * 这里原来是判反的：栏在右边却按"指针离栏左缘多远"算，往左拖（本该变宽）
+     * 算出来是变窄，一下就把栏缩到最小值 —— 看上去就是"侧栏宽度拖不动"。
+     */
+    const anchoredLeft = panel.chatSide === 'left';
+    /**
+     * 传进来的是会话区内部那一块，量不到面板，所以往上找一层；
+     * 挂件（bare-float）上没有 .panel-surface，就用它自己。
+     */
+    const host = el.closest('.panel-surface') ?? el;
+    const panelW = Math.round(toPanelUnits(host, host.getBoundingClientRect().width));
+    const max = Math.max(SESSION_W_SIDE_MIN, panelW);
+    // 按**面板那层**的倍率折算：会话区自己还叠了一层 0.8（见 chat.css 的 .chatdock.is-side-*），
+    // 那一层已经在 --chat-w-side 写入时被反补掉了，不该再算进来。
+    const k = zoomScale(host);
+    document.body.classList.add('is-resizing');
+    // 没拖过就用默认宽（SESSION_W_SIDE）—— 跟 CSS 里那个数一致，免得一按就跳。
+    let w = panel.chatWSide ?? SESSION_W_SIDE;
+    let moved = false;
+    let raf = 0;
+    const paintSide = (n: number) => root.current?.style.setProperty('--chat-w-side', `${n}px`);
+    const move = (ev: PointerEvent) => {
+      const raw = anchoredLeft ? ev.clientX - rect.left : rect.right - ev.clientX;
+      w = Math.round(Math.max(SESSION_W_SIDE_MIN, Math.min(max, raw / k)));
+      moved = true;
+      if (!raf)
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          paintSide(w);
+        });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+      document.body.classList.remove('is-resizing');
+      if (!moved) return;
+      paintSide(w);
+      void api.panel.patch(panel.id, { chatWSide: w });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   /** 双击：回到默认宽度 */
   const reset = () => {
     paint(SESSION_W);
     void api.panel.patch(panel.id, { chatW: SESSION_W });
   };
 
-  return { width, root, start, reset };
+  /**
+   * 侧栏双击：回到**面板的 80%**（那个跟着面板缩放走的默认宽）。
+   *
+   * 拖过之后存的是一个像素值，从此不再跟面板按比例；这一下就是把它拨回比例上。
+   * 面板量不到就什么都不做（宁可不动，也别写一个瞎猜的数）。
+   */
+  const resetSide = () => {
+    const host = root.current?.closest('.panel-surface') ?? root.current;
+    if (!host) return;
+    const panelW = Math.round(toPanelUnits(host, host.getBoundingClientRect().width));
+    if (!panelW) return;
+    const w = SESSION_W_SIDE;
+    root.current?.style.setProperty('--chat-w-side', `${w}px`);
+    void api.panel.patch(panel.id, { chatWSide: w });
+  };
+
+  return { width, root, start, reset, resetSide, startSide, sideWidth: panel.chatWSide ?? SESSION_W_SIDE };
 }
 

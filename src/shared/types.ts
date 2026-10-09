@@ -577,6 +577,16 @@ export interface Panel {
    * 两者只是住得近，谁也不读谁。
    */
   chatW?: number;
+  /** 会话区停靠在**哪一边** —— 缺省（没这个字段）= 贴底部，就是一直的样子。
+   *
+   * 存 Panel 根上而不进 look：look 是「做法」的一部分，store 靠「look 里还有没有键」
+   * 判断做法搬过家没有（见 hasCraft）；停靠位置是运行期的显示偏好，跟 chatW / uiZoom 同级。
+   */
+  chatSide?: 'left' | 'right';
+  /** 停靠侧面时会话区占多宽（px）。跟 chatW 是**两个数**：一个是贴底部时那条居中列的宽，
+   * 一个是停侧面时这一栏的宽 —— 两种停法各有各的量纲，凑合一个数只会让「切回底部时宽度变了」。
+   */
+  chatWSide?: number;
   /**
    * 这块面板自己的缩放（Ctrl + 滚轮调的那一个）。缺省 = 1。
    *
@@ -1322,6 +1332,15 @@ export interface PluginToolSpec {
   kits?: string[];
   /** 单次调用允许的最长毫秒数，超时则统一熔断并返回 TOOL_TIMEOUT 错误码 */
   timeoutMs?: number;
+  /**
+   * 内部件：**注册进来能被 runToolConfirmed 跑，但不发给模型看**。
+   *
+   * 给谁用：某个工具要有个「收尾落点」（用户回答了、点了头，核心回头跑一次工具），
+   * 而那个落点不该出现在工具表里让模型自己调。
+   * 现成的例子是 plugins/ask-user —— 用户提交答案时核心跑 ask_user_answer，
+   * 它只负责把答案交给正挂着的那次调用。模型看见它只会误用。
+   */
+  hidden?: boolean;
 }
 
 /**

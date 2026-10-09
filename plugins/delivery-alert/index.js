@@ -72,7 +72,7 @@ let timer = null;
 /** 收件箱里所有像样的条目（形状不对的整条丢） */
 function readTickets(api) {
   try {
-    const j = JSON.parse(fs.readFileSync(path.join(api.workspace || '.', INBOX_FILE), 'utf8'));
+    const j = JSON.parse(fs.readFileSync(api.dataPath(INBOX_FILE), 'utf8'));
     const list = Array.isArray(j) ? j : Array.isArray(j && j.entries) ? j.entries : [];
     return list.filter((tk) => tk && typeof tk === 'object' && tk.token);
   } catch {
@@ -101,7 +101,7 @@ function delivered(api) {
 /** 流水条里还挂着 running 的（= 上次进程死在这一步上），以及被开机扫成 crashed 的 */
 function journalAnomalies(api) {
   try {
-    const j = JSON.parse(fs.readFileSync(path.join(api.workspace || '.', JOURNAL_FILE), 'utf8'));
+    const j = JSON.parse(fs.readFileSync(api.dataPath(JOURNAL_FILE), 'utf8'));
     const list = Array.isArray(j && j.turns) ? j.turns : [];
     return list.filter((x) => x && (x.status === 'crashed' || x.status === 'running'));
   } catch {

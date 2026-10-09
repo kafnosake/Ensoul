@@ -58,7 +58,7 @@ const BOARD_TICK = 1200;
  * 一张 512×512 赛璐璐 PNG 的 data URL 就是 56–287KB，三四张就把两份快照顶过
  * fs:read 的 300KB 上限 → 面板读到的是**一句占位文字**、JSON.parse 炸 → 看板 null
  * → 组织树和侧栏同时变空（看着像"员工全没了"，其实一张卡都没丢）。
- * 现在落点 `.ensoul/state/avatars/<id>.<ext>`，卡上只留**工作区相对路径**。
+ * 现在落点 `.ensoul/state/avatars/<id>.<ext>`，卡上只留**应用资料相对路径**。
  *
  * AVATAR_MAX 留着，但防的东西变了：它现在防"有人往命令里塞巨大 base64"，
  * 写完立刻落盘、卡上不留 —— 不是"卡要被撑爆"。
@@ -82,9 +82,9 @@ let boardTimer = null;
 
 // ─────────────────────────────────────────────────── 员工卡（一人一个文件）
 
-const agentsDir = (api) => path.join(api.workspace || '.', AGENTS);
+const agentsDir = (api) => api.dataPath(AGENTS);
 const agentFile = (api, id) => path.join(agentsDir(api), `${id}.json`);
-const avatarsDir = (api) => path.join(api.workspace || '.', AVATARS);
+const avatarsDir = (api) => api.dataPath(AVATARS);
 
 /**
  * base64 的 data URL → 磁盘上的一个文件，返回**工作区相对路径**（正斜杠）；失败返回 ''。
@@ -159,7 +159,7 @@ function avaUrl(api, v) {
   if (!s) return '';
   // 过渡期兜底：老卡（还没迁移的 data URL）、已经算好的 file://、外链 —— 原样给
   if (s.startsWith('data:') || s.startsWith('file://') || /^(https?|blob):/i.test(s)) return s;
-  const abs = path.isAbsolute(s) ? s : path.resolve(api.workspace || '.', s);
+  const abs = path.isAbsolute(s) ? s : s.replace(/\\/g, '/').startsWith('.ensoul/') ? api.dataPath(s) : path.resolve(api.workspace || '.', s);
   return `file:///${abs.replace(/\\/g, '/')}`;
 }
 
@@ -174,7 +174,7 @@ function avaUrl(api, v) {
 function relAvatar(api, v) {
   const s = String(v || '').trim();
   if (!/^file:/i.test(s)) return s;
-  const ws = path.resolve(api.workspace || '.').split(path.sep).join('/');
+  const ws = path.dirname(api.dataPath('.ensoul')).split(path.sep).join('/');
   let p = s.slice('file:'.length).split('/').filter(Boolean).join('/');
   try {
     p = decodeURIComponent(p);
@@ -201,11 +201,11 @@ function newId() {
  */
 const KITS = {
   /**
-   * 纯路由经理：只挑人、转发原话、回执。
-   * 不给 deliver_result —— 经理只转发不交付（见 `isManagerPanel` 那处交付话术），
-   * 配着它只会诱使它把活又交一遍。
+   * 基本功能：每个员工都有的底子 —— 派单、读工作区、重启请求、查技能。
+   * 不给 deliver_result（交付归专业组，经理更不该去交）、
+   * 不给写码 / 构建那一串 —— 要动手就叠自己的专业组。
    */
-  router: ['dispatch', 'read_file', 'list_dir', 'read_logs', 'use_skill', 'learn'],
+  base: ['dispatch', 'read_file', 'list_dir', 'read_logs', 'restart_project', 'use_skill', 'learn'],
   /** 美术出图：写提示词 + 调 ComfyUI + 发图 / 交付 */
   art: ['comfyui_status', 'comfyui_models', 'comfyui_workflow', 'comfyui_run', 'comfyui_launch', 'send_image',
     'read_file', 'write_file', 'use_skill', 'learn', 'deliver_result'],
@@ -252,7 +252,7 @@ const KITS = {
  * 文件没了 / 写坏了就退回种子：一个配置文件不该让整个编制开不了工。
  */
 const KIT_INFO = {
-  router: { label: t('纯路由经理'), when: t('只挑人、转发原话、回执 —— 自己不动手（经理的默认）') },
+  base: { label: t('基本功能'), when: t('全员底子：派单、读工作区、重启请求、查技能（经理的默认）') },
   art: { label: t('美术出图'), when: t('写提示词、调 ComfyUI、把图交回去') },
   pixel: { label: t('像素画师'), when: t('像素画布上画、批量刷、导图 —— 不出图、不碰 ComfyUI') },
   canvas: { label: t('无限画布'), when: t('读画布、改画布节点与连线') },
@@ -410,7 +410,7 @@ function expandKitsWithPlugins(baseMap, api) {
  */
 let kitsCache = { sig: null, map: null };
 function loadKits(api) {
-  const p = path.join((api && api.workspace) || '.', KITS_FILE);
+  const p = api.dataPath(KITS_FILE);
   let sig = 'none';
   try {
     const st = fs.statSync(p);
@@ -477,7 +477,7 @@ function kitOptions(api) {
  *
  * **顺序即规则，别调**：
  *   1. 开源组经理是唯一例外 —— 它自己审 diff、自己跑 git，不是纯路由；
- *   2. 其余经理一律 router —— 挑人、转发原话、回执，就是它的全部工作。
+ *   2. 其余经理一律 base —— 挑人、转发原话、回执，就是它的全部工作。
  *      部门技能（文案稿、美术图）是**他手下的人**干的活，不能因为"他在文案组"
  *      就把写稿的工具配给他（那样他既费 token，又更容易自己上手越界）。
  *   3. 剩下的按部门给成员的活。
@@ -486,7 +486,7 @@ function defaultKit(card) {
   const dept = String((card && card.dept) || '');
   const isMgr = String((card && card.role) || '') === 'manager';
   if (dept.includes(t('开源'))) return 'release';
-  if (isMgr) return 'router';
+  if (isMgr) return 'base';
   if (dept.includes(t('像素'))) return 'pixel';
   if (dept.includes(t('画布'))) return 'canvas';
   if (dept.includes(t('美术'))) return 'art';
@@ -508,7 +508,10 @@ function kitList(card) {
   const own = Array.isArray(card && card.kits)
     ? card.kits.map((k) => String(k).trim()).filter(Boolean)
     : [];
-  return own.length ? own : [defaultKit(card)];
+  // 没勾的人：base 是底子，再叠一个岗位组 —— 基本功能本就该人人有。
+  // （旧写法 [defaultKit(card)] 会让回退的人漏掉 base：开发组成员只拿到 dev，没有 dispatch。）
+  const byPost = defaultKit(card);
+  return own.length ? own : (byPost === 'base' ? ['base'] : ['base', byPost]);
 }
 
 /** 这张卡对应的工具清单 —— 写进他那块面板的 tools 字段 */
@@ -699,7 +702,7 @@ const BASE_FILE = '.ensoul/state/dispatch.base.json'; // 旧的全局基础提�
 const DEPTS_DIR = '.ensoul/state/depts';
 const COS_DIR = '.ensoul/state/companies';
 
-const coFile = (api, id) => path.join(api.workspace || '.', COS_DIR, `${String(id || '').trim()}.json`);
+const coFile = (api, id) => api.dataPath(path.join(COS_DIR, `${String(id || '').trim()}.json`));
 
 /** 公司的文字内容（简介 + 基础提示词）。文件不在就现出厂的：接旧全局那份，没有就 DEFAULT_BASE */
 function readCoFile(api, id) {
@@ -738,7 +741,7 @@ const DEFAULT_BASE = [
 
 function readBase(api) {
   try {
-    const j = JSON.parse(fs.readFileSync(path.join(api.workspace || '.', BASE_FILE), 'utf8'));
+    const j = JSON.parse(fs.readFileSync(api.dataPath(BASE_FILE), 'utf8'));
     const t = String((j && j.base) || '');
     return t.trim() ? t : DEFAULT_BASE;
   } catch {
@@ -748,16 +751,16 @@ function readBase(api) {
 
 function writeBase(api, text) {
   const t = String(text || '').trim();
-  fs.writeFileSync(path.join(api.workspace || '.', BASE_FILE), JSON.stringify({ base: t || DEFAULT_BASE }), 'utf8');
+  fs.writeFileSync(api.dataPath(BASE_FILE), JSON.stringify({ base: t || DEFAULT_BASE }), 'utf8');
 }
 
 /** 部门文件按「公司id__部门名」存 —— 两家公司各有美术组，互不覆盖 */
 function deptFile(api, coId, name) {
-  return path.join(api.workspace || '.', DEPTS_DIR, `${String(coId || '')}__${String(name || '').trim()}.json`);
+  return api.dataPath(path.join(DEPTS_DIR, `${String(coId || '')}__${String(name || '').trim()}.json`));
 }
 
 function readDept(api, coId, name) {
-  const legacy = path.join(api.workspace || '.', DEPTS_DIR, `${String(name || '').trim()}.json`);
+  const legacy = api.dataPath(path.join(DEPTS_DIR, `${String(name || '').trim()}.json`));
   const file = fs.existsSync(deptFile(api, coId, name)) ? deptFile(api, coId, name) : legacy;
   try {
     const j = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -876,7 +879,7 @@ function syncCompany(api, coId) {
 // ────────────────────────────────────────────────────── 名册（只记结构）
 
 function regPath(api) {
-  return path.join(api.workspace || '.', REG);
+  return api.dataPath(REG);
 }
 
 /**
@@ -1248,7 +1251,7 @@ function sleepingOf(api, card) {
 function inheritHistconv(api, oldId, newId) {
   try {
     if (!oldId || !newId || oldId === newId) return;
-    const histDir = path.join(api.workspace || '.', '.ensoul', 'state', 'histconv');
+    const histDir = api.dataPath('.ensoul/state/histconv');
     const oldFile = path.join(histDir, `${String(oldId).replace(/[^\w.-]+/g, '_')}.json`);
     const newFile = path.join(histDir, `${String(newId).replace(/[^\w.-]+/g, '_')}.json`);
     if (!fs.existsSync(oldFile)) return;
@@ -1529,13 +1532,40 @@ async function deliver(api, depts, origin, target, label, task, ticket, opts) {
 /**
  * 完成的工作 = **活确认有效之后**才记的一条成功案例：只存「做了什么 + 实现路径」，
  * 不存对话、不存回执原文 —— 上下文过两天就没用了，路径才是能复用的。
- * 存他自己的工作区：work/<员工名>/成功案例.json（姓名全局唯一；改名时 saveCard 把文件夹一起搬）。
+ * 存应用资料目录：.ensoul/state/cases/<员工名>/成功案例.json（姓名全局唯一；改名时 saveCard 把文件夹一起搬）。
  */
-const CASES_DIR = 'work';
+const CASES_DIR = '.ensoul/state/cases';
 const CASE_MAX = 30;
 
 function casesFile(api, name) {
-  return path.join(api.workspace || '.', CASES_DIR, String(name || '').trim(), '成功案例.json');
+  const employee = String(name || '').trim();
+  const destination = api.dataPath(path.join(CASES_DIR, employee, '成功案例.json'));
+  migrateCaseFile(api, employee, destination);
+  return destination;
+}
+
+function migrateCaseFile(api, employee, destination) {
+  const source = path.join(api.workspace || '.', 'work', employee, '成功案例.json');
+  if (!fs.existsSync(source)) return;
+  const crypto = require('crypto');
+  const project = crypto.createHash('sha256').update(path.resolve(api.workspace || '.')).digest('hex').slice(0, 16);
+  const reportFile = api.dataPath(`.ensoul/migrations/dispatch-cases/${project}.json`);
+  let report = { workspace: api.workspace, records: {} };
+  try { report = JSON.parse(fs.readFileSync(reportFile, 'utf8')); } catch {}
+  const fingerprint = crypto.createHash('sha256').update(fs.readFileSync(source)).digest('hex');
+  if (report.records?.[source]?.fingerprint === fingerprint) return;
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  let status = 'copied';
+  if (!fs.existsSync(destination)) fs.copyFileSync(source, destination, fs.constants.COPYFILE_EXCL);
+  else if (fs.readFileSync(source).equals(fs.readFileSync(destination))) status = 'same';
+  else {
+    status = 'conflict';
+    api.log(`[dispatch] 员工案例冲突，保留原件：${source}；现有资料：${destination}`);
+  }
+  report.records = report.records || {};
+  report.records[source] = { source, destination, fingerprint, status, at: Date.now() };
+  fs.mkdirSync(path.dirname(reportFile), { recursive: true });
+  fs.writeFileSync(reportFile, JSON.stringify(report, null, 2), 'utf8');
 }
 
 function readCases(api, name) {
@@ -1580,7 +1610,7 @@ function writeCases(api, name, list) {
 // 令牌**不是面板**：它是收件箱里的一条记录。面板要拖要关，拿来当令牌用会断；
 // 而"用户手一滑关掉一块面板就把一条流程弄丢"是这个软件里最不该发生的事。
 
-const inboxFile = (api) => path.join(api.workspace || '.', INBOX_FILE);
+const inboxFile = (api) => api.dataPath(INBOX_FILE);
 
 /** 收件箱里的一条，形状在这儿定死一遍：外部（含人手改过的）读进来一律过这道 */
 function normTicket(raw) {
@@ -1776,7 +1806,7 @@ let taskTicketIndex = new Map();
 function sweepOrphans(api) {
   const now = Date.now();
   const inbox = readInbox(api);
-  const journal = path.join(api.workspace || '.', '.ensoul/state/tasks.json');
+  const journal = api.dataPath('.ensoul/state/tasks.json');
   const stat = fs.existsSync(journal) ? fs.statSync(journal) : null;
   const stamp = stat ? `${journal}:${stat.mtimeMs}:${stat.size}` : '';
   if (stamp !== taskJournalStamp) {
@@ -2020,6 +2050,10 @@ module.exports = {
   panel: PANEL_DECL,
 
   setup(api) {
+    try {
+      const employees = fs.readdirSync(path.join(api.workspace || '.', 'work'), { withFileTypes: true });
+      for (const employee of employees) if (employee.isDirectory()) casesFile(api, employee.name);
+    } catch (error) { if (error.code !== 'ENOENT') api.log(`[dispatch] 员工案例迁移失败：${error.message}`); }
     // 旧的 `{title, skills}` 名册就地升成员工卡（幂等）
     try {
       migrate(api);
@@ -2580,8 +2614,8 @@ module.exports = {
 
     // ────────────────────────────────────────────────── 调度中心（面板）
 
-    const boardPath = path.join(api.workspace || '.', BOARD_FILE);
-    const cmdPath = path.join(api.workspace || '.', CMD_FILE);
+    const boardPath = api.dataPath(BOARD_FILE);
+    const cmdPath = api.dataPath(CMD_FILE);
     let lastSeq = 0;
     /** 上一次**真正写盘**的那版看板的业务指纹（不含 at，见 boardSig） */
     let lastBoard = '';

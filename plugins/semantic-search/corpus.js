@@ -2,6 +2,7 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const crypto = require('crypto');
+const { userDataDirectory } = require('./paths');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 
@@ -16,6 +17,8 @@ const EXTRACTABLE_DOCUMENTS = new Set('pdf docx pptx xlsx'.split(' '));
 const EXCLUDED_DIRS = new Set('.git node_modules dist build out target .ensoul .runtime .electron .venv venv __pycache__ .ssh .aws .azure .gcloud'.split(' '));
 const MAX_TEXT_BYTES = 2 * 1024 * 1024;
 const MAX_MEDIA_BYTES = 512 * 1024 * 1024;
+const MAX_SCAN_FILES = 200000;
+const MAX_SCAN_DEPTH = 24;
 
 function abortError() {
   const error = new Error('索引操作已取消');
@@ -114,6 +117,122 @@ async function fileHash(file, signal) {
   }
 }
 
+const IGNORE_FILE = '.gitignore';
+
+function escapeRegex(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function ignorePatternToRegex(pattern) {
+  let out = '';
+  for (let index = 0; index < pattern.length; index++) {
+    const character = pattern[index];
+    if (character === '*') {
+      const doubled = pattern[index + 1] === '*';
+      const afterSlash = index === 0 || pattern[index - 1] === '/';
+      if (doubled && afterSlash && pattern[index + 2] === '/') {
+        out += '(?:.*/)?';
+        index += 2;
+        continue;
+      }
+      if (doubled) {
+        out += '.*';
+        index += 1;
+        continue;
+      }
+      out += '[^/]*';
+      continue;
+    }
+    if (character === '?') { out += '[^/]'; continue; }
+    out += escapeRegex(character);
+  }
+  return out;
+}
+
+function compileIgnoreLine(line, base) {
+  let pattern = String(line).replace(/\s+$/, '');
+  if (!pattern || pattern.startsWith('#')) return null;
+  let negate = false;
+  if (pattern.startsWith('!')) { negate = true; pattern = pattern.slice(1); }
+  let directoryOnly = false;
+  if (pattern.endsWith('/')) { directoryOnly = true; pattern = pattern.slice(0, -1); }
+  let anchored = false;
+  if (pattern.startsWith('/')) { anchored = true; pattern = pattern.slice(1); }
+  if (!pattern) return null;
+  if (!anchored) anchored = pattern.includes('/');
+  let body;
+  try { body = ignorePatternToRegex(pattern); } catch { return null; }
+  let regex;
+  try {
+    regex = anchored ? new RegExp(`^${body}$`) : new RegExp(`^(?:.*/)?${body}$`);
+  } catch { return null; }
+  return { negate, directoryOnly, base, regex };
+}
+
+async function readIgnoreRules(directory, base, inherited, signal) {
+  checkAbort(signal);
+  const rules = inherited.slice();
+  let text;
+  try {
+    text = await fsp.readFile(path.join(directory, IGNORE_FILE), 'utf8');
+  } catch {
+    return rules;
+  }
+  for (const line of text.split(/\r?\n/)) {
+    const rule = compileIgnoreLine(line, base);
+    if (rule) rules.push(rule);
+  }
+  return rules;
+}
+
+function ignoredByRules(rules, relative, isDirectory) {
+  let ignored = false;
+  for (const rule of rules) {
+    if (rule.base && !relative.startsWith(`${rule.base}/`)) continue;
+    if (rule.directoryOnly && !isDirectory) continue;
+    const scoped = rule.base ? relative.slice(rule.base.length + 1) : relative;
+    if (!scoped) continue;
+    if (rule.regex.test(scoped)) ignored = !rule.negate;
+  }
+  return ignored;
+}
+
+// 纯 Node 遍历兜底：本机没有 ripgrep、目录又不是 Git 仓库时，仍然能扫出工作区文件清单。
+// 忽略规则按 .gitignore 语义尽力解析（注释、! 取反、目录结尾 /、* ? ** 通配），任何一条解析失败都静默跳过。
+async function walkFiles(root, signal) {
+  const files = [];
+  const stack = [{ directory: root, base: '', rules: await readIgnoreRules(root, '', [], signal) }];
+  while (stack.length) {
+    checkAbort(signal);
+    const { directory, base, rules } = stack.pop();
+    let entries;
+    try {
+      entries = await fsp.readdir(directory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      checkAbort(signal);
+      if (entry.isSymbolicLink()) continue;
+      const relative = base ? `${base}/${entry.name}` : entry.name;
+      if (excluded(relative)) continue;
+      const isDirectory = entry.isDirectory();
+      if (ignoredByRules(rules, relative, isDirectory)) continue;
+      if (isDirectory) {
+        if (base.split('/').length >= MAX_SCAN_DEPTH) continue;
+        const child = path.join(directory, entry.name);
+        stack.push({ directory: child, base: relative, rules: await readIgnoreRules(child, relative, rules, signal) });
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      files.push(relative);
+      if (files.length >= MAX_SCAN_FILES) return files;
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  return files;
+}
+
 async function listedFiles(workspace, signal) {
   const globs = [...EXCLUDED_DIRS].flatMap((directory) => ['--glob', `!**/${directory}/**`]);
   try {
@@ -133,8 +252,9 @@ async function listedFiles(workspace, signal) {
     return [...new Set(stdout.toString('utf8').split('\0').filter(Boolean))];
   } catch (error) {
     checkAbort(signal);
-    throw new Error('无法按忽略规则扫描工作区，请安装 ripgrep（rg），或在 Git 工作区中使用 Git。');
   }
+  // ripgrep 与 Git 都不可用，退回到纯 Node 遍历。
+  return walkFiles(workspace, signal);
 }
 
 async function readJson(file, signal) {
@@ -209,9 +329,9 @@ async function addHistory({ workspace, userData, features, items, warnings, sign
   if (unassigned) warnings.push(`已跳过 ${unassigned} 份无法确认工作区归属的旧会话；可在设置中明确启用本机旧会话。`);
 }
 
-async function addLearned({ workspace, features, items, warnings, signal }) {
+async function addLearned({ workspace, userData, agentsDirectory, features, items, warnings, signal }) {
   if (!features.documents) return;
-  const directory = path.join(workspace, '.ensoul', 'state', 'agents');
+  const directory = agentsDirectory || path.join(userData || userDataDirectory(), '.ensoul', 'state', 'agents');
   let files;
   try { files = await fsp.readdir(directory); } catch (error) { if (error.code === 'ENOENT') return; throw error; }
   for (const name of files) {
@@ -219,7 +339,7 @@ async function addLearned({ workspace, features, items, warnings, signal }) {
     if (!name.endsWith('.json')) continue;
     const file = path.join(directory, name);
     const real = await fsp.realpath(file);
-    if (!inside(workspace, real)) { warnings.push(`已跳过指向工作区外的角色卡：${name}`); continue; }
+    if (!inside(directory, real)) { warnings.push(`已跳过指向角色资料目录外的角色卡：${name}`); continue; }
     let card;
     try { card = await readJson(real, signal); } catch (error) { checkAbort(signal); warnings.push(error.message); continue; }
     for (const [ordinal, learned] of (Array.isArray(card?.learned) ? card.learned : []).entries()) {
@@ -235,7 +355,7 @@ async function addLearned({ workspace, features, items, warnings, signal }) {
   }
 }
 
-async function scanCorpus({ workspace, userData, features = {}, roots, signal, onProgress, extract }) {
+async function scanCorpus({ workspace, userData, agentsDirectory, features = {}, roots, signal, onProgress, extract }) {
   checkAbort(signal);
   const root = await fsp.realpath(path.resolve(workspace));
   const selected = [];
@@ -329,10 +449,10 @@ async function scanCorpus({ workspace, userData, features = {}, roots, signal, o
     await new Promise((resolve) => setImmediate(resolve));
   }
   if (unsupported) warnings.push(`${unsupported} 份 PDF / Office 等文档需要正文提取器，尚未进入索引。`);
-  await addLearned({ workspace: root, features, items, warnings, signal });
+  await addLearned({ workspace: root, userData, agentsDirectory, features, items, warnings, signal });
   await addHistory({ workspace: root, userData, features, items, warnings, signal });
   checkAbort(signal);
   return { items, skipped, warnings };
 }
 
-module.exports = { scanCorpus, chunkText, inside, excluded, kindOf, hash, checkAbort };
+module.exports = { scanCorpus, chunkText, inside, excluded, kindOf, hash, checkAbort, walkFiles };

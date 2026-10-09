@@ -10,7 +10,7 @@
  * 搜索**不需要任何密钥**：默认按一张候选表挨个试（必应 → DuckDuckGo），谁先给出
  * 结果就用谁。为什么不只挂一个 —— 只挂 DuckDuckGo 的话，在够不着它的网络上搜索会
  * **直接废掉**：实测某台机器 DDG 全族超时，而 cn.bing 直连 0.2 秒就回。
- * 想换成自己的搜索服务，在工作区放一个 `.ensoul/state/web.json`：
+ * 想换成自己的搜索服务，在应用数据根放一个 `.ensoul/state/web.json`：
  *
  *   { "searchUrl": "https://自己的搜索/api?q={query}&n={count}" }
  *
@@ -382,7 +382,7 @@ module.exports = {
           '「' + q + '」没搜到 —— 每个源的结果：\n' +
           tried.map((t) => '  · ' + t).join('\n') +
           '\n\n' + diag +
-          '\n\n想换成自己的搜索服务，就在工作区建一个 .ensoul/state/web.json 写 {"searchUrl":"https://.../search?q={query}"}；' +
+          '\n\n想换成自己的搜索服务，就在应用数据根建一个 .ensoul/state/web.json 写 {"searchUrl":"https://.../search?q={query}"}；' +
           t('或者把已知网址直接用 web_fetch 抓。')
         );
       },

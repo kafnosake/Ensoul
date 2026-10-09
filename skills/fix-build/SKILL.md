@@ -20,6 +20,25 @@ description: 构建失败、改完代码界面没反应、报错看不懂时，�
    `preload/index.ts`。少一个就是编译不过。
 5. 构建过了但界面还是旧的 → 只是没重启。`restart_project`。
 
+## Windows 上"删不掉的小写文件"（TS1261）
+
+报 `TS1261: Already included file name 'D:/ensoul/src/renderer/panel/PanelSurface.tsx' differs from
+file name 'D:/ensoul/src/renderer/panel/panelsurface.tsx' only in casing` 时：
+
+**NTFS 不区分大小写，但目录里确实有两个只差大小写的条目。** Node 的 `readdirSync` /
+`fs.existsSync` 看不见幽灵项，只有 cmd 看得见 —— 先 `cmd /c "dir /a /b src\renderer\panel"` 确认。
+
+**最要命的一点：`del 小写名` 删掉的是真身。** 区分大小写不成立，`del chatdock.tsx` 就是删 `ChatDock.tsx`。
+动手前一定先 `git status`，看到 ` D` 说明源码已经被删了，`git checkout -- <路径>` 恢复。
+
+把内容搬回正确文件名时**不要 `del` + `ren`**（两步都会动真身），用 node 一次做完：
+
+```bash
+node -e "const fs=require('fs');const b=fs.readFileSync('src/renderer/panel/chatdock.tsx');fs.unlinkSync('src/renderer/panel/chatdock.tsx');fs.writeFileSync('src/renderer/panel/ChatDock.tsx',b)"
+```
+
+先 `unlink` 幽灵项，再 `writeFile` 正确名 —— 读和写都指向磁盘上真实存在的那一个。
+
 ## 几种"看起来像错误、其实不是"的情况
 
 - `spawn EPERM` / `Access is denied`：沙箱或杀软挡住了子进程。换一条命令，别硬顶。

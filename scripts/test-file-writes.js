@@ -13,6 +13,8 @@ require.cache[electron] = { id: electron, filename: electron, loaded: true, expo
   ipcMain: { handle() {}, on() {} }, BrowserWindow: class {}, dialog: {}, shell: {},
 } };
 const { fileWrites } = require('../dist/main/file-writes');
+const { runtimePath, isRuntimePath, registerProjectStorage } = require('../dist/main/storage');
+for (const plugin of [require('../plugins/tx-guard'), require('../plugins/file-backup')]) registerProjectStorage('fixture:' + plugin.name, plugin.storage.project);
 const { setWorkspaceRoot, writeText, safePath } = require('../dist/main/fsapi');
 const { runTool, runToolConfirmed, setExtensions } = require('../dist/main/agent');
 const ctx = (panelId) => ({ panelId, host: 'main', kind: 'chat', runId: panelId + '-run' });
@@ -24,7 +26,7 @@ function fixture() {
   const hooks = { fileWrite: [], afterTool: [], beforeTool: [], beforeWrite: [], tools: [] };
   const logs = [];
   const api = {
-    workspace: root, param: () => undefined, log: (...args) => logs.push(args.join(' ')),
+    workspace: root, dataPath: rel => runtimePath(rel, root), param: () => undefined, log: (...args) => logs.push(args.join(' ')),
     onFileWrite: (fn) => hooks.fileWrite.push(fn), onAfterTool: (fn) => hooks.afterTool.push(fn),
     onBeforeTool: (fn) => hooks.beforeTool.push(fn), onBeforeWrite: (fn) => hooks.beforeWrite.push(fn),
     addTool: (spec, handler) => hooks.tools.push({ spec, handler }),
@@ -36,10 +38,11 @@ function fixture() {
   const plugin = require('../plugins/tx-guard'); plugin.setup(api);
   const configure = () => setExtensions(hooks);
   configure();
-  const put = (rel, text) => { const file = path.join(root, rel); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
-  const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
+  const resolve = rel => isRuntimePath(rel) ? runtimePath(rel, root) : path.join(root, rel);
+  const put = (rel, text) => { const file = resolve(rel); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
+  const read = (rel) => fs.readFileSync(resolve(rel), 'utf8');
   const records = (kind) => {
-    const dir = path.join(root, '.ensoul/state/tx-guard', kind);
+    const dir = runtimePath('.ensoul/state/tx-guard/' + kind, root);
     return fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith('.json')).map((name) => JSON.parse(fs.readFileSync(path.join(dir, name)))) : [];
   };
   return { root, hooks, api, plugin, configure, put, read, records, logs };
@@ -119,7 +122,7 @@ test('拦截、写入失败和未匹配 edit 均释放租约，不留下假事�
   assert.equal(f.records('open').length, 0);
   const dir = '.ensoul/state/tx-guard/open'; f.put(dir, '阻止留底');
   assert.match(await write('A', '{"a":2}'), /失败/); assert.equal(f.read('a.json'), '{}');
-  fs.unlinkSync(path.join(f.root, dir));
+  fs.unlinkSync(runtimePath(dir, f.root));
   assert.match(await write('B', '{"b":2}'), /已写入/);
 });
 
@@ -164,7 +167,7 @@ test('真实备份工具通过统一写入路径，批量回滚失败保留对�
   const f = fixture(); require('../plugins/file-backup').setup(f.api); f.configure();
   f.put('a.json', '{"a":1}'); await read('A'); await write('B', '{"a":2}');
   assert.equal(JSON.parse(await runTool('restore_backup', { path: 'a.json' }, ctx('A'))).code, 'FILE_CONFLICT');
-  const journal = path.join(f.root, '.ensoul/backups/_journal.json');
+  const journal = runtimePath('.ensoul/backups/_journal.json', f.root);
   const before = JSON.parse(fs.readFileSync(journal)); assert.equal(before.length, 1);
   const out = await runTool('rollback_recent', { steps: 1 }, ctx('A'));
   assert.match(out, /未恢复 1 项/); assert.equal(JSON.parse(fs.readFileSync(journal)).length, 1); assert.equal(f.read('a.json'), '{"a":2}');

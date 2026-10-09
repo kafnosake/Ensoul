@@ -56,6 +56,7 @@ function statusOf(job) {
 
 module.exports = {
   name: 'jobs',
+  storage: { project: ['.ensoul/state/jobs.json', '.ensoul/jobs'] },
   description: t('后台任务：起长命令（dev server、watch、测试）并随时读输出、收掉，不占用对话'),
 
   setup(api) {
@@ -69,6 +70,8 @@ module.exports = {
           id: j.id,
           label: j.label,
           command: j.command,
+          workspace: j.workspace,
+          cwd: j.cwd,
           status: statusOf(j),
           startedAt: j.startedAt,
           endedAt: j.endedAt || 0,
@@ -88,7 +91,7 @@ module.exports = {
         job.readAt = Math.max(0, job.readAt - cut);
       }
       try {
-        const abs = path.join(root(), logFile(job.id));
+        const abs = api.dataPath(logFile(job.id));
         fs.mkdirSync(path.dirname(abs), { recursive: true });
         fs.appendFileSync(abs, s, 'utf8');
       } catch {
@@ -140,6 +143,8 @@ module.exports = {
           owner: (ctx && ctx.panelId) || '',
           label: String((args && args.label) || '').trim() || command.slice(0, 40),
           command,
+          workspace: root(),
+          cwd: (args && args.workdir) ? path.resolve(root(), String(args.workdir)) : root(),
           child: null,
           text: '',
           readAt: 0,
@@ -152,7 +157,7 @@ module.exports = {
 
         try {
           job.child = spawn(command, {
-            cwd: (args && args.workdir) ? path.resolve(root(), String(args.workdir)) : root(),
+            cwd: job.cwd,
             shell: true,
             windowsHide: true,
             env: { ...process.env, FORCE_COLOR: '0' },

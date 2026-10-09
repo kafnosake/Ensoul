@@ -103,7 +103,7 @@ function Surface({ panel, hostKey }: { panel: Panel; hostKey?: string }) {
   if (isChat) {
     return (
       <div
-        className={`panel-surface density-${panel.look.density}`}
+        className={`panel-surface density-${panel.look.density}${panel.chatSide ? ` chat-side-${panel.chatSide}` : ''}`}
         data-panel-id={panel.id}
         style={{ ['--accent' as any]: panel.look.accent }}
       >
@@ -116,7 +116,7 @@ function Surface({ panel, hostKey }: { panel: Panel; hostKey?: string }) {
 
   return (
     <div
-      className={`panel-surface density-${panel.look.density}`}
+      className={`panel-surface density-${panel.look.density}${panel.chatSide ? ` chat-side-${panel.chatSide}` : ''}`}
       data-panel-id={panel.id}
       style={{ ['--accent' as any]: panel.look.accent }}
     >

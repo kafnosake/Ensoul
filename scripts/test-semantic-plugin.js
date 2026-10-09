@@ -81,7 +81,7 @@ function harness(t, initial = {}, plans = {}, options = {}) {
   fs.mkdirSync(workspace);
   fs.mkdirSync(userData);
   fs.writeFileSync(path.join(workspace, 'evidence.md'), '原文证据');
-  const commandDirectory = path.join(workspace, '.ensoul/semantic-search/commands');
+  const commandDirectory = path.join(userData, '.ensoul/semantic-search/commands');
   const tools = new Map(), toolSpecs = new Map(), prompts = [], timers = new Set(), saves = [], calls = [], runtimes = [], logs = [], opened = [], activated = [], environments = [];
   const panels = [{ id: 'panel-a', kind: 'semantic-search' }, { id: 'panel-b', kind: 'semantic-search' }, { id: 'conversation', kind: 'chat' }];
   const sections = new Map();
@@ -152,6 +152,7 @@ function harness(t, initial = {}, plans = {}, options = {}) {
   const plugin = module.exports;
   plugin.setup({
     workspace: options.workspace ?? workspace, t: text => text,
+    dataPath: relative => path.join(userData, relative),
     environments: { directory: name => path.join(userData, 'env', name), registerPython: record => environments.push(copy(record)) },
     state: { load: () => copy(initial), save: state => { saves.push(copy(state)); return true; } },
     panels: () => panels,

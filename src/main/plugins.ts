@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { appPath, userDataPath } from './paths';
+import { clearStorageRegistrations, migrateRuntimeData, registerProjectStorage, registerWorkspaceStorage, runtimePath } from './storage';
 import { environmentDirectory, registerPythonEnvironment } from './environments';
 import { assertPanelActive, currentPanelSignal, workspaceRoot, safePath, writeText } from './fsapi';
 import { addSkillRoot as regSkillRoot, dropSkillRoots as unregSkillRoots } from './skills';
@@ -257,6 +258,45 @@ export interface SettingsSectionReg extends SettingsSectionSpec {
  * 渲染进程那边，函数过不去。跑的时候**不再过 onBeforeTool** —— 请求本来就是它提的，
  * 回头再问一遍就是个死循环。
  */
+/** 一个可选答案 —— 跟 dsh 的 AskUserQuestionOption 同形 */
+export interface AskQuestionOption {
+  /** 给人看的标签 */
+  label: string;
+  /** 一句话讲清这个选择的代价或后果（认得的界面会渲染出来） */
+  description?: string;
+}
+
+/**
+ * 一道题。跟 dsh 的 AskUserQuestionItem 同形（字段名对齐，多选叫 multiSelect）。
+ *
+ * 提一批题、拿一批结构化的答案 —— 这是问用户的一般形态；
+ * 下面那条 confirm/cancel 的老路只是它的一个退化情形（两个按钮、没有选项）。
+ */
+export interface AskQuestionItem {
+  /** 稳定的题号，答案里原样带回来 */
+  id: string;
+  /** 要问的那句话 */
+  question: string;
+  /** 补充说明：渲染在题目上，但不混进选项标签里 */
+  detail?: string;
+  /** 短标题 / 分组名，如「确认」「选模式」 */
+  header?: string;
+  /** 可选项；不给就是让用户自由填 */
+  options?: AskQuestionOption[];
+  /** 允许多选。默认单选 */
+  multiSelect?: boolean;
+}
+
+/** 一道题的答案：跟 dsh 的 AskUserQuestionAnswerItem 同形 */
+export interface AskAnswerItem {
+  /** 对应哪道题 */
+  id: string;
+  /** 选中的选项标签（多选时可能多条） */
+  selected: string[];
+  /** 自由填的那个「其他」 */
+  custom?: string;
+}
+
 export interface AskSpec {
   panelId: string;
   text: string;
@@ -271,6 +311,13 @@ export interface AskSpec {
    * 用户点它之后，核心把这次调用记下来，等 running 空了自动执行。
    */
   defer?: { label?: string };
+  /**
+   * 一批结构化的问题（dsh 的 ask_user_question 同形）。
+   *
+   * 给了它，界面上画的就是问题表单（翻页 / 单选多选 / 自定义答案 / 跳过），
+   * 用户提交之后答案从 then 那条路回到插件手里；不给就还是底下那两个按钮的老样子。
+   */
+  questions?: AskQuestionItem[];
   then: { tool: string; args?: any };
 }
 
@@ -590,6 +637,8 @@ export interface PluginHost {
   log(...args: any[]): void;
   /** 工作区根目录的绝对路径 */
   workspace: string;
+  /** 固定应用数据根中的逻辑路径；项目声明按本实例的工作区隔离。 */
+  dataPath(rel: string): string;
   /**
    * 一个可调参数的当前值（声明里的默认值已填好）。**setup 时读一次**就够 ——
    * 参数改了核心会让插件重新 setup，所以这不是一件会自己变的东西，别拿它当实时开关。
@@ -608,7 +657,7 @@ export interface PluginHost {
   allParams(): PluginParamView[];
   /** 改**任意**插件的参数（同一份校验）；value 传 null = 恢复默认 */
   setPluginParam(plugin: string, key: string, value: any | null): { ok: boolean; error?: string };
-  /** 插件自己的持久状态：`<工作区>/.ensoul/state/<插件名>.json` */
+  /** 插件自己的持久状态默认全局；storage.project 声明的路径按项目隔离。 */
   state: {
     load<T = any>(fallback?: T): T;
     save(value: any): boolean;
@@ -910,23 +959,77 @@ export function pluginsDir(): string {
 }
 
 /** 插件根，从高优先级到低优先级 */
-function pluginRoots(): Array<{ dir: string; source: string }> {
+function pluginRoots(ws = workspaceRoot()): Array<{ dir: string; source: string }> {
   const out: Array<{ dir: string; source: string }> = [];
-  const ws = workspaceRoot();
   if (ws) out.push({ dir: path.join(ws, '.ensoul', DIR), source: t('工作区') });
+  out.push({ dir: userDataPath('.ensoul', DIR), source: t('全局') });
   out.push({ dir: pluginsDir(), source: t('软件自带') });
   return out;
 }
 
-/**
- * 插件状态文件放哪 —— 工作区里，换项目就换一份状态。
- * 还没选工作区时退到 userData：不能让它拼成相对路径，否则状态会写进
- * 当前进程的 cwd —— 打包之后那儿是只读的安装目录，跑起来会在别处冒出个 .ensoul。
- */
+const preparedStorage = new Map<string, { stamp: number; mod: any }>();
+const preparedWorkspaces = new Map<string, string>();
+const migratedWorkspaces = new Set<string>();
+registerWorkspaceStorage('plugin-configuration', ['.ensoul/plugin-overrides.json']);
+
+function registerPluginStorage(dir: string, mod: any, workspace = workspaceRoot()): void {
+  const declaration = mod?.storage?.project;
+  const workspaceDeclaration = mod?.storage?.workspace;
+  if (declaration !== undefined && (!Array.isArray(declaration) || declaration.some((value: unknown) => typeof value !== 'string'))) {
+    throw new Error('storage.project 必须是逻辑数据路径数组');
+  }
+  if (workspaceDeclaration !== undefined && (!Array.isArray(workspaceDeclaration) || workspaceDeclaration.some((value: unknown) => typeof value !== 'string'))) {
+    throw new Error('storage.workspace 必须是逻辑数据路径数组');
+  }
+  registerWorkspaceStorage(`plugin:${dir}`, workspaceDeclaration || [], workspace);
+  registerProjectStorage(`plugin:${dir}`, declaration || [], workspace);
+}
+
+/** 在复制旧数据前只读取插件声明，不执行 setup。 */
+export function preparePluginStorage(workspace = workspaceRoot()): void {
+  if (typeof (globalThis as any).t !== 'function') {
+    (globalThis as any).t = t;
+    (globalThis as any).__ensoulI18n = { t, getLang: () => 'zh', onLang: () => () => {} };
+  }
+  const claimed = new Set<string>();
+  const candidates: Array<{ dir: string; file: string; stamp: number; name: string }> = [];
+  for (const root of pluginRoots(workspace)) {
+    if (!fs.existsSync(root.dir)) continue;
+    for (const entry of fs.readdirSync(root.dir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name.startsWith('.') || claimed.has(entry.name)) continue;
+      const dir = path.join(root.dir, entry.name);
+      const file = path.join(dir, 'index.js');
+      if (!fs.existsSync(file)) continue;
+      claimed.add(entry.name);
+      const stamp = fs.statSync(file).mtimeMs;
+      candidates.push({ dir, file, stamp, name: entry.name });
+    }
+  }
+  const key = workspace ? path.resolve(workspace) : '';
+  const signature = JSON.stringify(candidates.map(candidate => [candidate.file, candidate.stamp]));
+  if (preparedWorkspaces.get(key) === signature) return;
+  clearStorageRegistrations('plugin:', workspace);
+  let complete = true;
+  for (const { dir, file, stamp, name } of candidates) {
+    try {
+      let cached = preparedStorage.get(file);
+      if (cached?.stamp !== stamp) {
+        delete require.cache[require.resolve(file)];
+        cached = { stamp, mod: require(file) };
+        preparedStorage.set(file, cached);
+      }
+      registerPluginStorage(dir, cached.mod, workspace);
+    } catch (error) {
+      complete = false;
+      console.error(`[插件 ${name}] 存储声明读取失败：`, (error as Error).message);
+    }
+  }
+  if (complete) preparedWorkspaces.set(key, signature);
+}
+
 function stateFile(name: string, root = workspaceRoot()): string {
   const safe = String(name || 'plugin').replace(/[^\w.-]+/g, '_');
-  if (!root) return userDataPath('plugin-state', `${safe}.json`);
-  return path.join(root, '.ensoul', 'state', `${safe}.json`);
+  return runtimePath(`.ensoul/state/${safe}.json`, root);
 }
 
 /**
@@ -962,7 +1065,7 @@ function readPanelDecl(mod: any): PluginPanelDecl | undefined {
 }
 
 /**
- * 插件参数值放哪 —— 所有插件共用**一个**文件：`<工作区>/.ensoul/state/plugin-params.json`，
+ * 插件个人参数共用固定应用数据根的 `.ensoul/state/plugin-params.json`，
  * 形如 `{ "pomodoro": { "work": 30 } }`。
  *
  * 为什么一个文件而不是每个插件一份：参数是"人在设置面板里翻着改"的东西，
@@ -970,14 +1073,35 @@ function readPanelDecl(mod: any): PluginPanelDecl | undefined {
  * 就代表"所有插件的参数有没有动过"，重载判断因此很便宜。
  */
 function paramFile(): string {
-  const root = workspaceRoot();
-  if (!root) return userDataPath('plugin-state', 'plugin-params.json');
-  return path.join(root, '.ensoul', 'state', 'plugin-params.json');
+  return runtimePath('.ensoul/state/plugin-params.json');
 }
 
 /** 参数值的内存副本 + 它是照哪一版文件读的（那一版的修改时间） */
 let paramStore: Record<string, Record<string, any>> = {};
 let paramStamp = -1;
+let projectParamStore: Record<string, Record<string, any>> = {};
+let projectParamStamp = -1;
+
+function projectParamFile(): string {
+  const workspace = workspaceRoot();
+  return workspace ? runtimePath('.ensoul/plugin-overrides.json', workspace) : '';
+}
+
+function projectParamMtime(): number {
+  try { return fs.statSync(projectParamFile()).mtimeMs; } catch { return 0; }
+}
+
+function readProjectParamStore(): void {
+  projectParamStamp = projectParamMtime();
+  const raw = safeReadJson<unknown>(projectParamFile(), {});
+  projectParamStore = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+  for (const [plugin, values] of Object.entries(raw)) {
+    if (values && typeof values === 'object' && !Array.isArray(values)) {
+      projectParamStore[plugin] = Object.fromEntries(Object.entries(values));
+    }
+  }
+}
 
 /**
  * 插件是照**哪一版语言**装的。
@@ -1288,7 +1412,7 @@ function readParamDecls(mod: any): PluginParamDecl[] {
 
 /** 某个插件此刻生效的参数值：设过的用设的（校验过），没设过的用默认 */
 function paramValues(name: string, decls: PluginParamDecl[]): Record<string, string | number | boolean> {
-  const mine = readParamStore()[name] || {};
+  const mine = { ...(readParamStore()[name] || {}), ...(projectParamStore[name] || {}) };
   const out: Record<string, string | number | boolean> = {};
   for (const d of decls) out[d.key] = d.key in mine ? coerce(d, mine[d.key]) : d.default;
   return out;
@@ -1396,11 +1520,12 @@ export function setPluginParam(plugin: string, key: string, value: any): { ok: b
   const decl = inst.info.params.find((d) => d.key === key);
   if (!decl) return { ok: false, error: `插件 ${plugin} 没有可调参数 ${key}` };
 
-  const before = inst.info.values[key];
+  const personal = readParamStore()[plugin]?.[key];
+  const before = personal === undefined ? decl.default : coerce(decl, personal);
   const next = value === null ? decl.default : coerce(decl, value);
   if (next !== before) writeParamValue(plugin, key, value === null ? null : next);
   // 界面立刻看到新值，不用等下一次 loadPlugins 把插件装完
-  inst.info.values = { ...inst.info.values, [key]: next };
+  inst.info.values = paramValues(inst.name, inst.info.params);
   inst.paramValues = inst.info.values;
   return { ok: true };
 }
@@ -1466,6 +1591,7 @@ function makeHost(inst: Instance): PluginHost {
       assertPanelActive();
       // 只说"请求谁提的"：核心那边不用认识插件，插件也不用认识界面
       if (!spec?.panelId || !spec?.then?.tool) return;
+      // questions 一起带过去：渲染层照着它画问题表单（见 ChatDock.tsx）
       askUser({ ...spec, text: String(spec.text || '') });
     },
     send: (panelId, text, images, opts) => {
@@ -1714,6 +1840,7 @@ function makeHost(inst: Instance): PluginHost {
     get workspace() {
       return pluginWorkspace;
     },
+    dataPath: rel => runtimePath(rel, pluginWorkspace),
     state: {
       load<T = any>(fallback?: T): T {
         return safeReadJson<T>(stateFile(inst.name, pluginWorkspace), fallback);
@@ -1835,6 +1962,13 @@ function mount(dir: string, label: string, source: string, stale?: Instance): In
   inst.name = String(inst.mod?.name || path.basename(dir));
   info.name = inst.name;
   info.description = String(inst.mod?.description || '');
+  try {
+    registerPluginStorage(dir, inst.mod);
+  } catch (error) {
+    info.enabled = false;
+    info.error = `存储声明无效：${(error as Error).message}`;
+    return inst;
+  }
   // 自带面板：声明纯数据留在 info 里（跟着 ws/ext 的清单一起去渲染进程），
   // 真正的脸在插件目录的 panel.tsx，由渲染层扫。
   info.panel = readPanelDecl(inst.mod);
@@ -1873,11 +2007,18 @@ function mount(dir: string, label: string, source: string, stale?: Instance): In
  */
 export function loadPlugins(disabled: string[] = []): LoadedPlugins {
   const nextWorkspace = workspaceRoot();
+  preparePluginStorage(nextWorkspace);
+  if (!migratedWorkspaces.has(nextWorkspace)) {
+    const migration = migrateRuntimeData(nextWorkspace);
+    if (migration.errors.length) console.error('[数据迁移] 部分文件未复制：', migration.errors);
+    else migratedWorkspaces.add(nextWorkspace);
+  }
   if (nextWorkspace !== workspaceStamp) {
     for (const inst of instances.values()) dispose(inst);
     instances.clear();
     workspaceStamp = nextWorkspace;
     paramStamp = -1;
+    projectParamStamp = -1;
   }
   /*
    * 语言变了：插件声明里的 label / hint、工具描述、以及模块顶层的 t() 都是
@@ -1895,8 +2036,9 @@ export function loadPlugins(disabled: string[] = []): LoadedPlugins {
   }
   // 参数文件动过（用户在设置面板里改，或者助手用 plugin_params 改）→ 每个插件重新装一遍，
   // 让它们读到新值。这是"参数生效"的唯一时机，所以放在扫目录之前：这一轮拿到的就是新配置。
-  if (paramMtime() !== paramStamp) {
+  if (paramMtime() !== paramStamp || projectParamMtime() !== projectParamStamp) {
     readParamStore(); // 顺手把内存里那份换成新的（它内部会把 paramStamp 更新掉）
+    readProjectParamStore();
     remountAll();
   }
   const out: LoadedPlugins = { tools: [], beforeWrite: [], beforeTool: [], afterTool: [], fileWrite: [], prompts: [], status: [], commands: [], summaryNotes: [], compactPicks: [], sections: [], info: [] };
@@ -1938,7 +2080,7 @@ export function loadPlugins(disabled: string[] = []): LoadedPlugins {
       }
       claimed.add(e.name);
       alive.add(dir);
-      const label = `${root.source === '工作区' ? '.ensoul/plugins' : DIR}/${e.name}`;
+      const label = `${root.dir === pluginsDir() ? DIR : '.ensoul/plugins'}/${e.name}`;
 
       const old = instances.get(dir);
       if (!old || old.mtime !== mtime) {

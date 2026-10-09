@@ -83,6 +83,15 @@
    用户在那儿找不着任何东西 —— 于是以为"文件面板里根本没有会话区的控制逻辑"。
    这里摆一道极淡的短线，说明"刻度带在这儿、只是还没有内容"。
    只画在非对话面板里：整块对话面板不缺这一道线。 */
+/* 侧栏里的便签刻度：**不摆**。
+   刻度带是「贴在消息列右边缘的一条竖列 + 贴底排」，落到 360px 宽的侧栏里，
+   就变成输入框正上方一根 9px 的淡短杠 —— 看不出是什么、却点得动。
+   要看便签，把会话栏收回底部那一栏就有。 */
+.chatdock.is-side-left .note-gauge,
+.chatdock.is-side-right .note-gauge {
+  display: none;
+}
+
 .chatdock:not(.is-full) .note-gauge.is-empty::before {
   content: '';
   flex: none;

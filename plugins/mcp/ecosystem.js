@@ -48,13 +48,13 @@ function writeSources(state, kind, list) {
 
 // ── 缓存 ───────────────────────────────────────────────────────────────
 
-function cachePath(root) {
-  return path.join(root, CACHE_FILE);
+function cachePath(api) {
+  return api.dataPath(CACHE_FILE);
 }
 
-function readCache(root) {
+function readCache(api) {
   try {
-    const v = JSON.parse(fs.readFileSync(cachePath(root), 'utf8'));
+    const v = JSON.parse(fs.readFileSync(cachePath(api), 'utf8'));
     return v && typeof v === 'object' ? v : {};
   } catch {
     return {};
@@ -62,10 +62,10 @@ function readCache(root) {
 }
 
 /** 合并着写 —— 面板可能正在读，别把别的字段抹掉 */
-function patchCache(root, patch) {
-  const next = Object.assign({}, readCache(root), patch, { updatedAt: new Date().toISOString() });
-  fs.mkdirSync(path.dirname(cachePath(root)), { recursive: true });
-  fs.writeFileSync(cachePath(root), JSON.stringify(next, null, 2), 'utf8');
+function patchCache(api, patch) {
+  const next = Object.assign({}, readCache(api), patch, { updatedAt: new Date().toISOString() });
+  fs.mkdirSync(path.dirname(cachePath(api)), { recursive: true });
+  fs.writeFileSync(cachePath(api), JSON.stringify(next, null, 2), 'utf8');
   return next;
 }
 
@@ -123,9 +123,11 @@ async function collectMcp(query, limit) {
  */
 function createEcosystem(api, hooks) {
   const root = api.workspace;
+  const dataRoot = path.dirname(api.dataPath('.ensoul'));
   /** 两半各自的"正在拉"闸 —— 面板挂载/切标签会反复要求刷新，别叠着打 */
   const busy = { skills: false, mcp: false };
   const token = () => String(api.param('githubToken', '') || '').trim();
+  const installScope = () => String(api.param('installScope', 'user') || 'user');
 
   /**
    * 代理地址同步给联网层。每次刷新前对一次 —— 参数改了（面板、设置、或助手
@@ -158,20 +160,20 @@ function createEcosystem(api, hooks) {
     busy.skills = true;
     syncProxy();
     // 先落个"正在拉"的标记：抓两个仓库几十份技能要十几秒，面板上不该是一片空白
-    const cur = readCache(root);
-    patchCache(root, { skills: Object.assign({}, cur.skills || {}, { loading: true, reason: reason || 'auto' }) });
+    const cur = readCache(api);
+    patchCache(api, { skills: Object.assign({}, cur.skills || {}, { loading: true, reason: reason || 'auto' }) });
     api.refresh();
     try {
       const st = state();
       const got = await collectSkills(st, token(), { perRepo: Number(api.param('perRepoSkills', 60)) || 60 });
       const installed = lib.listInstalledSkills(root);
-      patchCache(root, {
+      patchCache(api, {
         skills: Object.assign({}, got, { installed, loading: false, at: new Date().toISOString(), reason: reason || 'auto' }),
         settings: { allowLlmInstall: llmMayInstall() },
       });
       api.log('[market] 技能源已刷新：' + got.repos.length + ' 个仓库，' + got.repos.reduce((n, r) => n + r.skills.length, 0) + ' 份技能');
     } catch (e) {
-      patchCache(root, { skills: { repos: [], errors: [{ error: (e && e.message) || String(e) }], installed: lib.listInstalledSkills(root), loading: false, at: new Date().toISOString(), reason: reason || 'auto' } });
+      patchCache(api, { skills: { repos: [], errors: [{ error: (e && e.message) || String(e) }], installed: lib.listInstalledSkills(root), loading: false, at: new Date().toISOString(), reason: reason || 'auto' } });
       api.log('[market] 技能源刷新失败：' + ((e && e.message) || e));
     } finally {
       busy.skills = false;
@@ -187,9 +189,9 @@ function createEcosystem(api, hooks) {
     syncProxy();
     try {
       const got = await collectMcp(query, Number(api.param('mcpPageSize', 80)) || 80);
-      patchCache(root, { mcp: Object.assign({}, got, { installed: lib.listInstalledMcp(root), at: new Date().toISOString() }) });
+      patchCache(api, { mcp: Object.assign({}, got, { installed: lib.listInstalledMcp(root, dataRoot), at: new Date().toISOString() }) });
     } catch (e) {
-      patchCache(root, { mcp: { query: String(query || ''), items: [], error: (e && e.message) || String(e), installed: lib.listInstalledMcp(root), at: new Date().toISOString() } });
+      patchCache(api, { mcp: { query: String(query || ''), items: [], error: (e && e.message) || String(e), installed: lib.listInstalledMcp(root, dataRoot), at: new Date().toISOString() } });
     } finally {
       busy.mcp = false;
     }
@@ -202,7 +204,7 @@ function createEcosystem(api, hooks) {
    */
   function skipIfFresh(kind, query) {
     const gap = Number(api.param('refreshGapSec', 300)) || 300;
-    const cur = readCache(root);
+    const cur = readCache(api);
     const box = cur[kind];
     if (!box || !box.at) return false;
     const age = Date.now() - Date.parse(box.at);
@@ -214,10 +216,10 @@ function createEcosystem(api, hooks) {
 
   /** 装上 / 卸下之后，缓存里那两份"已装"要立刻跟上，面板不用等下一轮刷新 */
   function syncInstalled() {
-    const cur = readCache(root);
-    patchCache(root, {
+    const cur = readCache(api);
+    patchCache(api, {
       skills: Object.assign({}, cur.skills || {}, { installed: lib.listInstalledSkills(root) }),
-      mcp: Object.assign({}, cur.mcp || {}, { installed: lib.listInstalledMcp(root) }),
+      mcp: Object.assign({}, cur.mcp || {}, { installed: lib.listInstalledMcp(root, dataRoot) }),
       settings: { allowLlmInstall: llmMayInstall() },
     });
     api.refresh();
@@ -230,17 +232,17 @@ function createEcosystem(api, hooks) {
       case 'market_refresh':
         // 两半一起刷 —— 用户点的是"去网上更新"，不该只更新一半
         await refreshSkills('manual');
-        await refreshMcp(readCache(root).mcp?.query || '');
+        await refreshMcp(readCache(api).mcp?.query || '');
         return true;
 
       /** 面板上那个搜索框：搜 GitHub 上的技能（在已加的源里筛是面板自己做的） */
       case 'market_search_skills': {
-        const cur = readCache(root);
+        const cur = readCache(api);
         try {
           const got = await reg.searchRepos(cmd.query || '', token(), 15);
-          patchCache(root, { skills: Object.assign({}, cur.skills || {}, { search: { mode: got.mode, query: String(cmd.query || ''), items: got.items, at: new Date().toISOString() } }) });
+          patchCache(api, { skills: Object.assign({}, cur.skills || {}, { search: { mode: got.mode, query: String(cmd.query || ''), items: got.items, at: new Date().toISOString() } }) });
         } catch (e) {
-          patchCache(root, { skills: Object.assign({}, cur.skills || {}, { search: { query: String(cmd.query || ''), items: [], error: (e && e.message) || String(e), at: new Date().toISOString() } }) });
+          patchCache(api, { skills: Object.assign({}, cur.skills || {}, { search: { query: String(cmd.query || ''), items: [], error: (e && e.message) || String(e), at: new Date().toISOString() } }) });
         }
         api.refresh();
         return true;
@@ -256,15 +258,15 @@ function createEcosystem(api, hooks) {
        * 而且用户多半只想要其中几个。所以这里只把它们列出来，谁想加谁点。
        */
       case 'market_discover': {
-        const cur = readCache(root);
-        patchCache(root, { discover: { loading: true, at: new Date().toISOString() } });
+        const cur = readCache(api);
+        patchCache(api, { discover: { loading: true, at: new Date().toISOString() } });
         api.refresh();
         try {
           const got = await reg.discoverSources(token(), { perTopic: Number(api.param('discoverPerTopic', 12)) || 12 });
           const known = new Set(readSources(state(), 'skill').map((s) => s.repo));
-          patchCache(root, { discover: { items: got.items.filter((x) => !known.has(x.repo)), known: got.items.filter((x) => known.has(x.repo)).length, errors: got.errors, topics: got.topics, loading: false, at: new Date().toISOString() } });
+          patchCache(api, { discover: { items: got.items.filter((x) => !known.has(x.repo)), known: got.items.filter((x) => known.has(x.repo)).length, errors: got.errors, topics: got.topics, loading: false, at: new Date().toISOString() } });
         } catch (e) {
-          patchCache(root, { discover: { items: [], error: (e && e.message) || String(e), loading: false, at: new Date().toISOString() } });
+          patchCache(api, { discover: { items: [], error: (e && e.message) || String(e), loading: false, at: new Date().toISOString() } });
         }
         api.refresh();
         return true;
@@ -277,7 +279,7 @@ function createEcosystem(api, hooks) {
        * 而匿名 GitHub 每小时只给几十次。所以默认不抓，谁想细看谁点。
        */
       case 'market_describe_repo': {
-        const cur = readCache(root);
+        const cur = readCache(api);
         const repos = (cur.skills && cur.skills.repos) || [];
         const at = repos.findIndex((r) => r && (r.id === cmd.id || r.repo === cmd.repo));
         if (at < 0) return true;
@@ -285,9 +287,9 @@ function createEcosystem(api, hooks) {
         try {
           const skills = await reg.describeRepoSkills(r.repo, r.ref, r.skills || [], (r.skills || []).length, token());
           repos[at] = Object.assign({}, r, { skills, described: true });
-          patchCache(root, { skills: Object.assign({}, cur.skills || {}, { repos }) });
+          patchCache(api, { skills: Object.assign({}, cur.skills || {}, { repos }) });
         } catch (e) {
-          patchCache(root, { lastAction: { kind: 'describe_repo', ok: false, name: r.repo, error: (e && e.message) || String(e), at: new Date().toISOString() } });
+          patchCache(api, { lastAction: { kind: 'describe_repo', ok: false, name: r.repo, error: (e && e.message) || String(e), at: new Date().toISOString() } });
         }
         api.refresh();
         return true;
@@ -310,13 +312,13 @@ function createEcosystem(api, hooks) {
 
       case 'skill_install': {
         const repo = reg.parseRepoRef(cmd.repo);
-        if (!repo) { patchCache(root, { lastAction: { kind: 'skill_install', ok: false, error: '仓库地址看不懂：' + cmd.repo, at: new Date().toISOString() } }); return true; }
+        if (!repo) { patchCache(api, { lastAction: { kind: 'skill_install', ok: false, error: '仓库地址看不懂：' + cmd.repo, at: new Date().toISOString() } }); return true; }
         const full = repo.owner + '/' + repo.repo;
         let bundle;
         try {
           bundle = await reg.fetchSkillBundle(full, cmd.ref || '', cmd.path || '', token());
         } catch (e) {
-          patchCache(root, { lastAction: { kind: 'skill_install', ok: false, error: (e && e.message) || String(e), at: new Date().toISOString() } });
+          patchCache(api, { lastAction: { kind: 'skill_install', ok: false, error: (e && e.message) || String(e), at: new Date().toISOString() } });
           return true;
         }
         const meta = reg.parseFront((bundle.files.find((f) => f.path === 'SKILL.md') || {}).text || '');
@@ -332,15 +334,16 @@ function createEcosystem(api, hooks) {
           description: meta.description || cmd.description || '',
           whenToUse: meta.whenToUse || '',
           fallbackText: cmd.fallbackText || '',
+          scope: cmd.scope || installScope(),
         });
-        patchCache(root, { lastAction: { kind: 'skill_install', ok: true, name: res.name, dir: res.dir, files: res.files, at: new Date().toISOString() } });
+        patchCache(api, { lastAction: { kind: 'skill_install', ok: true, name: res.name, dir: res.dir, files: res.files, at: new Date().toISOString() } });
         syncInstalled();
         return true;
       }
 
       case 'skill_uninstall': {
         const res = lib.uninstallSkill(root, cmd.id);
-        patchCache(root, { lastAction: { kind: 'skill_uninstall', ok: res.ok, id: cmd.id, error: res.error || '', at: new Date().toISOString() } });
+        patchCache(api, { lastAction: { kind: 'skill_uninstall', ok: res.ok, id: cmd.id, error: res.error || '', at: new Date().toISOString() } });
         syncInstalled();
         return true;
       }
@@ -349,14 +352,14 @@ function createEcosystem(api, hooks) {
         const st = state();
         const list = readSources(st, 'skill');
         const repo = reg.parseRepoRef(cmd.repo);
-        if (!repo) { patchCache(root, { lastAction: { kind: 'skill_source_add', ok: false, name: cmd.repo, error: '仓库地址看不懂', at: new Date().toISOString() } }); return true; }
+        if (!repo) { patchCache(api, { lastAction: { kind: 'skill_source_add', ok: false, name: cmd.repo, error: '仓库地址看不懂', at: new Date().toISOString() } }); return true; }
         const full = repo.owner + '/' + repo.repo;
         if (!list.some((s) => s.repo === full)) {
           list.push({ id: lib.safeId(full), label: String(cmd.label || full), repo: full, ref: String(cmd.ref || ''), note: '' });
         }
         writeSources(st, 'skill', list);
         commit(st);
-        patchCache(root, { lastAction: { kind: 'skill_source_add', ok: true, name: full, at: new Date().toISOString() } });
+        patchCache(api, { lastAction: { kind: 'skill_source_add', ok: true, name: full, at: new Date().toISOString() } });
         await refreshSkills('source-add');
         return true;
       }
@@ -372,10 +375,10 @@ function createEcosystem(api, hooks) {
 
       case 'mcp_install': {
         const st = state();
-        const cur = readCache(root);
+        const cur = readCache(api);
         const item = ((cur.mcp && cur.mcp.items) || []).find((x) => x.name === cmd.name);
         if (!item) {
-          patchCache(root, { lastAction: { kind: 'mcp_install', ok: false, error: '缓存里没有这条服务，先搜一次', at: new Date().toISOString() } });
+          patchCache(api, { lastAction: { kind: 'mcp_install', ok: false, error: '缓存里没有这条服务，先搜一次', at: new Date().toISOString() } });
           return true;
         }
         const res = lib.installMcp(root, {
@@ -388,15 +391,16 @@ function createEcosystem(api, hooks) {
           description: item.description,
           envNames: item.envNames,
           remotes: item.remotes,
+          scope: cmd.scope || installScope(),
         });
-        patchCache(root, { lastAction: { kind: 'mcp_install', ok: res.ok, name: res.name, error: res.error || '', at: new Date().toISOString() } });
+        patchCache(api, { lastAction: { kind: 'mcp_install', ok: res.ok, name: res.name, error: res.error || '', at: new Date().toISOString() } });
         syncInstalled();
         return true;
       }
 
       case 'mcp_uninstall': {
-        const res = lib.uninstallMcp(root, cmd.name);
-        patchCache(root, { lastAction: { kind: 'mcp_uninstall', ok: res.ok, name: cmd.name, error: res.error || '', at: new Date().toISOString() } });
+        const res = lib.uninstallMcp(root, cmd.name, dataRoot);
+        patchCache(api, { lastAction: { kind: 'mcp_uninstall', ok: res.ok, name: cmd.name, error: res.error || '', at: new Date().toISOString() } });
         syncInstalled();
         return true;
       }
@@ -515,7 +519,7 @@ function createEcosystem(api, hooks) {
     api.addTool(
       {
         name: 'skill_install',
-        description: '把一份技能装进工作区（.ensoul/skills/ecosystem/），装完当轮就能用 use_skill 取到。同一份再装一次是覆盖。装之前要用户点头。',
+        description: '把一份技能默认装进用户全局技能库（~/.agents/skills/，跨项目通用，装完当轮就能用 use_skill 取到；也可以显式传 scope="workspace" 装入当前工作区）。同一份再装一次是覆盖。装之前要用户点头。',
         parameters: {
           type: 'object',
           properties: {
@@ -523,6 +527,7 @@ function createEcosystem(api, hooks) {
             path: { type: 'string', description: '技能目录，例如 skills/pdf' },
             ref: { type: 'string', description: '分支，不填自动试' },
             name: { type: 'string', description: '装成什么名字，不填用技能自己声明的名字' },
+            scope: { type: 'string', enum: ['user', 'workspace'], description: '安装位置，默认 user（用户全局）' },
           },
           required: ['repo'],
         },
@@ -537,6 +542,7 @@ function createEcosystem(api, hooks) {
           const bundle = await reg.fetchSkillBundle(full, args.ref || '', dir, token());
           if (!bundle.files.length) return '这个目录下没抓到文件（检查 repo / path / ref 是否对得上）';
           const meta = reg.parseFront((bundle.files.find((f) => f.path === 'SKILL.md') || {}).text || '');
+          const scope = args.scope || installScope();
           const res = lib.installSkill(root, {
             group: full,
             name: args.name || meta.name || dir.split('/').pop() || full.split('/').pop(),
@@ -545,9 +551,10 @@ function createEcosystem(api, hooks) {
             ref: bundle.ref,
             path: dir,
             url: 'https://github.com/' + full,
+            scope,
           });
           syncInstalled();
-          return '已装好技能「' + res.name + '」：' + res.dir + '（' + res.files + ' 个文件）\n当轮即可用 use_skill 取用。';
+          return '已装好技能「' + res.name + '」：' + res.dir + '（' + res.files + ' 个文件' + (scope === 'user' ? '，用户全局可用' : '') + '）\n当轮即可用 use_skill 取用。';
         } catch (e) {
           return '安装失败：' + ((e && e.message) || e);
         }
@@ -595,14 +602,14 @@ function createEcosystem(api, hooks) {
       async (args) => {
         const q = String(args.query || '').trim();
         const want = clamp(args.limit || 40, 1, 120);
-        const cur = readCache(root);
+        const cur = readCache(api);
         const cached = cur.mcp && cur.mcp.query === q ? cur.mcp.items || [] : null;
         if (cached && cached.length >= Math.min(want, 20)) {
           return s({ query: q, count: Math.min(want, cached.length), source: 'cache', items: cached.slice(0, want) });
         }
         try {
           const got = await collectMcp(q, Math.max(want, 80));
-          patchCache(root, { mcp: Object.assign({}, got, { source: 'live', installed: lib.listInstalledMcp(root), at: new Date().toISOString() }) });
+          patchCache(api, { mcp: Object.assign({}, got, { source: 'live', installed: lib.listInstalledMcp(root, dataRoot), at: new Date().toISOString() }) });
           return s({ query: got.query, count: got.items.length, source: 'live', items: got.items.slice(0, want) });
         } catch (e) {
           return '搜索失败：' + ((e && e.message) || e);
@@ -613,13 +620,14 @@ function createEcosystem(api, hooks) {
     api.addTool(
       {
         name: 'mcp_install',
-        description: '把一个 MCP 服务装进来（写进 mcp.json，装上后 mcp 插件会去连它）。name 用 mcp_search 返回的 name。',
+        description: '把一个 MCP 服务装进用户全局配置（~/.agents/mcp.json，跨项目通用，装完后全局 mcp 插件会自动连接；也可显式传 scope="workspace" 装入当前工作区）。name 用 mcp_search 返回的 name。',
         parameters: {
           type: 'object',
           properties: {
             name: { type: 'string', description: 'mcp_search 返回的 name（注册表里的全名）' },
             alias: { type: 'string', description: '想叫它什么，不填用它的标题' },
             auto_connect: { type: 'boolean', description: '装完是否立刻连，默认 true' },
+            scope: { type: 'string', enum: ['user', 'workspace'], description: '安装位置，默认 user（用户全局）' },
           },
           required: ['name'],
         },
@@ -631,6 +639,7 @@ function createEcosystem(api, hooks) {
           if (!hit) return '注册表里没找到：' + args.name;
           if (!hit.launch) return '这条服务只有远程地址（' + (hit.remotes[0] && hit.remotes[0].url) + '），本插件走的是本地进程，装不了。';
           if (!llmMayInstall()) return denyLlmInstall(hit.title + '（' + hit.name + '）');
+          const scope = args.scope || installScope();
           const res = lib.installMcp(root, {
             name: args.alias || hit.title || hit.name,
             launch: hit.launch,
@@ -641,12 +650,13 @@ function createEcosystem(api, hooks) {
             description: hit.description,
             envNames: hit.envNames,
             remotes: hit.remotes,
+            scope,
           });
           if (!res.ok) return '安装失败：' + res.error;
           syncInstalled();
           const need = hit.envNames.filter((v) => v.required).map((v) => v.name);
-          return '已装好 MCP 服务「' + res.name + '」：' + hit.launch.command + ' ' + hit.launch.args.join(' ') +
-            (need.length ? '\n还需要补环境变量：' + need.join('、') + '（在 .ensoul/mcp/' + res.name + '/config.json 里）' : '');
+          return '已装好 MCP 服务「' + res.name + '」(' + (scope === 'user' ? '用户全局' : '工作区') + ')：' + hit.launch.command + ' ' + hit.launch.args.join(' ') +
+            (need.length ? '\n还需要补环境变量：' + need.join('、') : '');
         } catch (e) {
           return '安装失败：' + ((e && e.message) || e);
         }
@@ -660,7 +670,7 @@ function createEcosystem(api, hooks) {
         parameters: { type: 'object', properties: { name: { type: 'string', description: '服务名' } }, required: ['name'] },
       },
       async (args) => {
-        const res = lib.uninstallMcp(root, args.name);
+        const res = lib.uninstallMcp(root, args.name, dataRoot);
         if (!res.ok) return '卸载失败：' + res.error;
         syncInstalled();
         return '已卸载 MCP 服务：' + res.removed;
@@ -675,13 +685,13 @@ function createEcosystem(api, hooks) {
       },
       async () => {
         const st = state();
-        const cache = readCache(root);
+        const cache = readCache(api);
         return s({
           sources: readSources(st, 'skill').map((x) => ({ id: x.id, label: x.label, repo: x.repo, builtin: !!x.builtin })),
           cacheAt: cache.updatedAt || '',
           skills: (cache.skills && cache.skills.repos || []).map((r) => ({ repo: r.repo, total: r.total, error: r.error || '' })),
           installedSkills: lib.listInstalledSkills(root).length,
-          installedMcp: lib.listInstalledMcp(root).length,
+          installedMcp: lib.listInstalledMcp(root, dataRoot).length,
           mcpCacheAt: (cache.mcp && cache.mcp.at) || '',
         });
       },

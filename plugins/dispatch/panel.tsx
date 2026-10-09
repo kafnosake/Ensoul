@@ -1222,7 +1222,7 @@ function CardEditor({
               ))}
             </ul>
             <div className="dp-help">
-              {t('只记**确认有效**的活：做了什么 + 实现路径，不存上下文 —— 存在他自己的工作区 work/名字/成功案例.json。经理挑人看的就是这段。')}
+              {t('只记**确认有效**的活：做了什么 + 实现路径，不存上下文 —— 存在应用资料目录 .ensoul/state/cases/名字/成功案例.json。经理挑人看的就是这段。')}
             </div>
           </div>
         </div>

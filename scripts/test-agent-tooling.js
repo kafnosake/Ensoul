@@ -20,6 +20,8 @@ const { runTool, setExtensions, archiveToolResult } = require('../dist/main/agen
 const { conversationForSummary } = require('../dist/main/chat-core');
 const { recordPromptDelta, consumePromptDeltas, commitPromptBaseline } = require('../dist/main/prompt-composer');
 const code = require('../plugins/code-intelligence');
+const { runtimePath, isRuntimePath, registerProjectStorage } = require('../dist/main/storage');
+registerProjectStorage('fixture:code-intelligence', code.storage.project);
 
 test.after(() => {
   assert.equal(path.dirname(path.resolve(box)), path.resolve(os.tmpdir()));
@@ -34,13 +36,13 @@ function fixture(name) {
   let state = null;
   let saveOk = true;
   code.setup({
-    workspace, addTool: (spec, handler) => { tools[spec.name] = handler; },
+    workspace, dataPath: rel => runtimePath(rel, workspace), addTool: (spec, handler) => { tools[spec.name] = handler; },
     addPrompt: (handler) => prompts.push(handler), addSummaryNote: (handler) => summaries.push(handler),
     state: { load: (fallback) => state === null ? fallback : structuredClone(state),
       save: (value) => { if (!saveOk) return false; state = structuredClone(value); return true; } },
   });
   const put = (file, content) => {
-    const target = path.join(workspace, file);
+    const target = isRuntimePath(file) ? runtimePath(file, workspace) : path.join(workspace, file);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, content);
   };
@@ -125,7 +127,7 @@ test('审查参数作为独立 argv，特殊字符不经过 shell', () => {
       execFileSync: (file, args, options) => { calls.push({ file, args, options }); return args.includes('--verify') ? 'head' : ''; },
     } : require(name), Buffer,
   });
-  module.exports.setup({ workspace: box, addTool: (spec, handler) => { tools[spec.name] = handler; },
+  module.exports.setup({ workspace: box, dataPath: rel => runtimePath(rel, box), addTool: (spec, handler) => { tools[spec.name] = handler; },
     addPrompt() {}, addSummaryNote() {}, state: { load: () => null, save: () => true } });
   const file = 'x" & echo INJECTION & "';
   tools.review_changes({ files: [file] });
@@ -257,7 +259,7 @@ test('完整命令输出和退出码保留在产物中，失败终态与耗时�
   const reference = result.match(/已存到 ([^；\n]+)/)?.[1];
   assert.ok(reference);
   assert.ok(result.indexOf(reference) < 800);
-  const full = fs.readFileSync(path.join(box, reference), 'utf8');
+  const full = fs.readFileSync(runtimePath(reference, box), 'utf8');
   assert.match(full, /MIDDLE_EVIDENCE/);
   assert.match(full, /TAIL_EVIDENCE/);
   assert.match(full, /退出码 7/);
@@ -268,7 +270,7 @@ test('跨轮历史和压缩摘要保留工具证据及完整输出引用', () =>
   const stored = archiveToolResult('grep', original, { panelId: 'p', host: 'main', kind: 'chat' });
   const reference = stored.match(/已存到 ([^；\n]+)/)?.[1];
   assert.ok(reference);
-  assert.match(fs.readFileSync(path.join(box, reference), 'utf8'), /HISTORY_MIDDLE_EVIDENCE/);
+  assert.match(fs.readFileSync(runtimePath(reference, box), 'utf8'), /HISTORY_MIDDLE_EVIDENCE/);
   const summaryInput = conversationForSummary([{ id: 'm', role: 'assistant', content: '结论', createdAt: 1,
     toolCalls: [{ id: 'call', name: 'grep', args: '{"pattern":"needle"}', result: stored }] }]);
   assert.match(summaryInput, /工具 grep/);

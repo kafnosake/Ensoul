@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { appPath, userDataPath } from './paths';
 import { dropPanelSpace, workspaceRoot } from './fsapi';
+import { runtimePath } from './storage';
 import type {
   ChatMessage,
   ChatStats,
@@ -153,7 +154,7 @@ function writeStow(id: string, panel: Panel, pinned: boolean) {
   const body: Record<string, unknown> = { ...head, ...rest };
 
   // **注册为组件的面板，做法不进本体**（写不成就不摘 —— 两头都没有是最坏的结果）：
-  // 做法（几 KB，要跟着仓库走）落进工作区，本体只留对话和正文（那两样只属于本机）。
+  // 做法落进全局资料库，本体只留对话和正文。
   // 顺序不能反：先把做法落到新家，再从本体里摘掉。
   if (isComponentPanel(panel)) {
     if (putCraft(panel)) {
@@ -170,30 +171,9 @@ function writeStow(id: string, panel: Panel, pinned: boolean) {
   fs.writeFileSync(stowFile(id), JSON.stringify(body, null, 2), 'utf8');
 }
 
-/**
- * 做法存哪儿 —— **一个组件一个文件**：`.ensoul/library/components/<面板 id>.json`。
- *
- * 为什么不是所有人挤一份 presets.json（那是我上一版的错，得改）：
- *   · **多人**：两个人都各自发布过组件、又都往同一个文件里加一条 —— git 必冲突，
- *     而且冲突就落在相邻那几行上，手改都不知道该留谁的。
- *   · **单发**：想把一个组件开源出去，得从一大堆条目里抠出那一条，剩下全是同名的。
- *   一件一个文件，这两件事就都成了"拷一个文件 / 删一个文件"。
- *
- * 文件名用**面板 id**，不用名字：
- *   名字是给人看的、随时会改，改一次就连文件名一起搬；
- *   而且不同机器上的同名组件会撞在同一个文件名上，一个把另一个盖掉 —— id 才是身份证。
- *
- * 做法**只住这一份**（本体里那半被摘掉了，见 writeStow）：对话留本机，做法进工作区。
- * 代价说在明处：**这个文件丢了、又没提交，那个组件的做法就没了（对话还在）** ——
- * 只有一个真源本来就是这个意思，所以它才必须跟着仓库走。
- *
- * 别人的文件**一律不碰**：撤销组件只删它自己那一件。
- *   不能拿"本机有没有这块面板"去清理 —— 别人提交的是别的机器上的面板 id，
- *   按本机清一遍会把人家提交的东西全删掉，然后你还把它提交回去了。
- */
-const craftDir = () => path.join(workspaceRoot(), '.ensoul', 'library', 'components');
-/** 老版本那个"所有人挤一份"的文件：还留着就一起认，核心启动时会把它拆成一件一件 */
-const legacyCraftFile = () => path.join(workspaceRoot(), '.ensoul', 'library', 'presets.json');
+/** 个人做法固定存全局；项目发布的副本和自带模板只作为读取来源。 */
+const craftDir = () => runtimePath('.ensoul/library/components', workspaceRoot());
+const legacyCraftFile = () => runtimePath('.ensoul/library/presets.json', workspaceRoot());
 
 /** 面板 id 当文件名：只留安全字符，免得一个怪 id 把文件写到目录外去 */
 function safeCraftId(id: string): string {
@@ -202,6 +182,8 @@ function safeCraftId(id: string): string {
 }
 
 const craftFileOf = (id: string) => path.join(craftDir(), `${safeCraftId(id)}.json`);
+const removedCraftFile = (id: string) => path.join(craftDir(), '.removed', `${safeCraftId(id)}.json`);
+const craftRemoved = (id: string) => fs.existsSync(removedCraftFile(id));
 
 /** 老的单文件里那些做法（没这份文件、或者坏了，都当没有，不吵） */
 function readLegacyCrafts(file = legacyCraftFile()): any[] {
@@ -220,12 +202,13 @@ function readLegacyCrafts(file = legacyCraftFile()): any[] {
 const craftOwner = (o: any, fallback = ''): string =>
   String(o?.panel || o?.id || fallback || '').trim();
 
-/** 把工作区里所有可分发做法读出来（一个文件一条；坏的跳过，不拖累别的） */
+/** 个人做法优先，其次项目副本和自带模板。 */
 function readCrafts(): any[] {
   const out: any[] = [];
   const seen = new Set<string>();
   const roots = [
-    ...(workspaceRoot() ? [{ dir: craftDir(), legacy: legacyCraftFile(), source: 'ws' }] : []),
+    { dir: craftDir(), legacy: legacyCraftFile(), source: 'global' },
+    ...(workspaceRoot() ? [{ dir: path.join(workspaceRoot(), '.ensoul/library/components'), legacy: path.join(workspaceRoot(), '.ensoul/library/presets.json'), source: 'ws' }] : []),
     { dir: appPath('.ensoul', 'library', 'components'), legacy: appPath('.ensoul', 'library', 'presets.json'), source: 'app' },
   ];
   for (const root of roots) {
@@ -241,7 +224,7 @@ function readCrafts(): any[] {
         const j = JSON.parse(readTextFile(file));
         if (!j || typeof j !== 'object') continue;
         const owner = craftOwner(j, f.replace(/\.json$/, ''));
-        if (!owner || seen.has(owner)) continue;
+        if (!owner || seen.has(owner) || craftRemoved(owner)) continue;
         seen.add(owner);
         out.push({ ...j, panel: owner, source: root.source, craftPath: file });
       } catch {
@@ -250,7 +233,7 @@ function readCrafts(): any[] {
     }
     for (const it of readLegacyCrafts(root.legacy)) {
       const owner = craftOwner(it);
-      if (!owner || seen.has(owner)) continue;
+      if (!owner || seen.has(owner) || craftRemoved(owner)) continue;
       seen.add(owner);
       out.push({ ...it, panel: owner, source: root.source, craftPath: root.legacy });
     }
@@ -259,9 +242,9 @@ function readCrafts(): any[] {
 }
 
 /** 这一刻这块面板的做法（手上没有就返回 null —— 调用点退回本体里那份） */
-function craftOf(id: string): { look?: any; spec?: any } | null {
+function craftOf(id: string): { look?: any; spec?: any; chatSide?: 'left' | 'right'; chatWSide?: number } | null {
   const hit = readCrafts().find((i) => i && craftOwner(i) === String(id));
-  return hit ? { look: hit.look, spec: hit.spec } : null;
+  return hit ? { look: hit.look, spec: hit.spec, chatSide: hit.chatSide, chatWSide: hit.chatWSide } : null;
 }
 
 /**
@@ -284,8 +267,9 @@ function craftSpec(panel: Panel): Record<string, unknown> {
  * 写出来的就是空的 look + 空的 spec —— **把工作区里那份好端端的做法覆盖成空**。
  * 所以判"有没有做法"必须先把 text 摘掉再看。
  */
-function hasCraft(panel: { look?: unknown; spec?: unknown }): boolean {
+function hasCraft(panel: { look?: unknown; spec?: unknown; chatSide?: unknown }): boolean {
   if (panel.look && typeof panel.look === 'object' && Object.keys(panel.look).length) return true;
+  if (panel.chatSide) return true;
   return Object.keys(craftSpec(panel as Panel)).length > 0;
 }
 
@@ -302,7 +286,7 @@ function putCraft(panel: Panel): boolean {
   // 别拿空值把那份好端端的做法覆盖成空的
   if (!hasCraft(panel)) return false;
   const name = String(panel.component || '').trim();
-  if (!name || !panel.id || !workspaceRoot()) return false;
+  if (!name || !panel.id) return false;
 
   const file = craftFileOf(panel.id);
   const spec = craftSpec(panel);
@@ -318,8 +302,10 @@ function putCraft(panel: Panel): boolean {
       cur.kind === panel.kind &&
       cur.title === (panel.title || '') &&
       JSON.stringify(cur.look) === JSON.stringify(panel.look) &&
-      JSON.stringify(cur.spec) === JSON.stringify(spec);
-    if (same) return true; // 已经是这份了：没写盘，但磁盘上是对的
+      JSON.stringify(cur.spec) === JSON.stringify(spec) &&
+      cur.chatSide === panel.chatSide &&
+      cur.chatWSide === panel.chatWSide;
+    if (same && !craftRemoved(panel.id)) return true;
     at = Number(cur?.at) || at;
   } catch {
     /* 还没这份文件（或者坏了）：往下写就是了 */
@@ -333,6 +319,8 @@ function putCraft(panel: Panel): boolean {
     title: panel.title || '',
     look: panel.look,
     spec,
+    ...(panel.chatSide ? { chatSide: panel.chatSide } : {}),
+    ...(panel.chatWSide ? { chatWSide: panel.chatWSide } : {}),
     ...(note ? { note } : {}),
     at,
   };
@@ -342,6 +330,8 @@ function putCraft(panel: Panel): boolean {
     const tmp = `${file}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(body, null, 2) + '\n', 'utf8');
     fs.renameSync(tmp, file);
+    const removed = removedCraftFile(panel.id);
+    if (fs.existsSync(removed)) fs.unlinkSync(removed);
     return true;
   } catch (e) {
     console.error('[做法] 写不下来：', e);
@@ -352,6 +342,9 @@ function putCraft(panel: Panel): boolean {
 /** 用户撤销了某个组件：**只删它自己那一件**，别人的文件一个都不碰 */
 function dropCraft(id: string): void {
   try {
+    const removed = removedCraftFile(id);
+    fs.mkdirSync(path.dirname(removed), { recursive: true });
+    fs.writeFileSync(removed, JSON.stringify({ id, at: Date.now() }), 'utf8');
     const file = craftFileOf(id);
     if (fs.existsSync(file)) fs.unlinkSync(file);
   } catch (e) {
@@ -1218,7 +1211,7 @@ class Store {
       bodyDir: stowDir(),
       bodyCount,
       craftDir: craftDir(),
-      craftCount: readCrafts().filter((it) => it.source === 'ws').length,
+      craftCount: readCrafts().filter((it) => it.source === 'global').length,
     };
   }
 
@@ -1353,7 +1346,13 @@ class Store {
     this.syncComponentOrderWithStows();
   }
 
-  /** 按 componentOrder 对组件进行排序：已在列表里的按指定顺序，未见过的排在后面 */
+  /**
+   * 按 componentOrder 名列位置：名单里有的照名单站队，**没见过的一律排到队尾**。
+   *
+   * 关键就在"排到队尾"这半句。磁盘条目的 savedAt 取自文件 mtime ——
+   * 若让两个没进名单的新条目拿 mtime 互相比大小，新收进来的那个就会**插进**老条目中间：
+   * 用户明明没动过顺序，看着却像收纳区自己乱了阵。名单里已经定下的位置一个都不许动。
+   */
   private sortRefsByOrder(list: ComponentRef[]): ComponentRef[] {
     const order = this.ws.componentOrder;
     if (!order || !order.length) {
@@ -1362,9 +1361,11 @@ class Store {
     const map = new Map<string, number>();
     order.forEach((id, idx) => map.set(id, idx));
     return [...list].sort((a, b) => {
-      const ia = map.has(a.id) ? map.get(a.id)! : 999999;
-      const ib = map.has(b.id) ? map.get(b.id)! : 999999;
+      const ia = map.has(a.id) ? map.get(a.id)! : Number.MAX_SAFE_INTEGER;
+      const ib = map.has(b.id) ? map.get(b.id)! : Number.MAX_SAFE_INTEGER;
       if (ia !== ib) return ia - ib;
+      // 两条都没进名单（都是新收进来的）：并肩排在队尾，谁也不许拿 mtime 往前插
+      if (ia === Number.MAX_SAFE_INTEGER) return 0;
       return a.savedAt - b.savedAt;
     });
   }
@@ -1653,7 +1654,6 @@ class Store {
    */
   private syncCrafts() {
     try {
-      if (!workspaceRoot()) return;
       for (const p of Object.values(this.ws.panels)) {
         if (isComponentPanel(p)) putCraft(p);
       }
@@ -1670,13 +1670,13 @@ class Store {
    * 有一件没落地就先别动老文件，下次启动接着拆 —— 老文件只是改名，后悔药留着。
    */
   private migrateLegacyCrafts() {
-    if (!workspaceRoot()) return;
     const legacy = legacyCraftFile();
     if (!fs.existsSync(legacy)) return;
     const items = readLegacyCrafts();
     for (const it of items) {
       const owner = craftOwner(it);
-      if (!owner || !it.name || (!it.look && !it.spec)) continue;
+      if (!owner || !it.name || (!it.look && !it.spec) || craftRemoved(owner)) continue;
+      if (fs.existsSync(craftFileOf(owner))) continue;
       putCraft({
         id: owner,
         component: it.name,
@@ -1704,7 +1704,6 @@ class Store {
    * 只搬**还带做法**的本体（没有就说明搬过了）：所以这件事一台机器上每个组件只做一次。
    */
   private migrateStowCrafts() {
-    if (!workspaceRoot()) return;
     let files: string[] = [];
     try {
       files = fs.readdirSync(stowDir()).filter((f) => f.endsWith('.json'));
@@ -1720,6 +1719,7 @@ class Store {
         if (!raw || !hasCraft(raw)) continue; // 搬过了（本体里只剩 text）
         if (!isComponentPanel(raw)) continue;
         const id = String(raw.id || f.replace(/\.json$/, ''));
+        if (craftRemoved(id) || fs.existsSync(craftFileOf(id))) continue;
         // 正开着的先跳过：存档里的做法可能比面板上这份旧，别拿旧的把它盖回去
         if (this.ws.panels[id]) continue;
         if (!putCraft({ ...raw, id })) continue; // 没写成，本体原样留着，下次启动接着搬
@@ -1805,7 +1805,7 @@ class Store {
     if (live || hasBody) {
       let body: Panel;
       try {
-        body = live ?? (JSON.parse(readTextFile(file)) as Panel);
+        body = live ?? this.withCraft(JSON.parse(readTextFile(file)) as Panel);
       } catch {
         return false;
       }
@@ -1818,7 +1818,10 @@ class Store {
     } else {
       const cf = craftFileOf(panelId);
       try {
-        const cur = JSON.parse(readTextFile(cf));
+        const found = readCrafts().find((it) => craftOwner(it) === panelId);
+        if (!found) return false;
+        const { source, craftPath, ...cur } = found;
+        fs.mkdirSync(craftDir(), { recursive: true });
         fs.writeFileSync(cf, JSON.stringify({ ...cur, name: next, title: next }, null, 2) + '\n', 'utf8');
       } catch (e) {
         console.error('[组件] 改名写做法失败：', e);
@@ -1945,6 +1948,8 @@ class Store {
       ...raw,
       look: { ...defaultLook(), ...((craft?.look || raw.look || {}) as Panel['look']) },
       spec: spec as unknown as Panel['spec'],
+      ...(craft?.chatSide ? { chatSide: craft.chatSide } : {}),
+      ...(craft?.chatWSide ? { chatWSide: craft.chatWSide } : {}),
     };
   }
 
@@ -2030,6 +2035,8 @@ class Store {
         ...(defaultSpec(kind) as unknown as Record<string, unknown>),
         ...((craft.spec || {}) as Record<string, unknown>),
       } as unknown as Panel['spec'],
+      ...(craft.chatSide ? { chatSide: craft.chatSide } : {}),
+      ...(craft.chatWSide ? { chatWSide: craft.chatWSide } : {}),
       component: name,
       chat: [],
       revisions: [],

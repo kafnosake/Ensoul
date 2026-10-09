@@ -3,9 +3,16 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { TaskService } = require('../dist/main/task-service');
 globalThis.t = (text) => text;
 const box = fs.mkdtempSync(path.join(os.tmpdir(), 'ensoul-tasks-'));
+const userData = path.join(box, 'userData');
+const electron = require.resolve('electron');
+require.cache[electron] = { id: electron, filename: electron, loaded: true, exports: {
+  app: { getAppPath: () => path.resolve(__dirname, '..'), getPath: () => userData, getVersion: () => 'test' },
+} };
+const { TaskService } = require('../dist/main/task-service');
+const { projectDataPath, registerProjectStorage, runtimePath } = require('../dist/main/storage');
+const journalFile = root => projectDataPath('.ensoul/state/tasks.json', root);
 let serial = 0;
 const request = (patch = {}) => ({ panelId: 'worker', text: '实际任务', title: '任务', requestId: 'r1', ...patch });
 const context = (patch = {}) => ({ panelId: 'owner', runId: 'owner-run', ...patch });
@@ -46,7 +53,7 @@ test('重复提交复用编号和队列，冲突正文拒绝，独立请求保�
 test('任务先落盘，重启修复缺失 outbox；同任务只领取一次', () => {
   const { root, adapter, queue, service } = fixture();
   adapter.enqueue = (task) => {
-    assert.equal(JSON.parse(fs.readFileSync(path.join(root, '.ensoul/state/tasks.json'))).tasks[0].id, task.id);
+    assert.equal(JSON.parse(fs.readFileSync(journalFile(root))).tasks[0].id, task.id);
     queue.set(task.id, task);
   };
   const task = service.submit(request(), context()).task;
@@ -123,8 +130,9 @@ test('目标失效记为失败；任务日志写失败不会派出任务', () =>
   assert.match(result.error, /关闭/);
   assert.equal(queue.size, 0);
   const broken = fixture();
-  fs.mkdirSync(path.join(broken.root, '.ensoul'));
-  fs.writeFileSync(path.join(broken.root, '.ensoul/state'), '阻止创建日志目录');
+  const blocked = path.dirname(journalFile(broken.root));
+  fs.mkdirSync(path.dirname(blocked), { recursive: true });
+  fs.writeFileSync(blocked, '阻止创建日志目录');
   assert.throws(() => broken.service.submit(request(), context()));
   assert.equal(broken.queue.size, 0);
 });
@@ -142,7 +150,7 @@ test('取消时即使队列存盘失败，也中止当前执行；结果不会�
 
 test('损坏日志明确报错并保留文件；工作区请求编号互相隔离', () => {
   const bad = fixture();
-  const file = path.join(bad.root, '.ensoul/state/tasks.json');
+  const file = journalFile(bad.root);
   fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, '{broken');
   assert.throws(() => bad.service.recover());
   assert.equal(fs.readFileSync(file, 'utf8'), '{broken');
@@ -210,15 +218,17 @@ test('分身立即入队并继承模型与工具，跨轮重试不新建面板',
 
 test('真实派单插件：忙时入队、令牌去重、交付不串单、撤单取消执行', async () => {
   const { root, service, queue } = fixture();
-  const put = (rel, data) => { const file = path.join(root, rel); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(data)); };
+  const plugin = require('../plugins/dispatch');
+  registerProjectStorage('dispatch', plugin.storage?.project || []);
+  const dataPath = rel => runtimePath(rel, root);
+  const put = (rel, data) => { const file = dataPath(rel); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(data)); };
   put('.ensoul/state/dispatch.json', { companies: [{ id: 'co', name: '公司' }], depts: [{ name: '开发', company: 'co', manager: 'mgr', members: ['emp'] }] });
   for (const [id, name, role] of [['mgr', '经理', 'manager'], ['emp', '开发员', 'member']]) put('.ensoul/state/agents/' + id + '.json', { id, name, role, dept: '开发', panel: id, model: 'p::m', kits: role === 'manager' ? ['router'] : ['dev'] });
   const panels = [{ id: 'owner', title: '发起人' }, { id: 'mgr', title: '经理' }, { id: 'emp', title: '开发员' }];
   const handlers = new Map(), prompts = [];
   let images = 0;
-  const plugin = require('../plugins/dispatch');
   const api = {
-    workspace: root, tasks: service, panels: () => panels, log() {},
+    workspace: root, dataPath, tasks: service, panels: () => panels, log() {},
     addTool: (spec, fn) => handlers.set(spec.name, fn), addPrompt: (fn) => prompts.push(fn),
     onAfterTool() {}, addCommand() {}, addSettingsSection() {},
     patchPanel: (id, patch) => Object.assign(panels.find((p) => p.id === id), patch),
@@ -235,7 +245,7 @@ test('真实派单插件：忙时入队、令牌去重、交付不串单、撤�
     assert.ok(panels.find((p) => p.id === 'mgr').tools.includes('task_status'));
     const dispatch = handlers.get('dispatch');
     const first = JSON.parse(await dispatch({ emp: '开发员', task: '制作文件', requestId: 'stable' }, context()));
-    const inboxFile = path.join(root, '.ensoul/state/dispatch.inbox.json');
+    const inboxFile = dataPath('.ensoul/state/dispatch.inbox.json');
     const readInbox = () => JSON.parse(fs.readFileSync(inboxFile)).entries;
     const gap = readInbox(); gap[0].holder = ''; gap[0].taskId = '';
     put('.ensoul/state/dispatch.inbox.json', { entries: gap });
@@ -268,7 +278,7 @@ test('真实派单插件：忙时入队、令牌去重、交付不串单、撤�
     assert.equal(service.get(rework).status, 'queued');
     assert.equal(service.get(rework).acceptance, undefined);
     await command('cancelTicket', first.token, () => service.get(rework).status === 'cancelled');
-    await command('restoreTicket', first.token, () => JSON.parse(fs.readFileSync(path.join(root, '.ensoul/state/dispatch.cmd.json'))).cmds.length === 0);
+    await command('restoreTicket', first.token, () => JSON.parse(fs.readFileSync(dataPath('.ensoul/state/dispatch.cmd.json'))).cmds.length === 0);
     assert.equal(service.get(rework).status, 'cancelled');
     const secondCtrl = start(service, { id: second.taskId }, 'second-work');
     await handlers.get('dispatch_cancel')({ token: second.token }, context());
