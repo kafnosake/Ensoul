@@ -233,14 +233,20 @@ async function diagnose() {
   return lines.join('\n');
 }
 
-async function get(url, accept, ms) {
+async function get(url, accept, ms, opts) {
+  const o = opts || {};
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms || FETCH_MS);
   try {
     const res = await fetch(url, {
       redirect: 'follow',
       signal: ctrl.signal,
-      headers: { 'User-Agent': UA, Accept: accept || 'text/html,application/json;q=0.9,*/*;q=0.8' },
+      method: String(o.method || 'GET').toUpperCase(),
+      body: o.body === undefined || o.body === null || String(o.method || 'GET').toUpperCase() === 'GET' || String(o.method || 'GET').toUpperCase() === 'HEAD' ? undefined : String(o.body),
+      headers: Object.assign(
+        { 'User-Agent': UA, Accept: accept || 'text/html,application/json;q=0.9,*/*;q=0.8' },
+        o.headers && typeof o.headers === 'object' ? o.headers : {},
+      ),
     });
     const type = String(res.headers.get('content-type') || '');
     const buf = Buffer.from(await res.arrayBuffer());
@@ -264,12 +270,26 @@ module.exports = {
         name: 'web_fetch', kits: ['copy'],
         description:
           '抓一个网址（网页或接口）并把正文取回来。HTML 会被剥成纯文本，JSON 会原样给你。'
-          + '**不知道确切网址时先用 web_search**。抓长篇文档时先看返回的开头，需要更后面就再抓一次并调大 max_chars。',
+          + '**不知道确切网址时先用 web_search**。抓长篇文档时先看返回的开头，需要更后面就再抓一次并调大 max_chars。'
+          + t('要调接口（POST / PUT / PATCH / DELETE、带 Authorization 头、发 JSON body）也用它 —— 传 method / headers / body。'),
         parameters: {
           type: 'object',
           properties: {
             url: { type: 'string', description: '完整的 http(s) 网址' },
             max_chars: { type: 'number', description: `最多返回多少字，默认 12000，上限 ${MAX_CHARS}` },
+            method: {
+              type: 'string',
+              enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'],
+              description: t('可选：HTTP 方法，默认 GET。调接口要写数据时用 POST / PUT / PATCH。'),
+            },
+            headers: {
+              type: 'object',
+              description: t('可选：自定义请求头，如 { "Authorization": "Bearer xxx", "Content-Type": "application/json" }。'),
+            },
+            body: {
+              type: 'string',
+              description: t('可选：请求体（method 为 POST/PUT/PATCH 时用）。传 JSON 的话记得自己在 headers 里带上 Content-Type: application/json。'),
+            },
           },
           required: ['url'],
         },
@@ -291,7 +311,11 @@ module.exports = {
 
         let r;
         try {
-          r = await get(url);
+          r = await get(url, undefined, undefined, {
+            method: args && args.method,
+            headers: args && args.headers,
+            body: args && args.body,
+          });
         } catch (e) {
           return `抓不到 ${url}：${(e && e.message) || e}`;
         }

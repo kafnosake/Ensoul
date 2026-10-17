@@ -647,19 +647,69 @@
   }
 }
 
-/* ---------------------------------------------------------------- 会话框下方状态与计费（学 dsh） */
+/* ---------------------------------------------------------------- 会话框下方状态与计费
+   这一条**常驻**：高度写死（约一行），内容有没有都不改变输入框的位置 ——
+   否则第一条用量回来时整条会"长"出来，把输入框往上顶一下，每发一句都跳。 */
+/* 上一次没发出去的原因 —— 只在真出错时出现，所以它长出来把状态行往下推一下是可接受的
+   （宁可输入框动一下，也不能让用户以为话发出去了）。跟着会话列的宽度走，跟上面那条对齐。 */
+.composer-send-err {
+  width: var(--col-w);
+  margin: 4px auto 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--warn);
+  border-left: 2px solid var(--warn);
+  background: rgba(229, 181, 103, 0.08);
+  border-radius: 3px;
+  user-select: text;
+}
+
 .composer-foot {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 14px;
   width: var(--col-w);
+  /* 一行的高度：不写 min-height 的话空着就塌成 0，那正是"跳一下"的来源 */
+  min-height: 18px;
   margin: 2px auto 10px;
   font-size: 11px;
   color: var(--dim);
   line-height: 1.4;
   user-select: none;
   flex-wrap: wrap;
+}
+
+/* 上下文用量：一条细进度条 + 百分比。
+   涨到 80% 上下就是自动压缩那条线，所以越接近越显眼（is-hot 转警告色）。 */
+.composer-foot-item.ctx-meter {
+  gap: 6px;
+}
+
+.ctx-bar {
+  width: 44px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+  flex: none;
+}
+
+.ctx-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--dim);
+  transition: width var(--ease), background var(--ease);
+}
+
+.composer-foot-item.ctx-meter.is-hot {
+  color: var(--warn);
+}
+
+.composer-foot-item.ctx-meter.is-hot .ctx-bar-fill {
+  background: var(--warn);
 }
 
 .composer-foot-item {

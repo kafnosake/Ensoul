@@ -101,6 +101,13 @@ module.exports = {
         const acc = sum(p);
         const lines = [t('{a} 轮 · {b} 轮已计费', { a: acc.rounds, b: acc.billed })];
         if (acc.live) lines.push(t('（含正在跑的这一轮 —— 它还没跑完，数字还会往上走）'));
+        // 上下文占用一并挂在悬停里：那行百分比在输入框下面只有巴掌大，
+        // 想看确切数字的人得有地方看（口径由核心给，见 api.contextUsage）。
+        // 这个口子是后加的：老核心上没有它。**必须有 typeof 这道门** ——
+        // 核心拼状态项时 text/title 一起在 try 里，任一处抛错整个计费项都被吞掉
+        // （实测：主进程没重启、插件先热重载的那一小会儿，计费整条消失）。
+        const cu = typeof api.contextUsage === 'function' ? api.contextUsage(panelId) : null;
+        if (cu) lines.push(t('上下文      {n} / {m}（约 {p}%）', { n: fmt(cu.used), m: fmt(cu.window), p: Math.min(100, Math.round((cu.used / Math.max(1, cu.window)) * 100)) }));
 
         if (acc.billed) {
           lines.push(t('命中输入    {n}    ¥{c}', { n: fmt(acc.hit), c: acc.cHit.toFixed(4) }));

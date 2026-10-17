@@ -3,6 +3,7 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import type { TaskApi, TaskContext, TaskRecord, TaskRequest } from '../shared/types';
 import { projectDataPath, registerProjectStorage } from './storage';
+import { clipOutput } from '../shared/tool-output';
 
 registerProjectStorage('tasks', ['.ensoul/state/tasks.json']);
 
@@ -130,8 +131,9 @@ export class TaskService implements TaskApi {
     const { journal, ctrl } = active;
     const task = journal.records.find((task) => task.id === id);
     const status = ctrl.signal.aborted || task?.status === 'cancelling' ? 'cancelled' : result.ok ? 'completed' : 'failed';
+    // 头尾都留：失败时的报错常出现在结果末尾，只留开头等于把诊断信息切掉。
     this.commit(journal, journal.records.map((task) => task.id === id ? { ...task, status,
-      result: result.content?.slice(0, 8000), error: result.error?.slice(0, 2000), tokens: result.tokens, endedAt: Date.now(), updatedAt: Date.now() } : task));
+      result: clipOutput(result.content || '', 8000), error: clipOutput(result.error || '', 2000), tokens: result.tokens, endedAt: Date.now(), updatedAt: Date.now() } : task));
     this.active.delete(id);
   }
 

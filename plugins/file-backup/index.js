@@ -54,7 +54,16 @@ module.exports = {
       }
     };
 
-    api.onBeforeWrite((rel, next) => {
+    /**
+     * 真留一份：把某个文件的**旧内容**存进这个文件的备份槽。
+     *
+     * 抽成函数，是因为有**两条来路**，而它们看不到对方：
+     *   · write_file / edit 走 onBeforeWrite —— 核心在写之前主动叫的；
+     *   · 插件写入（api.files.write，例如 patch-guard 的 patch_apply）走协调器的
+     *     onFileWrite —— 那条路上 onBeforeWrite **根本不会被叫**。
+     * 只挂一条，留底就有半个工作区是漏的。两条都挂，这里就只能是同一个函数。
+     */
+    const keepOne = (rel, next) => {
       const full = inside(rel);
       if (!full) return;
 
@@ -71,12 +80,12 @@ module.exports = {
       try {
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(path.join(dir, bakName), old, 'utf8');
-        const keep = fs
+        const olds = fs
           .readdirSync(dir)
           .filter((f) => f.endsWith('.bak'))
           .sort()
           .reverse();
-        for (const f of keep.slice(maxKeep)) fs.unlinkSync(path.join(dir, f));
+        for (const f of olds.slice(maxKeep)) fs.unlinkSync(path.join(dir, f));
 
         // 记入全局操作日志 journal，供批量/紧急回滚
         try {
@@ -92,6 +101,20 @@ module.exports = {
       } catch (e) {
         api.log(t('备份失败：'), e && e.message); // 备份失败不能挡住写入本身
       }
+    };
+
+    // 来路一：核心的写入工具（write_file / edit）—— 能拿到"要写什么"
+    api.onBeforeWrite((rel, next) => keepOne(rel, next));
+
+    // 来路二：走协调器的写入（api.files.write，如 patch_apply）—— 只有旧内容和事后哈希，
+    // 没有"要写什么"。所以这里读**当前**内容当 next：协调器钩子早在真正落盘之前触发，
+    // 此刻读到的就正是旧内容本身；两下相等时 keepOne 会自然跳过（不必留）。
+    api.onFileWrite((event) => {
+      if (!event || !event.path) return;
+      let rel = '';
+      try { rel = path.relative(root, event.path).replace(/\\\\/g, '/'); } catch { return; }
+      if (!rel || rel.startsWith('..')) return;
+      keepOne(rel, event.before);
     });
 
     api.addTool(

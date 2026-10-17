@@ -28,9 +28,12 @@ const tools = new Proxy({}, {
   },
 });
 const logs: string[] = [];
+/** 攒到这里就停手，收尾时统一留头留尾（从前一超过 20000 就整条不再收，尾巴上的报错全丢） */
+const LOGS_CAP = 200_000;
 const format = (value: unknown) => typeof value === 'object' ? JSON.stringify(value) : String(value);
 const output = (...values: unknown[]) => {
-  if (logs.join('\n').length < 20_000) logs.push(values.map(format).join(' ').slice(0, 20_000));
+  if (logs.join('\n').length >= LOGS_CAP) return;
+  logs.push(values.map(format).join(' ').slice(0, 20_000));
 };
 const consoleProxy = { log: output, warn: output, error: output };
 

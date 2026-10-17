@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webFrame } from 'electron';
+import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron';
 import type { ChatDeltaEvent, ChatProgressEvent, ChatRetractEvent } from '../shared/types';
 import type { WidgetEditRequest } from '../shared/widget-editor';
 const WIDGET_EDIT_CHANNEL: typeof import('../shared/widget-editor').WIDGET_EDIT_REQUEST = 'ui:editWidget';
@@ -58,6 +58,23 @@ const api = {
   windowId: queryOf('window'),
   /** 挂件窗口：它是哪一块面板的那扇窗（见 Panel.widget） */
   widgetPanel: queryOf('panel'),
+
+  /**
+   * 拖进来的文件 → 它在磁盘上的**绝对路径**。
+   *
+   * 为什么只能在这儿转一手：Electron 32 起拿掉了 `File.path`，官方的替代是
+   * `webUtils.getPathForFile`，而这个函数**只在 preload 里够得着** —— 渲染层
+   * （含插件面板的脸）拿不到。拿不到路径就回空串，调用方自己退回"临时看一眼"。
+   */
+  files: {
+    pathFor: (file: File): string => {
+      try {
+        return webUtils.getPathForFile(file) || '';
+      } catch {
+        return '';
+      }
+    },
+  },
   tasks: {
     list: (panelId: string) => ipcRenderer.invoke('tasks:list', panelId),
     get: (id: string, panelId: string) => ipcRenderer.invoke('tasks:get', id, panelId),

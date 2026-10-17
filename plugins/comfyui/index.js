@@ -9,14 +9,17 @@
  *   comfyui_run       拿一个工作流 + 一段提示词去出图，等它跑完，把图存回工作区
  *   comfyui_launch    把 ComfyUI 起起来 / 关掉 —— 本机参数直接起，远程用一条 ssh 命令
  *
- * 启动机制支持两条路径按顺序检测：
+ * 启动机制三条路按顺序走（谁起的记在 instance.json，关停与闲置回收都认它）：
  *   ① 有「启动命令」就用它（远程 ssh、自定义启动脚本都走这条）；
- *   ② 没配命令就按本机那套参数拼：
- *      · 填了桌面版可执行文件 → 直接拉起它（Electron GUI 自己带窗口，不弹黑框）；
- *      · 否则 python + main.py + base 目录，argv 照桌面版 app 的写法拼：
- *        --base-directory / --user-directory <base>/user / --listen 127.0.0.1 / --port，
- *        有 --front-end-root、--extra-model-paths-config 也带上。桌面版装法的 web UI 在 pip 包外面，
- *        光 `main.py --port` 会去找内置前端然后自己退出 —— 那两个参数就是治这个的。
+ *   ② 服务已在跑 → 直接用它的（Desktop 开着就走它的服务，不另起）；
+ *   ③ Desktop 进程开着（冷启动中）→ 只等它应声，不撞端口、不双开；
+ *   ④ 都没有 → 静默起 python main.py（无窗口无控制台，argv 照桌面版 app 的写法拼：
+ *      --base-directory / --user-directory / --listen / --port，前端、模型路径参数一起带上；
+ *      桌面版装法的 web UI 在 pip 包外面，光 --front-end-root 就是治这个的）；
+ *   ⑤ python 那套参数缺了才回退拉桌面版 exe。
+ * 关停链：关闭命令 > 按归属 pid 收进程树（映像名核对防 pid 复用误杀）> 如实说关不了。
+ * 静默实例闲置超时（idle 参数，默认 30 分钟、队列无活）自动回收 —— 不永久驻留。
+ * 监视入口是会话框顶上的状态位（addStatusItem slot=head）：显示连接/队列，下拉就地启停。
  * 起之前先做参数就绪检查，缺哪项、哪项指向不存在的文件，直观反馈缺失原因。
  *
  * 命令与参数**只从设置里读，模型不能临时传**：模型本来就有跑命令的手脚（run_command），
@@ -41,7 +44,7 @@ const fs = require('fs');
 const path = require('path');
 const net = require('net');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const DEFAULT_URL = 'http://127.0.0.1:8188';
 const PROMPT_PH = '{{prompt}}';
@@ -106,7 +109,17 @@ const PARAMS = {
     label: t('关闭命令'),
     type: 'text',
     default: '',
-    hint: t('留空 = 只能起、不能关。例：ssh gpu@192.168.1.20 "pkill -f main.py"'),
+    hint: t('留空也能关：我们自己静默起的实例按归属记录直接收进程树。')
+      + t('远程 / 外部实例要在这填一条，例：ssh gpu@192.168.1.20 "pkill -f main.py"'),
+  },
+  idle: {
+    label: t('闲置自动回收（分钟）'),
+    type: 'number',
+    default: 30,
+    min: 0,
+    max: 1440,
+    hint: t('静默起的实例多久没活干就自动收掉（0 = 不自动收）。只收我们自己起的 —— ')
+      + t('Desktop 自己开的永远不动；出图排队中绝不收；下次出图自动再起。'),
   },
   desktop: {
     label: t('ComfyUI Desktop 可执行文件（本机启动）'),
@@ -366,41 +379,70 @@ function launcherArgv(conf, port) {
 }
 
 /** 起之前先看清缺什么：缺哪项、哪项指向不存在的文件，都列出来 */
+/**
+ * 起之前先看清缺什么 —— 两条本机路各查各的，谁先谁后由 launchAct 定：
+ *   silent = python 三件套（静默起，无窗口）；desktop = 桌面版 exe（回退，它自己开窗口）。
+ * 不再"填了 desktop 就只看 desktop"：静默启动优先，desktop 是兜底。
+ */
 function launchReadiness(conf) {
-  const missing = [];
-  if (conf.desktop) {
-    if (!fs.existsSync(conf.desktop)) missing.push(`桌面版可执行文件不在（${conf.desktop}）`);
-    return { ok: missing.length === 0, missing, desktop: missing.length === 0 };
+  const silent = [];
+  if (!conf.python) silent.push('python 解释器路径');
+  else if (!fs.existsSync(conf.python)) silent.push(`python 不在（${conf.python}）`);
+  if (!conf.main) silent.push('main.py 路径');
+  else if (!fs.existsSync(conf.main)) silent.push(`main.py 不在（${conf.main}）`);
+  if (!conf.base) silent.push('base 目录');
+  else if (!fs.existsSync(conf.base)) silent.push(`base 目录不在（${conf.base}）`);
+  if (conf.frontend && !fs.existsSync(conf.frontend)) silent.push(`--front-end-root 指向的目录不在（${conf.frontend}）`);
+  const desktopOk = !!conf.desktop && fs.existsSync(conf.desktop);
+  return {
+    silentOk: silent.length === 0,
+    desktopOk,
+    // 两条路都没有才算起不了；报错优先报静默那条缺什么，再补 desktop 的情况
+    ok: silent.length === 0 || desktopOk,
+    missing: silent.length === 0
+      ? []
+      : desktopOk ? [] : silent.concat(
+          conf.desktop ? [`桌面版可执行文件不在（${conf.desktop}）`] : []),
+    silent,
+  };
+}
+
+/** Desktop 主程序进程还在不在 —— 冷启动中（窗口开了、服务还没应声）时别去撞它的端口 */
+function desktopInFlight(conf) {
+  if (process.platform !== 'win32' || !conf.desktop) return false;
+  try {
+    const exe = path.win32.basename(conf.desktop);
+    const r = spawnSync('tasklist', ['/FI', `IMAGENAME eq ${exe}`], { encoding: 'utf8', windowsHide: true });
+    const out = String((r && r.stdout) || '');
+    return out.toLowerCase().includes(exe.toLowerCase());
+  } catch {
+    return false;
   }
-  if (!conf.python) missing.push('python 解释器路径');
-  else if (!fs.existsSync(conf.python)) missing.push(`python 不在（${conf.python}）`);
-  if (!conf.main) missing.push('main.py 路径');
-  else if (!fs.existsSync(conf.main)) missing.push(`main.py 不在（${conf.main}）`);
-  if (!conf.base) missing.push('base 目录');
-  else if (!fs.existsSync(conf.base)) missing.push(`base 目录不在（${conf.base}）`);
-  if (conf.frontend && !fs.existsSync(conf.frontend)) missing.push(`--front-end-root 指向的目录不在（${conf.frontend}）`);
-  return { ok: missing.length === 0, missing, desktop: false };
 }
 
 /**
- * argv 版 detached 启动（不进 shell）：桌面版 exe 和 python main.py 都用它。
- *
- * hide 默认 true —— 只有 python main.py 那条需要它（控制台程序不压着就会弹黑框）。
- * 桌面版必须传 false：它是 Electron GUI，窗口归它自己，
- * 压了隐藏标志窗口即变为隐形（桌面版启动时不传入 windowsHide）。
+ * argv 版启动：桌面版 exe 和 python main.py 都用它 —— 走 shell（cmd.exe），
+ * 因为**隐藏的 console 只有从 shell 那儿拿得到**（见函数体注释，三条死路全试过）。
+ * hide 签名保留：shell 自己的黑窗恒压 windowsHide，GUI 程序的窗口不受它管。
  */
 function spawnArgvDetached(argv, cwd, log, hide = true) {
   const fd = fs.openSync(log, 'a');
   try {
     fs.writeSync(fd, `\n[${new Date().toISOString()}] $ ${argv.join(' ')}\n`);
-    const child = spawn(argv[0], argv.slice(1), {
+    // 无窗口的正确姿势（照抄 plugins/jobs 实证跑通的配方）：**shell:true + windowsHide**。
+    // cmd.exe 有一颗**隐藏的** console，python 继承它 —— forrtl/Intel 运行时（custom nodes
+    // 里一堆 MKL）有 console 才不闹。另两条路实测踩死过，别再试：CREATE_NO_WINDOW 裸
+    // spawn 是整棵树没 console → forrtl error (200) 秒退码 2；conhost --headless /
+    // powershell -WindowStyle Hidden 当 wrapper 在本体无 console 的 GUI 父进程下秒退、
+    // 子进程根本没起。代价两笔都合算：首进程是 cmd.exe（杀走 taskkill /T，stopAct 正是
+    // 这么杀的）；进程树不脱离 ensoul，软件退了服务跟着走 —— 正合绝不永久驻留的意。
+    const line = argv.map((s) => (String(s).indexOf(' ') >= 0 ? '"' + s + '"' : s)).join(' ');
+    const child = spawn(line, {
       cwd,
-      detached: true,
-      windowsHide: hide,
+      shell: true,
+      windowsHide: true,
       stdio: ['ignore', fd, fd],
-      ...(hide && process.platform === 'win32' ? { creationFlags: CREATE_NO_WINDOW } : {}),
     });
-    child.unref();
     return watch(child);
   } finally {
     try {
@@ -527,6 +569,60 @@ function prepare(workflow, prompt, seed, image) {
     throw new Error(`工作流里有 ${images} 处 ${IMAGE_PH}，只能留一处`);
   }
   return out;
+}
+
+/**
+ * 增量覆盖：{ "节点id.inputs.字段": 新值 } —— 只动写到的那几处，其余原样。
+ * 路径逐段往下走；哪一段对不上就报错（写错了却悄悄不生效，比报错难查得多）。
+ * 数字段当数组下标用（LoRA 这类 6.inputs.loras.0.strength 就靠它）。
+ * 在 prepare 之后应用：你显式给的值是最终裁决，盖过占位符替换的结果。
+ * 只活在这一次提交里，不写回磁盘 —— 原工作流一个字节不动。
+ */
+function applySet(workflow, set) {
+  if (set === undefined || set === null) return workflow;
+  if (!isRecord(set)) throw new Error('set 得是个对象：{ "节点id.inputs.字段": 新值 }');
+  const keys = Object.keys(set);
+  if (!keys.length) return workflow;
+  for (const key of keys) {
+    const segs = String(key).split('.');
+    if (segs.length < 2 || segs.some((s) => !s)) {
+      throw new Error(`set 的键 "${key}" 写法不对 —— 至少两段：节点id.字段，例如 6.inputs.steps`);
+    }
+    let host = workflow;
+    for (let i = 0; i < segs.length - 1; i++) {
+      const seg = segs[i];
+      const at = Number(seg);
+      if (isRecord(host)) {
+        if (!Object.prototype.hasOwnProperty.call(host, seg)) {
+          throw new Error(`set 的 "${key}" 走不到 ${segs.slice(0, i + 1).join('.')} —— 这一层只有：${Object.keys(host).join('、') || '（空）'}`);
+        }
+      } else if (Array.isArray(host)) {
+        if (!Number.isInteger(at) || at < 0 || at >= host.length) {
+          throw new Error(`set 的 "${key}"：${segs.slice(0, i).join('.')} 是数组（长度 ${host.length}），这一段要写数字下标`);
+        }
+      } else {
+        throw new Error(`set 的 "${key}"：${segs.slice(0, i).join('.')} 是 ${typeof host}，走不下去了`);
+      }
+      host = host[seg];
+    }
+    const last = segs[segs.length - 1];
+    const lastAt = Number(last);
+    if (isRecord(host)) {
+      // 末段也查存在性：字段名打错时**不许静默新增**，那正是最难查的一类错。
+      if (!Object.prototype.hasOwnProperty.call(host, last)) {
+        throw new Error(`set 的 "${key}"：这层没有 "${last}" —— 这一层有：${Object.keys(host).join('、') || '（空）'}`);
+      }
+      host[last] = set[key];
+    } else if (Array.isArray(host)) {
+      if (!Number.isInteger(lastAt) || lastAt < 0 || lastAt >= host.length) {
+        throw new Error(`set 的 "${key}"：${segs.slice(0, -1).join('.')} 是数组（长度 ${host.length}），末段要写数字下标`);
+      }
+      host[lastAt] = set[key];
+    } else {
+      throw new Error(`set 的 "${key}"：${segs.slice(0, -1).join('.')} 是 ${typeof host}，没法往里写值`);
+    }
+  }
+  return workflow;
 }
 
 /**
@@ -700,6 +796,13 @@ module.exports = {
   params: PARAMS,
   name: 'comfyui',
   description: t('连 ComfyUI：看队列与模型、管命名工作流、拿提示词出图并把图存回工作区'),
+  panel: {
+    kind: 'comfyui',
+    label: t('ComfyUI 管理器'),
+    title: t('ComfyUI 管理器'),
+    hint: t('工作流接线查看、改名与描述；模型清单与风格描述'),
+    body: 'messages',
+  },
 
   setup(api) {
     const root = () => api.workspace;
@@ -858,7 +961,7 @@ module.exports = {
     }
 
     /** 提交 → 等 → 取图。等待期间只轮询，不占别的资源 */
-    async function runWorkflow(target, workflow, prompt, seed, imagePath, ctx, slot, key) {
+    async function runWorkflow(target, workflow, prompt, seed, imagePath, ctx, slot, key, set) {
       const clientId = `ensoul-${Math.random().toString(36).slice(2, 10)}`;
 
       // ── 进度：跟 ComfyUI 开一条 WS，它把采样进度和预览帧推过来 ──
@@ -981,7 +1084,8 @@ module.exports = {
         uploaded = payload.subfolder ? `${payload.subfolder}/${payload.name}` : payload.name;
       }
 
-      const prepared = prepare(workflow, prompt, seed, uploaded);
+      // set 是在 prepare **之后**打的：你显式给的字段是最终裁决，会盖过占位符替换的结果。
+      const prepared = applySet(prepare(workflow, prompt, seed, uploaded), set);
       const accepted = await askJson(
         `${target}/prompt`,
         {
@@ -1228,6 +1332,7 @@ module.exports = {
         description:
           t('用一份工作流出图：提交给 ComfyUI，等它跑完，把输出图下载到工作区（默认 comfyui/out/），返回本地路径。')
           + t('工作流里要有 ${PROMPT_PH} 作为提示词入口；图生图的工作流要在 LoadImage 的 image 字段写 ${IMAGE_PH}，再传 image 参数。')
+          + t('想动别的字段（步数 / 尺寸 / 模型 / CFG / 采样器……）不必整份 JSON 重传：变更项塞进 set，只给改的那几处，其余原样、不落盘。')
           + t('等待上限默认 300 秒（可在插件参数里改）—— 会一直占着这一轮，急的话先 comfyui_status 看看队列。')
           + t('硬规矩：图的存在只认本工具的成功返回 —— 这一轮没拿到返回，就不许在回复里说"出了/发了/第 N 张"，不许报 seed、路径、张数，哪怕格式再像真的。'),
         parameters: {
@@ -1237,6 +1342,12 @@ module.exports = {
             prompt: { type: 'string', description: t('这次画什么（英文通常效果更好）') },
             image: { type: 'string', description: `图生图的源图：工作区里的图片路径（工作流里要有 ${IMAGE_PH}）` },
             seed: { type: 'number', description: t('随机种子；不给就随机一个（返回里会告诉你这次用的哪个，好复现）') },
+            set: {
+              type: 'object',
+              description: t('对这份工作流的增量修改，只写有变更的字段：键是路径（节点id.inputs.字段），值是新值。')
+                + t('例：{"6.inputs.steps": 30}；数组下标也行：{"7.inputs.loras.0.strength": 0.8}。')
+                + t('节点 id 用 comfyui_workflow action=get 看。只活在本次提交，不写回原工作流；换源图用 image 参数，别用 set。'),
+            },
             url: { type: 'string', description: t('临时换一个 ComfyUI 地址') },
           },
           required: ['workflow', 'prompt'],
@@ -1297,6 +1408,7 @@ module.exports = {
             ctx,
             slot,
             key,
+            isRecord(args && args.set) ? args.set : undefined,
           );
 
           const view = new URL(`${target}/view`);
@@ -1395,6 +1507,190 @@ module.exports = {
       }
     }
 
+    // ── 归属记录：这会儿跑着的实例是谁起的 —— 关停、闲置回收都认它 ────────
+    const instPath = () => api.dataPath('.ensoul/comfyui/instance.json');
+    const readInst = () => {
+      try {
+        const o = JSON.parse(fs.readFileSync(instPath(), 'utf8'));
+        return o && Number(o.pid) > 0 ? o : null;
+      } catch { return null; }
+    };
+    const writeInst = (rec) => {
+      try {
+        fs.mkdirSync(path.dirname(instPath()), { recursive: true });
+        fs.writeFileSync(instPath(), JSON.stringify(rec));
+      } catch { /* 记不上不影响出图，只是关停时少一条依据 */ }
+    };
+    const clearInst = () => { try { fs.unlinkSync(instPath()); } catch { /* 没有就算了 */ } };
+
+    /** pid 还在不在（win32 顺带核对映像名 —— pid 会被系统复用，裸 pid 会误杀别人） */
+    function pidAlive(pid, image) {
+      const p = Number(pid);
+      if (!p || p <= 0) return false;
+      if (process.platform === 'win32') {
+        try {
+          const r = spawnSync('tasklist', ['/FI', `PID eq ${p}`], { encoding: 'utf8', windowsHide: true });
+          const out = String((r && r.stdout) || '');
+          if (!out.includes(String(p))) return false;
+          if (image) {
+            return out.split(/\r?\n/)
+              .filter((l) => l.includes(String(p)))
+              .some((l) => l.toLowerCase().includes(String(image).toLowerCase()));
+          }
+          return true;
+        } catch { return false; }
+      }
+      try { process.kill(p, 0); return true; } catch { return false; }
+    }
+
+    /** 收掉我们起的那棵进程树：win32 用 taskkill /T（连子进程），其它平台杀进程组 */
+    function killPid(pid) {
+      const p = Number(pid);
+      if (!p) return false;
+      try {
+        if (process.platform === 'win32') {
+          spawnSync('taskkill', ['/PID', String(p), '/T', '/F'], { encoding: 'utf8', windowsHide: true });
+        } else {
+          try { process.kill(-p, 'SIGTERM'); } catch { process.kill(p, 'SIGTERM'); }
+        }
+        return true;
+      } catch { return false; }
+    }
+
+    /**
+     * 关停链 —— 状态条的「关闭」、comfyui_launch stop、闲置回收，都走这一条：
+     *   ① 配了「关闭命令」→ 跑它（远程 ssh 靠这条）；
+     *   ② 有归属记录且进程还活着 → 按 pid 收进程树（映像名核对过，防 pid 复用误杀）；
+     *   ③ 都没有 → 如实说关不了（Desktop 是你手动开的，去它窗口关）。
+     */
+    async function stopAct(target, conf, log, tail) {
+      if (!(await alive(target))) { clearInst(); return `${target} 现在没在跑，不用关。`; }
+      if (conf.stop) {
+        spawnDetached(conf.stop, root(), log);
+        const gone = await waitFor(target, 30, false);
+        if (gone) clearInst();
+        return gone
+          ? `已经关掉 ${target}。`
+          : `关闭命令跑了，但 ${target} 三十秒后还在应答 —— 可能没杀干净，或者那不是它。日志最后几行：\n${tail()}`;
+      }
+      const inst = readInst();
+      if (inst && pidAlive(inst.pid, inst.name)) {
+        killPid(inst.pid);
+        const gone = await waitFor(target, 30, false);
+        if (gone) {
+          clearInst();
+          return `已经收掉 ${target}（pid ${inst.pid}，${inst.mode === 'desktop-exe' ? '桌面版（我们起的）' : '静默实例'}）。`;
+        }
+        return `pid ${inst.pid} 收了但 ${target} 还在应答 —— 可能是子进程顶着。日志最后几行：\n${tail()}`;
+      }
+      if (inst) clearInst(); // 记录过期了（进程早没了），顺手清掉
+      return NO_STOP;
+    }
+
+    /**
+     * 启动入口 —— 状态条的「启动」、comfyui_launch，都走这一条。
+     * 三路按既定优先级：服务已在跑就直接用（Desktop 开着就走它的）→
+     * Desktop 进程开着（冷启动中）等它应声、不撞端口 → 静默起 python（无窗口无控制台）→
+     * python 那套参数缺了才回退拉 Desktop exe。
+     */
+    async function launchAct(args) {
+      const target = origin((args && args.url) || cfg().url);
+      const action = String((args && args.action) || 'start').toLowerCase();
+      const conf = cfg();
+      const log = launchLog(api);
+      const tail = () => logTail(log) || t('（日志是空的）');
+      const up = await alive(target);
+
+      if (action === 'stop') return stopAct(target, conf, log, tail);
+      if (action !== 'start' && action !== 'restart') {
+        return `action 只认 start / stop / restart，收到的是 ${action}。`;
+      }
+
+      let lead = '';
+      if (action === 'restart') {
+        if (!up) lead = `（${target} 本来就没在跑）`;
+        else {
+          const stopped = await stopAct(target, conf, log, tail);
+          if (await alive(target)) return `重启没成：${stopped}`;
+          lead = t('（已先关掉旧的）');
+        }
+      } else if (up) {
+        return `${target} 已经开着，不用再起（Desktop 在跑就直接用它的服务）。想重来一遍就说 restart。`;
+      }
+
+      // Desktop 进程开着、服务还没应声 —— 它自己冷启动中：只等它，绝不另起一份抢端口
+      if (!conf.start && isLocal(target) && desktopInFlight(conf)) {
+        const t0d = now();
+        const hitd = await waitFor(target, conf.boot, true, null, altTarget(target));
+        if (typeof hitd === 'string') {
+          return `${lead}Comfy Desktop 在跑，它的服务应声在 ${hitd} —— 把插件参数里的「ComfyUI 地址」改成 ${hitd} 就能直接出图了。`;
+        }
+        if (hitd === true) {
+          const inst0 = readInst();
+          if (!inst0) writeInst({ pid: 0, name: conf.desktop ? path.win32.basename(conf.desktop) : '', mode: 'desktop', at: Date.now(), url: target });
+          return `${lead}${target} 起来了（Comfy Desktop 已在跑，等了 ${Math.round((now() - t0d) / 1000)} 秒）。` + t('接着就能 comfyui_run 出图了。');
+        }
+        return `${lead}Comfy Desktop 的窗口开着，但等了 ${conf.boot} 秒它的服务还没应声 —— 可能卡在启动或已崩，去它窗口看一眼；`
+          + t('要我们另起一份（静默 python），先把它的窗口关掉。') + `日志最后几行：\n${tail()}`;
+      }
+
+      let proc = null;
+      let how = '';
+      let mode = '';
+      try {
+        if (conf.start) {
+          proc = spawnDetached(conf.start, root(), log);
+          how = t('启动命令');
+          mode = 'cmd';
+        } else {
+          if (!isLocal(target)) return REMOTE_START(target);
+          const ready = launchReadiness(conf);
+          if (!ready.ok) return NO_START(ready.missing);
+          if (ready.silentOk) {
+            // 静默起：windowsHide + CREATE_NO_WINDOW，无窗口无黑框；端口跟 url 参数走
+            proc = spawnArgvDetached(launcherArgv(conf, portOf(target)), conf.base, log);
+            how = `python main.py（${portOf(target)} 端口，静默）`;
+            mode = 'silent';
+          } else {
+            // 回退：桌面版 exe —— 它自己开窗口、不听 --port，起完看它应声在哪个端口
+            proc = spawnArgvDetached([conf.desktop], path.dirname(conf.desktop), log, false);
+            how = t('桌面版');
+            mode = 'desktop-exe';
+          }
+        }
+      } catch (e) {
+        return `没能把它起起来（${(e && e.message) || e}）。日志在 ${rel(root(), log)}。`;
+      }
+
+      const pid = proc ? proc.pid : 0;
+      const t0 = now();
+      const hit = await waitFor(target, conf.boot, true, proc, altTarget(target));
+      if (hit !== true) {
+        // 起来了，只是在姊妹端口上应声 —— 直接告诉它改成哪个地址
+        if (typeof hit === 'string') {
+          if (mode !== 'cmd') writeInst({ pid, name: mode === 'desktop-exe' && conf.desktop ? path.win32.basename(conf.desktop) : '', mode, at: Date.now(), url: hit });
+          return `${lead}${how}起起来了，但它应声的是 ${hit}，不是参数里的 ${target}。`
+            + t('（命令行版默认 8188，ComfyUI Desktop 默认 8000。）')
+            + `把插件参数里的「ComfyUI 地址」改成 ${hit} 就能直接出图了。`;
+        }
+        // 它自己退了就别再等 —— 这不是"开得慢"，是它出错了（否则白等满 boot 秒）
+        if (proc && proc.code !== null) {
+          return `起不来：${how} 拉起来的进程立刻退了（pid ${pid}，退出码 ${proc.code}`
+            + `${proc.err ? `，${proc.err}` : ''}）。`
+            + `日志最后几行（${rel(root(), log)}）：\n${tail()}${launchDiagnosis(tail())}`;
+        }
+        return `起是起了（${how}，pid ${pid}），但等了 ${conf.boot} 秒 ${target} 还没应声。`
+          + t('可能是模型还在加载、或者它自己崩了。')
+          + `日志最后几行（${rel(root(), log)}）：\n${tail()}${PORT_HINT}`;
+      }
+      // 起来了 —— 记下归属（cmd 那条不记：远程进程收不着，关它靠 stop 命令）
+      if (mode !== 'cmd') {
+        writeInst({ pid, name: process.platform === 'win32' ? 'cmd.exe' : 'sh', mode, at: Date.now(), url: target });
+      }
+      return `${lead}${target} 起来了（${how}，pid ${pid}，等了 ${Math.round((now() - t0) / 1000)} 秒）。`
+        + t('接着就能 comfyui_run 出图了。');
+    }
+
     const SSH_EXAMPLE =
       '  ssh gpu@192.168.1.20 "cd ~/ComfyUI && nohup python3 main.py --listen 0.0.0.0 --port 8188 > ~/comfyui.log 2>&1 &"';
     const NO_START = (missing) =>
@@ -1406,9 +1702,10 @@ module.exports = {
       + '  ② 远程 / 自定义：在「启动命令」里填一条完整命令，ssh 到别的机器也行，例如：\n'
       + SSH_EXAMPLE;
     const NO_STOP =
-      t('参数里没配「关闭命令」，我不知道怎么把它关掉。想让我能关，就在 stop 里填一条，例如：\n')
+      t('这个实例没有归属记录（不是我们起的），参数里也没配「关闭命令」，我不能替你关它。')
+      + t('想让我能关，在 stop 里填一条关闭命令，例如：\n')
       + '  ssh gpu@192.168.1.20 "pkill -f main.py"\n'
-      + t('（本机桌面版那种没有命令行可关，手动关掉它的窗口就行。）');
+      + t('（本机我们起的不用配 —— 监视面板的「关闭」直接收；桌面版手动关它的窗口就行。）');
     const REMOTE_START = (target) =>
       `${target} 不在本机，本机那些参数起不了它 —— 在「启动命令」里填一条 ssh，例如：\n${SSH_EXAMPLE}`;
 
@@ -1435,94 +1732,245 @@ module.exports = {
         },
         level: 'write',
       },
-      async (args) => {
-        const target = origin((args && args.url) || cfg().url);
-        const action = String((args && args.action) || 'start').toLowerCase();
-        const conf = cfg();
-        const log = launchLog(api);
-        const tail = () => logTail(log) || t('（日志是空的）');
-        const up = await alive(target);
-
-        if (action === 'stop') {
-          if (!up) return `${target} 现在没在跑，不用关。`;
-          if (!conf.stop) return NO_STOP;
-          spawnDetached(conf.stop, root(), log);
-          return (await waitFor(target, 30, false))
-            ? `已经关掉 ${target}。`
-            : `关闭命令跑了，但 ${target} 三十秒后还在应答 —— 可能没杀干净，或者那不是它。日志最后几行：\n${tail()}`;
-        }
-        if (action !== 'start' && action !== 'restart') {
-          return `action 只认 start / stop / restart，收到的是 ${action}。`;
-        }
-
-        let lead = '';
-        if (action === 'restart') {
-          if (!up) lead = `（${target} 本来就没在跑）`;
-          else if (!conf.stop) return `想重启，但${NO_STOP}`;
-          else {
-            spawnDetached(conf.stop, root(), log);
-            if (!(await waitFor(target, 30, false))) {
-              return `重启没成：关闭命令跑了，但 ${target} 三十秒后还在应答。日志最后几行：\n${tail()}`;
-            }
-            lead = t('（已先关掉旧的）');
-          }
-        } else if (up) {
-          return `${target} 已经开着，不用再起。想重来一遍就说 restart。`;
-        }
-
-        let proc = null;
-        let how = '';
-        try {
-          if (conf.start) {
-            proc = spawnDetached(conf.start, root(), log);
-            how = t('启动命令');
-          } else {
-            if (!isLocal(target)) return REMOTE_START(target);
-            const ready = launchReadiness(conf);
-            if (!ready.ok) return NO_START(ready.missing);
-            if (ready.desktop) {
-              // 桌面版自己开窗口：不压隐藏标志（压了窗口是隐形的）。
-              // 它也不听 --port —— 端口由它自己的设置决定，起完看它到底应声在哪个端口。
-              proc = spawnArgvDetached([conf.desktop], path.dirname(conf.desktop), log, false);
-              how = t('桌面版');
-            } else {
-              proc = spawnArgvDetached(launcherArgv(conf, portOf(target)), conf.base, log);
-              how = `python main.py（${portOf(target)} 端口）`;
-            }
-          }
-        } catch (e) {
-          return `没能把它起起来（${(e && e.message) || e}）。日志在 ${rel(root(), log)}。`;
-        }
-
-        const pid = proc ? proc.pid : 0;
-        const t0 = now();
-        const hit = await waitFor(target, conf.boot, true, proc, altTarget(target));
-        if (hit !== true) {
-          // 起来了，只是在姊妹端口上应声 —— 直接告诉它改成哪个地址
-          if (typeof hit === 'string') {
-            return `${lead}${how}起起来了，但它应声的是 ${hit}，不是参数里的 ${target}。`
-              + t('（命令行版默认 8188，ComfyUI Desktop 默认 8000。）')
-              + `把插件参数里的「ComfyUI 地址」改成 ${hit} 就能直接出图了。`;
-          }
-          // 它自己退了就别再等 —— 这不是"开得慢"，是它出错了（否则白等满 boot 秒）
-          if (proc && proc.code !== null) {
-            return `起不来：${how} 拉起来的进程立刻退了（pid ${pid}，退出码 ${proc.code}`
-              + `${proc.err ? `，${proc.err}` : ''}）。`
-              + `日志最后几行（${rel(root(), log)}）：\n${tail()}${launchDiagnosis(tail())}`;
-          }
-          return `起是起了（${how}，pid ${pid}），但等了 ${conf.boot} 秒 ${target} 还没应声。`
-            + t('可能是模型还在加载、或者它自己崩了。')
-            + `日志最后几行（${rel(root(), log)}）：\n${tail()}${PORT_HINT}`;
-        }
-        return `${lead}${target} 起来了（${how}，pid ${pid}，等了 ${Math.round((now() - t0) / 1000)} 秒）。`
-          + t('接着就能 comfyui_run 出图了。');
-      },
+      async (args) => launchAct(args),
     );
+
+    // ── 监视器：会话框顶上那一条状态位 —— 原生 UI 常驻槽位（插件交数据、核心画）──
+    // 不是面板、不是组件：抬眼就在，点开下拉就地启动 / 关闭。钟在主进程（面板切走照跑）。
+    let snap = { up: false, at: 0, busy: false, running: 0, pending: 0, url: '' };
+    let lastBusy = 0; // 最后一次看到它有活干 —— 闲置回收的钟
+    let tickTimer = null;
+let mgrCmdTimer = null;
+let mgrSnapTimer = null;
+
+    async function tick() {
+      const conf = cfg();
+      const target = conf.url;
+      const up = await alive(target);
+      let running = 0;
+      let pending = 0;
+      if (up) {
+        try {
+          const q = await askJson(`${target}/queue`, undefined, '队列');
+          running = q.queue_running ? q.queue_running.length : 0;
+          pending = q.queue_pending ? q.queue_pending.length : 0;
+        } catch { /* 队列问不到不影响连通性判断 */ }
+      }
+      snap = { up, at: Date.now(), busy: running + pending > 0, running, pending, url: target };
+      if (snap.busy) lastBusy = Date.now();
+
+      // 闲置自动回收：只收我们静默起的；队列有活绝不收；Desktop 自己开的永远不动
+      const idleMin = Number(api.param('idle'));
+      if (up && !snap.busy && idleMin > 0) {
+        const inst = readInst();
+        if (inst && inst.mode === 'silent') {
+          const idleSince = Math.max(Number(inst.at) || 0, lastBusy);
+          if (Date.now() - idleSince > idleMin * 60_000) {
+            const log = launchLog(api);
+            const msg = await stopAct(target, conf, log, () => logTail(log) || t('（日志是空的）'));
+            api.log(`[ComfyUI] 闲置 ${idleMin} 分钟自动回收：${msg}`);
+            snap = { ...snap, up: false, busy: false, running: 0, pending: 0 };
+          }
+        }
+      }
+    }
+    tickTimer = setInterval(() => { tick().catch(() => { /* 心跳失败下一轮再试 */ }); }, 3000);
+    if (tickTimer.unref) tickTimer.unref();
+    tick().catch(() => {});
+    // ── 管理器面板：命令队列（面板写、这里读，认 seq）与模型快照 ──
+    const cmdFile = path.join(api.workspace, '.ensoul/state/comfyui.cmd.json');
+    const snapFile = path.join(api.workspace, '.ensoul/state/comfyui-models.json');
+    let lastSeq = 0;
+    let refreshing = false;
+
+    /** 模型清单快照：脸（渲染层）开不了 HTTP，靠这份文件看服务器上有什么 */
+    const refreshModels = async () => {
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        const target = origin(cfg().url);
+        const snap = { at: Date.now(), url: target, up: false, kinds: {} };
+        try { snap.up = !!(await alive(target)); } catch { snap.up = false; }
+        if (snap.up) {
+          for (const k of ['checkpoint', 'lora', 'vae']) {
+            try {
+              const node = NODES[k];
+              const info = await askJson(target + '/object_info/' + node, undefined, 'object_info/' + node);
+              const req = info && info[node] && info[node].input && info[node].input.required;
+              const field = req && Object.keys(req).find((f) => Array.isArray(req[f]) && Array.isArray(req[f][0]));
+              snap.kinds[k] = field ? req[field][0].map(String) : [];
+            } catch (e) { snap.kinds[k] = []; }
+          }
+        }
+        try {
+          fs.mkdirSync(path.dirname(snapFile), { recursive: true });
+          fs.writeFileSync(snapFile, JSON.stringify(snap, null, 2), 'utf8');
+        } catch (e) { api.log('[ComfyUI] 模型快照写入失败：' + ((e && e.message) || e)); }
+      } finally { refreshing = false; }
+    };
+
+    /** 面板发来的命令：改工作流名 / 刷新模型快照 */
+    const runMgrCmd = (c) => {
+      const act = String((c && c.action) || '');
+      if (act === 'rename') {
+        const from = safeName(c.from);
+        const to = safeName(c.to);
+        if (from === to) return;
+        const src = wfFile(from);
+        const dst = wfFile(to);
+        if (!fs.existsSync(src)) throw new Error('没有这个工作流：' + from);
+        if (fs.existsSync(dst)) throw new Error('已经有叫 ' + to + ' 的了');
+        fs.renameSync(src, dst);
+        api.log('[ComfyUI] 工作流改名：' + from + ' → ' + to);
+        return;
+      }
+      // 删掉一份工作流（真身文件在插件这边，脸只能发包）
+      if (act === 'delete') {
+        const name = safeName(c.name);
+        const abs = wfFile(name);
+        if (!fs.existsSync(abs)) throw new Error('没有这个工作流：' + name);
+        fs.unlinkSync(abs);
+        api.log('[ComfyUI] 工作流删除：' + name);
+        return;
+      }
+      // 就地改参数：把 set 合并进真身文件（键是 节点id.inputs.字段，跟 comfyui_run 的 set 同形）
+      if (act === 'patch') {
+        const name = safeName(c.name);
+        const abs = wfFile(name);
+        if (!fs.existsSync(abs)) throw new Error('没有这个工作流：' + name);
+        const doc = parseWorkflow(fs.readFileSync(abs, 'utf8'), name);
+        const next = applySet(doc, c.set);
+        fs.writeFileSync(abs, JSON.stringify(next, null, 2), 'utf8');
+        api.log('[ComfyUI] 工作流改参数：' + name);
+        return;
+      }
+      if (act === 'refresh_models') { refreshModels().catch(() => {}); }
+    };
+
+    const pullCmds = () => {
+      let text = '';
+      try {
+        if (!fs.existsSync(cmdFile)) return;
+        text = fs.readFileSync(cmdFile, 'utf8');
+        fs.unlinkSync(cmdFile);
+      } catch { return; }
+      if (!text) return;
+      let doc = null;
+      try { doc = JSON.parse(text); } catch { return; }
+      const seq = Number(doc && doc.seq) || 0;
+      if (seq && seq <= lastSeq) return;
+      lastSeq = seq;
+      for (const c of Array.isArray(doc.cmds) ? doc.cmds : []) {
+        try { runMgrCmd(c); } catch (e) { api.log('[ComfyUI] 面板命令失败：' + ((e && e.message) || e)); }
+      }
+    };
+
+    mgrCmdTimer = setInterval(pullCmds, 400);
+    if (mgrCmdTimer.unref) mgrCmdTimer.unref();
+    mgrSnapTimer = setInterval(() => { refreshModels().catch(() => {}); }, 120000);
+    if (mgrSnapTimer.unref) mgrSnapTimer.unref();
+    refreshModels().catch(() => {});
+
+    // ── 出图规则：面板在 .ensoul/comfyui/rules.json 里维护一张追加式规则表，
+    //    这里每轮把它塞回对话里。规则独立于工作流文件 —— 工作流怎么改，
+    //    新会话照样认这几条默认（画面尺寸、步数、用哪个模型……）。
+    const rulesFile = () => path.join(root(), '.ensoul/comfyui/rules.json');
+    const readRules = () => {
+      try {
+        const doc = JSON.parse(fs.readFileSync(rulesFile(), 'utf8'));
+        const list = Array.isArray(doc && doc.rules) ? doc.rules : [];
+        return list
+          .map((r, i) => ({ no: Number(r && r.no) || i + 1, text: String((r && r.text) || '').trim() }))
+          .filter((r) => r.text);
+      } catch { return []; }
+    };
+    api.addPrompt(() => {
+      const list = readRules();
+      if (!list.length) return '';
+      return [
+        '【ComfyUI 出图规则】（用户在管理器面板里定的默认，出图时按它来）',
+        ...list.map((r) => `  规则${r.no}：${r.text}`),
+        '这些规则优先于工作流里的原值：用 comfyui_run 出图时，把对应的字段按规则覆盖（走 set 参数，不写回工作流文件）。',
+      ].join('\n');
+    }, { scope: ['comfyui'] });
+
+
+    api.addStatusItem({
+      id: 'comfyui',
+      slot: 'head',
+      text() {
+        if (!snap.at) return 'ComfyUI …';
+        if (!snap.up) return 'ComfyUI ○ 未连接';
+        const q = snap.running + snap.pending;
+        return q > 0 ? `ComfyUI 🟢 已连接（跑 ${snap.running} · 排 ${snap.pending}）` : 'ComfyUI 🟢 已连接';
+      },
+      title() {
+        const inst = readInst();
+        const lines = [`${snap.up ? '已连接' : '未连接'}：${snap.url}`];
+        if (inst) {
+          const src = inst.mode === 'silent' ? '静默实例（我们起的）'
+            : inst.mode === 'desktop' ? 'Comfy Desktop'
+            : inst.mode === 'desktop-exe' ? '桌面版（我们起的）' : '启动命令';
+          lines.push(`来源：${src}` + (inst.pid ? `，pid ${inst.pid}` : ''));
+          const idleMin = Number(api.param('idle'));
+          if (inst.mode === 'silent' && snap.up && !snap.busy && idleMin > 0) {
+            const left = Math.max(0, idleMin * 60_000 - (Date.now() - Math.max(Number(inst.at) || 0, lastBusy)));
+            lines.push(`闲置 ${Math.max(1, Math.ceil(left / 60000))} 分钟后自动回收`);
+          }
+        } else if (snap.up) {
+          lines.push('来源：不是我们起的（外部实例）');
+        }
+        if (snap.busy) lines.push(`队列：跑 ${snap.running} · 排 ${snap.pending}`);
+        lines.push('点一下就地启动 / 关闭');
+        return lines.join('\n');
+      },
+      menu() {
+        return snap.up
+          ? {
+              title: 'ComfyUI',
+              plugin: 'comfyui',
+              section: 'comfyui',
+              items: [
+                { label: t('关闭'), desc: t('收掉后台实例（我们起的按归属收；Desktop 自己开的去它窗口关）'), action: 'stop', row: '' },
+                { label: t('重启'), desc: t('先关再起'), action: 'restart', row: '' },
+              ],
+            }
+          : {
+              title: 'ComfyUI',
+              plugin: 'comfyui',
+              section: 'comfyui',
+              items: [
+                { label: t('启动'), desc: t('Desktop 在跑就用它的服务，没跑就静默起（无窗口）'), action: 'start', row: '' },
+              ],
+            };
+      },
+    });
+
+    // 状态条下拉的回执口：核心只负责画和回传（plugin + section），动作在这儿执行
+    api.addSettingsSection({
+      id: 'comfyui',
+      label: 'ComfyUI',
+      hidden: true,
+      hint: t('会话顶上状态条下拉的动作从这儿回执'),
+      view: () => ({ rows: [] }),
+      onAction: (actionId) => {
+        const act = String(actionId || 'start');
+        return Promise.resolve(launchAct({ action: act })).catch((e) => String((e && e.message) || e));
+      },
+    });
 
     api.log(
       t('ComfyUI 就绪（{u}，工作流 {w}，出图 {o}', { u: cfg().url, w: rel(root(), wfDir()), o: cfg().out })
       + `${canStart() ? '，可启动' : '，未配启动方式'}）`,
     );
+  },
+
+  /** 插件重载前收掉心跳，不然旧实例的定时器永远跑着 */
+  dispose() {
+    if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
+    if (mgrCmdTimer) { clearInterval(mgrCmdTimer); mgrCmdTimer = null; }
+    if (mgrSnapTimer) { clearInterval(mgrSnapTimer); mgrSnapTimer = null; }
+    touchUse = null;
   },
 };
 

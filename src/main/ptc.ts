@@ -212,11 +212,27 @@ export async function executeRunCode(
       ctrl.abort(signal?.reason);
       finish(undefined, signal?.reason || new Error('这一轮已停止'));
     };
-    const timer = setTimeout(() => {
-      const error = new Error('[TOOL_TIMEOUT] run_code 执行超时');
-      ctrl.abort(error);
-      finish({ error: error.message });
-    }, timeoutMs);
+    /**
+     * 看门狗**可停表**：它算的是「工作线程自己在算」的时间，
+     * 不含「宿主在替它等一个子工具」的时间。
+     *
+     * 为什么必须这样：天生该长跑的子工具不少 —— 等人回答问题、跑一条长命令、出图……
+     * 拿总墙钟去掐，掐掉的是**正在正常干活的那些调用**；而真正的死循环在 worker 里，
+     * 表一直走着，照旧掐得住。这一层从前就是这么把一次提问掐没的。
+     */
+    let timer: NodeJS.Timeout | undefined;
+    const stopTimer = () => {
+      if (timer) { clearTimeout(timer); timer = undefined; }
+    };
+    const armTimer = () => {
+      stopTimer();
+      timer = setTimeout(() => {
+        const error = new Error('[TOOL_TIMEOUT] run_code 执行超时');
+        ctrl.abort(error);
+        finish({ error: error.message });
+      }, timeoutMs);
+    };
+    armTimer();
     signal?.addEventListener('abort', onAbort, { once: true });
     worker.on('error', (error) => { ctrl.abort(error); finish({ error: error.message }); });
     worker.on('exit', (code) => {
@@ -245,6 +261,12 @@ export async function executeRunCode(
       }
       calls += 1;
       queue = queue.then(async () => {
+        /*
+         * 宿主替它跑子工具的这段时间**停表** —— 见上面 armTimer 那段：
+         * 这段时间花多久由子工具自己说了算（它有自己的 timeoutMs），
+         * 不算进 run_code 的墙钟里。跑完接着计时，防的还是 worker 自己转死。
+         */
+        stopTimer();
         try {
           ctrl.signal.throwIfAborted();
           const result = await rawRunner(name, args, ctrl.signal);
@@ -259,6 +281,9 @@ export async function executeRunCode(
           const text = error instanceof Error ? error.message : String(error);
           callError ||= text;
           if (!settled) worker.postMessage({ id, error: text });
+        } finally {
+          /* 子工具跑完了，看门狗重新开始算「worker 自转」的时间 */
+          if (!settled) armTimer();
         }
       });
     });

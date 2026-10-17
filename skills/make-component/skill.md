@@ -1,6 +1,6 @@
 ---
 name: make-component
-description: 将面板塑造、改写并沉淀为可复用组件的规范与操作指南 —— 涵盖 FLOAT_EDIT 动态重塑协议、内置与插件面板类型选型、spec/actions/fields 规格设计、会话栏侧停靠（chatSide 左右侧边栏）、component_declare 永久声明、克隆与分发导出。
+description: 将面板塑造、改写并沉淀为可复用组件的规范与操作指南 —— 涵盖 FLOAT_EDIT 动态重塑协议、内置与插件面板类型选型、spec 规格设计、会话栏侧停靠（chatSide 左右侧边栏）、component_declare 永久声明、克隆与分发导出。
 ---
 
 # 面板改写与组件化规范 (make-component)
@@ -138,9 +138,9 @@ await tools.packager_export_pack({
 
 ## 四、组件设计最佳实践
 
-### 1. 打造操作型工作台 (Form + Actions)
-- 将 `kind` 设为 `form` 或保留 `chat` 并提供 `spec.actions`；
-- 在 `spec.actions` 里配置 2~4 个高频操作按钮（如「检查环境」、「生成配置」、「一键修复」），注入明确的指令字符串；
+### 1. 打造操作型工作台
+- 将 `kind` 设为 `form` 等专用面板类型，通过表单提供结构化交互；
+- 普通对话面板 (`chat`) 保持纯净会话流，严禁配置快捷操作按钮 (`actions`)；
 - 将业务约束与角色规约写入 `spec.systemPrompt`。
 
 ### 2. 面板定型与头像机制 (Keywords)

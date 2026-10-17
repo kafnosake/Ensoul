@@ -9,7 +9,7 @@ import { FileRefPicker } from '../FileRefPicker';
 import { ModelList } from '../ModelList';
 import { Outbox } from './Outbox';
 import { readDraft, writeDraft } from './drafts';
-import { shotUrl } from './format';
+import { shotUrl, fmtTokens } from './format';
 import type { ChatQuote } from './types';
 
 /** 盾牌 —— 权限那一格用。icons.tsx 里没有，就地画一个，免得为它动公共图标表 */
@@ -73,9 +73,10 @@ export function Composer({
   panel: Panel;
   hostKey: string;
   busy: boolean;
-  send(text: string, pics: string[]): void;
+  /** 发送。**回执要看**：没发出去时把字还给输入框（见 doSend） */
+  send(text: string, pics: string[]): Promise<{ ok: boolean; error?: string }>;
   /** 排队：不打断这一轮，跑完自动接着发 */
-  queueUp(text: string, pics: string[]): void;
+  queueUp(text: string, pics: string[]): Promise<{ ok: boolean; error?: string }>;
   /** 插话：送进此刻正在跑的那一轮 */
   steerNow(text: string, pics: string[]): Promise<boolean>;
   /** 面板上那些还没发出去的话（队列条要画它） */
@@ -101,6 +102,8 @@ export function Composer({
    */
   const lastSynced = useRef(draft);
     const [isTranscribing, setIsTranscribing] = useState(false);
+  /** 上一次发送为什么没成功（成功就清掉）—— 不说话就等于又把用户的字吞了 */
+  const [sendErr, setSendErr] = useState('');
 
   /**
    * 别处（语音转写、别的窗口）真改了 panel.draft 才同步进来，两条不许覆盖：
@@ -145,35 +148,54 @@ export function Composer({
     actualRef.current?.focus();
   };
 
+  /**
+   * 发不出去时**把字还回来** —— 这一条是这个输入框的底线。
+   *
+   * 从前这里是「先清空、再 void send(...)」：主进程那边一句 {ok:false} 回来，
+   * 界面完全不知道，用户看到的就是「回车按下去，字没了，也没发出去」。
+   * 清空是乐观操作（发送中不该让字还占着框），所以还原的责任就在这同一处。
+   */
+  const restoreDraft = (text: string, pics: string[], error?: string) => {
+    setDraft(text);
+    setShots(pics);
+    setSendErr(error || t('没发出去'));
+  };
+
   const doSend = () => {
     const text = draft.trim();
     if (!hasContent || busy) return;
     const pics = shots;
+    setSendErr('');
     setDraft('');
     setShots([]);
-    void send(text, pics);
+    void send(text, pics).then((r) => {
+      if (!r || r.ok === false) restoreDraft(text, pics, r && r.error);
+    });
   };
 
   const doQueueUp = () => {
     const text = draft.trim();
     if (!hasContent) return;
     const pics = shots;
+    setSendErr('');
     setDraft('');
     setShots([]);
-    void queueUp(text, pics);
+    void queueUp(text, pics).then((r) => {
+      if (!r || r.ok === false) restoreDraft(text, pics, r && r.error);
+    });
   };
 
   const doSteerNow = async () => {
     const text = draft.trim();
     if (!hasContent || !busy) return;
     const pics = shots;
+    setSendErr('');
     setDraft('');
     setShots([]);
     const ok = await steerNow(text, pics);
-    if (!ok) {
-      setDraft(text);
-      setShots(pics);
-    }
+    // 插话本来就有一条「插不进去就把字还回来」的回路（它要真跑着才插得进）——
+    // 这里只是把原因一并说出来，跟上面两条路保持一致
+    if (!ok) restoreDraft(text, pics, t('没插进去 —— 它可能刚好跑完了，直接发送试试'));
   };
 
   const [models, setModels] = useState(false);
@@ -204,8 +226,15 @@ export function Composer({
     actualRef.current?.focus();
   };
 
-  /** 会话框下方状态与计费（学 dsh）：不占用输入框内部空间，居中贴在输入框下方 */
+  /** 会话框下方状态与计费：不占用输入框内部空间，居中贴在输入框下方 */
   const bottomStatuses = (ws?.status?.[panel.id] ?? []).filter((s) => s.slot !== 'head' && Boolean(s.text?.trim()));
+  /**
+   * 上下文占用：核心算好下发的（见 Workspace.context）—— 口径和自动压缩那条线同源。
+   * 界面不自己估：自己估必然和真实触发点漂开，那个百分比就成了摆设。
+   * 夹到 100：估算会略微超过窗口（尤其刚压完还没重发时），别画出超过满格的条。
+   */
+  const ctx = ws?.context?.[panel.id];
+  const ctxPct = ctx && ctx.window > 0 ? Math.min(100, Math.round((ctx.used / ctx.window) * 100)) : null;
 
   return (
     <>
@@ -516,16 +545,39 @@ export function Composer({
         {models && <ModelList panelId={panel.id} onClose={() => setModels(false)} />}
       </div>
 
-      {bottomStatuses.length > 0 && (
-        <div className="composer-foot">
-          {bottomStatuses.map((s) => (
+      {/*
+        这一行**一直占位**（不再是有内容才出现）。
+        以前是插件报什么才画什么：一条状态都没有时整行不存在，输入框贴到底；
+        等第一条用量回来，整条突然长出来把输入框往上顶一格 —— 发一句就跳一下。
+        现在容器常驻、高度恒定，里面几块来去都不动输入框的位置。
+      */}
+      {/* 上一次没发出去的原因 —— 就摆在输入框底下：字还回框里了，这里说明为什么 */}
+      {sendErr && <div className="composer-send-err">{sendErr}</div>}
+
+      <div className="composer-foot">
+        {/* 已用上下文：核心下发的（口径和压缩判定同源），不归插件管 */}
+        {ctxPct != null && (
+          <span
+            className={`composer-foot-item ctx-meter${ctxPct >= 80 ? ' is-hot' : ''}`}
+            title={t('上下文已用 {a} / {b} token（约 {p}%）—— 涨到 80% 左右会自动压缩', {
+              a: fmtTokens(ctx!.used),
+              b: fmtTokens(ctx!.window),
+              p: ctxPct,
+            })}
+          >
+            <span className="ctx-bar" aria-hidden="true">
+              <span className="ctx-bar-fill" style={{ width: `${ctxPct}%` }} />
+            </span>
+            <span>{t('上下文 {p}%', { p: ctxPct })}</span>
+          </span>
+        )}
+        {bottomStatuses.map((s) => (
             <span className="composer-foot-item" key={s.id} title={s.title}>
               {s.id === 'usage' && <IconDatabase />}
               <span>{s.text}</span>
             </span>
-          ))}
-        </div>
-      )}
+        ))}
+      </div>
     </>
   );
 }

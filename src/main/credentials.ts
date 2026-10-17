@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import { userDataPath } from './paths';
+import { readTextFile } from './chat-core';
 import { writeFileAtomicSync, withFileLockSync } from './atomic-write';
 
 /**
@@ -42,14 +43,42 @@ function envNameOf(providerKey: string): string {
   return `ENSOUL_KEY_${String(providerKey || '').toUpperCase().replace(/[^A-Z0-9]+/g, '_')}`;
 }
 
-/** 文件里那份（不含环境变量层）。读坏了当作空 —— 不能拿一份坏的当"用户把密钥删了" */
+/** 已经留过底的那一版（mtime+size）—— 同一份坏文件不重复留 */
+let quarantined = '';
+
+/**
+ * 读不动的那份先原样留一个 `.corrupt-<时间戳>` 兄弟，再当空处理。
+ *
+ * 为什么非留不可：这份文件被读坏之后，只要有人写一次（插件登记自己那把密钥就够），
+ * 就会拿"空表 + 这一把"把整份盖掉 —— 用户原来那批密钥就此永久消失。
+ * 只报一句 ["读取失败"] 是拦不住这次覆写的，得让坏的那份先落到盘上。
+ */
+function quarantineCorrupt(): void {
+  try {
+    const stamp = fileStamp();
+    if (!stamp || stamp === quarantined) return;
+    const dest = `${FILE()}.corrupt-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+    fs.copyFileSync(FILE(), dest);
+    quarantined = stamp;
+    console.error(`[凭据] 这份读不动，已原样留底：${dest}`);
+  } catch (e) {
+    console.error('[凭据] 读坏了，留底也没成功：', e);
+  }
+}
+
+/** 文件里那份（不含环境变量层）。读坏了当作空，但会先留底（见 quarantineCorrupt） */
 function readFile(): Record<string, string> {
   const stamp = fileStamp();
   if (cache && stamp && stamp === cacheStamp) return cache;
   let keys: Record<string, string> = {};
   try {
     if (fs.existsSync(FILE())) {
-      const raw = JSON.parse(fs.readFileSync(FILE(), 'utf8'));
+      /**
+       * 走 readTextFile 而不是裸 readFileSync：PowerShell / 记事本存过的 JSON 带 UTF-8 BOM，
+       * `JSON.parse` 会直接抛。这里一旦抛，整批密钥就被当空 —— 接着下一次写把它们全盖掉。
+       * providers.json 一直走的是这个剥 BOM 的读法，凭据这边漏了，是真实丢过数据的口子。
+       */
+      const raw = JSON.parse(readTextFile(FILE()));
       const src = raw?.keys;
       if (src && typeof src === 'object') {
         for (const [k, v] of Object.entries(src)) {
@@ -58,7 +87,8 @@ function readFile(): Record<string, string> {
       }
     }
   } catch (e) {
-    console.error('[凭据] 读取失败：', e);
+    quarantineCorrupt();
+    console.error('[凭据] 读取失败（已留底）：', e);
     return {};
   }
   cache = keys;

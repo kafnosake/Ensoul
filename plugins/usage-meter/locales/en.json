@@ -7,5 +7,6 @@
   "输出        {n}    {sym}{c}": "Output:     {n}    {sym}{c}",
   "实际总价    {sym}{c}": "Total cost: {sym}{c}",
   "单价 {a} / {b} / {c} 元每百万（命中 / 未命中 / 输出）": "Price: {sym}{a}/{b}/{c} per 1M (Hit/Miss/Out)",
-  "另有 {n} 轮是旧版本留下的记录：没记缓存命中、也没算过钱": "Another {n} legacy turns: no cache hit or cost recorded"
+  "另有 {n} 轮是旧版本留下的记录：没记缓存命中、也没算过钱": "Another {n} legacy turns: no cache hit or cost recorded",
+  "上下文      {n} / {m}（约 {p}%）": "Context      {n} / {m} (~{p}%)"
 }

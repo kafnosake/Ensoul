@@ -1,0 +1,306 @@
+/* ============================================================================
+   文件预览面板的皮。
+
+   **颜色一律走主题变量，不许写死**（`--text` / `--dim` / `--line` / `--card` /
+   `--tint-*` …，两套主题各自的值在 ui/styles/base.css）。以前这里铺满了
+   `rgba(255,255,255,0.45)` 这种"夜里看着还行"的写法，白天模式一开就是白底白字。
+
+   尺寸按**自然尺寸**写（见 make-plugin 第四节）：核心的自适应层自己会认 ——
+   这里的滚动层（.fp-code / .fp-canvas）是 overflow:auto，装不下就滚，核心不碰它。
+   ========================================================================== */
+
+.fp {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+
+/* ── 顶栏 ─────────────────────────────────────────────────────── */
+.fp-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.fp-bar.is-thin {
+  padding: 4px 8px;
+  background: var(--panel-2);
+}
+.fp-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 46%;
+}
+.fp-tag,
+.fp-size,
+.fp-zoom {
+  color: var(--dim);
+  white-space: nowrap;
+}
+.fp-tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--tint-b);
+  font-size: 11px;
+}
+.fp-gap {
+  flex: 1 1 auto;
+}
+
+.fp-btn {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: var(--r-sm, 8px);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fp-btn:hover:not(:disabled) {
+  background: var(--card-2);
+}
+.fp-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.fp-btn.is-on,
+.fp-btn.is-primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+
+/* ── 主体 ─────────────────────────────────────────────────────── */
+.fp-main {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 滚得动 = 弹性内容：核心的自适应层一眼认出来就不碰它 */
+.fp-canvas {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fp-canvas.is-checker {
+  /* 透明图的棋盘底 —— 深浅两套主题各用自己那档淡色 */
+  background-image: linear-gradient(45deg, var(--tint-c) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--tint-c) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--tint-c) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--tint-c) 75%);
+  background-size: 18px 18px;
+  background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+}
+/* 视频与 3D 的底就留在深色：画面本身按深底调过，两套主题下都这么看 */
+.fp-canvas.is-media {
+  background: #000;
+}
+.fp-canvas.is-3d {
+  overflow: hidden;
+  background: #12151a;
+}
+
+.fp-img {
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.fp-media {
+  width: 100%;
+  max-height: 100%;
+  outline: none;
+}
+.fp-audio {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+  width: 100%;
+  padding: 24px;
+}
+.fp-audio-name {
+  font-size: 13px;
+  color: var(--dim);
+  word-break: break-all;
+  text-align: center;
+}
+audio.fp-media {
+  width: min(520px, 100%);
+}
+
+.fp-3d {
+  position: absolute;
+  inset: 0;
+}
+.fp-3d canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* 蒙在 3D 画布上：底是深的，所以字固定用浅色（别跟着主题翻） */
+.fp-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 15, 20, 0.8);
+  color: #e6eaf1;
+  text-align: center;
+  padding: 20px;
+}
+.fp-overlay.is-err {
+  background: rgba(38, 12, 14, 0.86);
+}
+.fp-overlay .fp-empty-title,
+.fp-overlay .fp-empty-note {
+  color: inherit;
+}
+
+/* ── 文本与十六进制 ───────────────────────────────────────────── */
+.fp-code {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--code-bg);
+  color: var(--code-fg);
+  font-family: var(--font-code, ui-monospace, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+  tab-size: 2;
+}
+.fp-code.is-hex {
+  color: var(--dim);
+}
+
+/* ── 空态 / 提示 ──────────────────────────────────────────────── */
+.fp-empty {
+  margin: auto;
+  padding: 24px;
+  max-width: 460px;
+  text-align: center;
+  color: var(--dim);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+.fp-empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.fp-empty-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--dim);
+  word-break: break-word;
+}
+.fp-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ── 直接粘一个路径 ───────────────────────────────────────────── */
+.fp-pick {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  margin-top: 6px;
+}
+.fp-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 9px;
+  border-radius: var(--r-sm, 8px);
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+.fp-input::placeholder {
+  color: var(--faint);
+}
+.fp-input:focus {
+  border-color: var(--accent);
+}
+
+/* ── 白板：还没有要看的东西时 ─────────────────────────────────── */
+.fp-board {
+  margin: auto;
+  padding: 28px 24px;
+  max-width: 420px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+.fp-board-mark {
+  font-size: 34px;
+  line-height: 1;
+  color: var(--faint);
+  margin-bottom: 2px;
+}
+.fp-board-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.fp-board-note {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--dim);
+}
+
+/* 有东西拖到面板上：整块描一圈虚线，一眼知道松手会落到这儿 */
+.fp.is-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -6px;
+}
+.fp-board.is-over .fp-board-mark,
+.fp-board.is-over .fp-board-title {
+  color: var(--accent);
+}
+
+/* 出错时把实际用的地址摆出来：Failed to fetch 本身不带任何线索 */
+.fp-note-src {
+  width: 100%;
+  font-family: var(--font-code, ui-monospace, Consolas, monospace);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--dim);
+  word-break: break-all;
+  padding: 6px 8px;
+  border-radius: var(--r-sm, 8px);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  text-align: left;
+}

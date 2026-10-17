@@ -107,7 +107,7 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
   const [live, setLive] = useState<{ tasks: LiveTask[]; images: string[] }>({ tasks: [], images: [] });
   const [askErr, setAskErr] = useState('');
 
-  /** 有一批题要答时：问题卡片接管输入框那一格，Composer 让位（dsh 的附着式卡片就该这样） */
+  /** 有一批题要答时：问题卡片接管输入框那一格，Composer 让位 */
   const hasQuestions = Boolean(ask && ask.questions && ask.questions.length > 0);
   /**
    * 全局挂着"等全部会话结束就重启" —— 这件事不在本面板上判（它盯的是整个软件），
@@ -198,13 +198,37 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
   }, [panel.id, needBody]);
   type TimelineItem =
     | { type: 'msg'; msg: (typeof messages)[number] }
-    | { type: 'tool-group'; id: string; tools: typeof messages };
+    | { type: 'tool-group'; id: string; tools: typeof messages }
+    | { type: 'compact'; id: string; at: number; count?: number };
 
+  /**
+   * 压缩留下的**分界标记**（见 Panel.compact.marks）。
+   *
+   * 它长在对话流里，不在别处：这一段往上已经被摘要顶替了，往后翻的人
+   * 得看见一条像样的分界，而不是莫名其妙地少了一截历史。
+   * afterId 指向"压缩点前面那一条消息"，所以它插在那条**之后**；
+   * 手动 /compress 会把对话区清空，那种标记没有 afterId，落在最上面。
+   */
+  const marks = React.useMemo(() => panel.compact?.marks ?? [], [panel.compact]);
   const timeline = React.useMemo(() => {
-    if (stepMode !== 'compact') {
-      return messages.map((m) => ({ type: 'msg' as const, msg: m }));
+    const after = new Map<string, { id: string; at: number; count?: number }[]>();
+    const head: { id: string; at: number; count?: number }[] = [];
+    for (const mk of marks) {
+      if (mk.afterId) {
+        const arr = after.get(mk.afterId) ?? [];
+        arr.push(mk);
+        after.set(mk.afterId, arr);
+      } else head.push(mk);
     }
     const res: TimelineItem[] = [];
+    for (const mk of head) res.push({ type: 'compact', id: mk.id, at: mk.at, count: mk.count });
+    if (stepMode !== 'compact') {
+      for (const m of messages) {
+        res.push({ type: 'msg', msg: m });
+        for (const mk of after.get(m.id) ?? []) res.push({ type: 'compact', id: mk.id, at: mk.at, count: mk.count });
+      }
+      return res;
+    }
     let curTools: typeof messages = [];
     for (const m of messages) {
       if (m.role === 'tool') {
@@ -215,13 +239,14 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
           curTools = [];
         }
         res.push({ type: 'msg', msg: m });
+        for (const mk of after.get(m.id) ?? []) res.push({ type: 'compact', id: mk.id, at: mk.at, count: mk.count });
       }
     }
     if (curTools.length > 0) {
       res.push({ type: 'tool-group', id: 'tg-' + curTools[0].id, tools: curTools });
     }
     return res;
-  }, [messages, stepMode]);
+  }, [messages, stepMode, marks]);
 
   /**
    * 从第几个条目开始渲染 —— 这是"长对话干什么都卡"的正解。
@@ -294,7 +319,7 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
    * 现在开跑就摆（摆个转着的小点 + "正在想"），高度先占住，内容一来就在眼前。
    */
   const idle = !stream && !think && live.tasks.length === 0 && live.images.length === 0;
-  /** 便签：读插件写下的那份文件（.ensoul/state/notes.json）—— 核心已经不认识了 */
+  /** 便签：读插件写下的那份文件（.ensoul/state/notes/<面板 id>.json）—— 核心已经不认识了 */
   const notes = useNotes(panel.id);
   /** 插件挂的顶上状态（git 分支这类）在广播里，跟着它一起读 */
   const ws = useWorkspace();
@@ -778,27 +803,46 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
     return { combinedText, combinedPics };
   };
 
-  const send = async (text: string, pics: string[]) => {
+  /**
+   * 发送。**必须把主进程的回执往上传** —— 从前这里是 `await api.chat.send(...)` 就完了，
+   * 那句 `{ok:false}`（面板还在收尾、面板不存在……）被就地丢掉，而输入框早被清空了：
+   * 用户看到的就是「回车按下去，字没了，也没发出去」。回执往上给，谁清空谁负责还原。
+   */
+  const send = async (text: string, pics: string[]): Promise<{ ok: boolean; error?: string }> => {
     const { combinedText, combinedPics } = mergeQuotes(text, pics);
-    if ((!combinedText && !combinedPics.length) || busy) return;
+    if (!combinedText && !combinedPics.length) return { ok: false, error: t('没内容可发') };
+    if (busy) return { ok: false, error: t('它还在跑 —— 用排队或插话') };
     clearQuotes();
     pinBottom(); // 自己发的这一轮，当然要从头看到尾：立刻回到底部（哪怕刚才翻到上面去了）
     resetLive();
     setBusy(true);
     setOpen(true);
-    await api.chat.send(panel.id, combinedText, combinedPics);
+    const r = await api.chat.send(panel.id, combinedText, combinedPics);
     // 正文与进度由 chat:message 的落定事件一起交接。
+    if (!r || r.ok === false) {
+      // 没发出去就别端着「正在跑」的样子 —— 收回去，让界面回到能再按一次的状态
+      setBusy(false);
+      // 用户按停不算「没发出去」：话在开跑前就已进会话（doSend 的 userMsg），轮次是他主动叫停的。
+      // 按成功收账 —— 不把草稿还回输入框（会话里已经有了），
+      // 也不把 error 往下传（否则输入框底下会挂一条错误条，把整条会话列顶上去）。
+      if (r && r.endReason === 'stopped') return { ok: true };
+      return { ok: false, error: (r && r.error) || t('没发出去（主进程没接）') };
+    }
+    return { ok: true };
   };
 
   /**
    * 排队：把草稿挂到面板的待发队列上，**不打断**这一轮。
    */
-  const queueUp = async (text: string, pics: string[]) => {
+  const queueUp = async (text: string, pics: string[]): Promise<{ ok: boolean; error?: string }> => {
     const { combinedText, combinedPics } = mergeQuotes(text, pics);
-    if (!combinedText && !combinedPics.length) return;
+    if (!combinedText && !combinedPics.length) return { ok: false, error: t('没内容可发') };
     clearQuotes();
     setOpen(true);
-    await api.chat.enqueue(panel.id, combinedText, combinedPics);
+    const r = await api.chat.enqueue(panel.id, combinedText, combinedPics);
+    // 同 send：排队没挂上也得说一声，否则这一句一样是没影了
+    if (!r || r.ok === false) return { ok: false, error: (r && r.error) || t('没排上队') };
+    return { ok: true };
   };
 
   /**
@@ -1072,7 +1116,17 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
             </button>
           )}
           {visibleTimeline.map((item) =>
-            item.type === 'tool-group' ? (
+            item.type === 'compact' ? (
+              /* 压缩分界：一条安静的横线 + 一句交代。不做成卡片 —— 它不是一条消息，
+                 只是告诉"这上面那一段已经被前情摘要顶替了"。 */
+              <div className="dock-compact" key={item.id}>
+                <span className="dock-compact-line" />
+                <span className="dock-compact-label" title={t('这一段原文已被压成前情摘要，模型不再逐字读到')}>
+                  {t('以上 {n} 条已压缩为前情摘要', { n: item.count ?? 0 })}
+                </span>
+                <span className="dock-compact-line" />
+              </div>
+            ) : item.type === 'tool-group' ? (
               <ToolGroup
                 key={item.id}
                 tools={item.tools}
@@ -1269,7 +1323,7 @@ export function ChatDock({ panel, hostKey = 'main', full = false }: { panel: Pan
         </div>
       )}
 
-      {/* 有问题卡片时它**占掉输入框这一格**（dsh 就是这么做的：附着式卡片接管编辑器位置） */}
+      {/* 有问题卡片时它**占掉输入框这一格** —— 附着式卡片接管编辑器位置 */}
       {!hasQuestions && (
       <Composer
         panel={panel}

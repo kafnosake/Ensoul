@@ -18,8 +18,19 @@
  * 要阻塞，只能在 handler 里挂着等。
  */
 
-/** 等的上限：够人慢慢读题、慢慢选 */
-const WAIT_MS = 10 * 60 * 1000;
+/**
+ * 等的上限：**没有上限**（0 = 不设超时，见 PluginToolSpec.timeoutMs）。
+ *
+ * 从前这里写的是 10 分钟，那只是把刀往后挪：用户真去查资料、翻文档、泡杯茶，
+ * 回来发现「刚才那张问题卡片还在，答了却没送到」—— 比当场拒绝还难解释。
+ * 人的思考时间本来就无法预估，这个数没有任何一个「对」的取值。
+ *
+ * 收束改由两条真实的边界决定，两条都已经在跑：
+ *   · 用户按停 / 关掉这一轮 → ctx.signal 落地 → 那次调用就地解开；
+ *   · 用户点「不回答，跳过」或右上角 ✕ → 核心走 askCancel，settle 把它解开。
+ * 插件被换掉 / 关掉时 dispose 也会把还挂着的全放开，不会吊死。
+ */
+const NO_WAIT_LIMIT = 0;
 
 /**
  * 此刻挂着的等待 —— **按面板分槽**。
@@ -32,7 +43,7 @@ function settle(panelId, value) {
   const w = waiting.get(panelId);
   if (!w) return false;
   waiting.delete(panelId);
-  clearTimeout(w.timer);
+  if (w.off) w.off();
   w.resolve(value);
   return true;
 }
@@ -96,8 +107,13 @@ module.exports = {
         },
         // 问答跟能不能改文件无关，编辑器面板里的小对话也该能用上
         level: 'read',
-        // **不给就掉进 core 的 60 秒默认值** —— 这一条是这套东西能不能用的命门
-        timeoutMs: WAIT_MS + 30 * 1000,
+        /*
+         * **必须是 0，不是"给够"**：不给会掉进 core 的 60 秒默认值，
+         * 给一个很大的数也只是把超时点往后推，人总有超过它的时候 ——
+         * 而超时那一刻用户毫无察觉（问题卡片还挂着，答案已经无处可送）。
+         * 0 = 不设超时，见 src/shared/types.ts 的 PluginToolSpec.timeoutMs。
+         */
+        timeoutMs: NO_WAIT_LIMIT,
       },
       (args, ctx) => {
         const panelId = (ctx && ctx.panelId) || '';
@@ -130,10 +146,19 @@ module.exports = {
           : first.question;
 
         return new Promise((resolve) => {
-          const timer = setTimeout(() => {
-            settle(panelId, t('等用户回答超时了（10 分钟）—— 先别继续，回头再问一次。'));
-          }, WAIT_MS);
-          waiting.set(panelId, { resolve, timer });
+          /*
+           * 不再起自己的超时定时器 —— 等的上限只有一个真源：外层那个 timeoutMs = 0。
+           * 改挂 ctx.signal：用户按停（或窗口关掉）时**当场解开这次调用**，
+           * 而不是等到下一轮模型自己发现「怎么没人答」—— 那样用户按了停它还在挂着。
+           */
+          const onAbort = () => settle(panelId, t('这一轮停了 —— 这次问题没等到答案，按手头信息继续。'));
+          const sig = ctx && ctx.signal;
+          if (sig) {
+            if (sig.aborted) return resolve(t('这一轮已经停了 —— 这次不问了。'));
+            sig.addEventListener('abort', onAbort, { once: true });
+          }
+          const off = () => { if (sig) sig.removeEventListener('abort', onAbort); };
+          waiting.set(panelId, { resolve, off });
 
           api.ask({
             panelId,

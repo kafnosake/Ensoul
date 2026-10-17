@@ -9,6 +9,7 @@ import { readSkill } from './skills';
 import type { AfterTool, BeforeTool, BeforeWrite, PluginTool, ToolContext } from './plugins';
 import { t } from '../shared/i18n';
 import { killProcessTree } from './process-control';
+import { clipOutput } from '../shared/tool-output';
 
 /**
  * agent 能真正动手的地方 —— 工具。
@@ -486,8 +487,10 @@ function runCommand(command: string, workdir?: string, signal?: AbortSignal): Pr
       if (failure) return;
       output += String(chunk);
       if (output.length > 4 * 1024 * 1024) {
+        // 从前这里只留开头 20000 字 —— 而报错、调用栈、退出码都在**末尾**。
+        // 现在统一走 clipOutput：头尾都留，中间那句说明省了多少。
         failure = new Error('命令输出超过 4MB，已停止');
-        output = output.slice(0, 20_000);
+        output = clipOutput(output, 20_000);
         killProcessTree(child);
       }
     };
@@ -964,8 +967,20 @@ async function execTool(name: string, args: any, ctx: ToolContext | null, toolCa
   let status: 'ok' | 'error' = 'ok';
   const startedAt = Date.now();
   const pluginMatch = pluginTools.find((p) => p.spec?.name === name);
-  let timeoutMs = pluginMatch?.spec?.timeoutMs;
-  if (!timeoutMs || timeoutMs <= 0) {
+  /**
+   * 声明里**显式写 0** = 这个工具不设外层超时。
+   *
+   * 为什么要留这个口子：有些工具天生该一直等着 —— 最典型的是模型停下来问用户
+   * （plugins/ask-user）。给它一个「够长」的数字只是把刀往后挪：人真去泡杯茶，照样被掐，
+   * 而且被掐的那一刻用户什么都没察觉（界面上那张问题卡片还在，答案却无处可送）。
+   * 这类调用的收束只该由两件事决定：用户按停（AbortSignal），或者工具自己收工。
+   *
+   * 不写（undefined）仍然落回下面的默认分量 —— 老插件一个字不用改。
+   */
+  const declaredTimeout = pluginMatch?.spec?.timeoutMs;
+  const noTimeout = declaredTimeout === 0;
+  let timeoutMs = declaredTimeout;
+  if (!noTimeout && (!timeoutMs || timeoutMs <= 0)) {
     if (name.startsWith('comfyui_')) timeoutMs = 300_000;
     else if (name === 'run_command' || name.startsWith('web_')) timeoutMs = 120_000;
     else timeoutMs = 60_000;
@@ -977,13 +992,16 @@ async function execTool(name: string, args: any, ctx: ToolContext | null, toolCa
     rejectAbort = () => reject(ctrl.signal.reason || new Error('这一轮已停止'));
     ctrl.signal.addEventListener('abort', rejectAbort, { once: true });
   });
-  const timeoutPromise = new Promise<string>((_, reject) => {
-    timer = setTimeout(() => {
-      const error = new Error(`[TOOL_TIMEOUT] 工具 ${name} 执行超时（超过 ${Math.round(timeoutMs! / 1000)} 秒无响应）`);
-      ctrl.abort(error);
-      reject(error);
-    }, timeoutMs);
-  });
+  /** 不设超时就是一个永不落地的 Promise —— 那条竞速只剩「跑完」和「用户按停」两个出口 */
+  const timeoutPromise = noTimeout
+    ? new Promise<string>(() => {})
+    : new Promise<string>((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error(`[TOOL_TIMEOUT] 工具 ${name} 执行超时（超过 ${Math.round(timeoutMs! / 1000)} 秒无响应）`);
+          ctrl.abort(error);
+          reject(error);
+        }, timeoutMs);
+      });
 
   try {
     out = await Promise.race([

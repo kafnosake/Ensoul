@@ -3,7 +3,7 @@ const path = require('path');
 const vm = require('vm');
 const { createHash, randomUUID } = require('crypto');
 
-const WRITE_TOOLS = new Set(['write_file', 'edit', 'restore_backup', 'rollback_recent']);
+const WRITE_TOOLS = new Set(['write_file', 'edit', 'restore_backup', 'rollback_recent', 'patch_apply']);
 const MAX_HOLD = 1_000_000;
 const inFlight = new Set();
 const hash = (text) => text === null ? 'missing' : createHash('sha256').update(text, 'utf8').digest('hex');

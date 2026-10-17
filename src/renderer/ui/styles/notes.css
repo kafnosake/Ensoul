@@ -1,5 +1,5 @@
 /* notes.css —— 重点标记、右边缘的便签刻度、悬停摊开的那张卡
-   便签的数据来自 .ensoul/state/notes.json（plugins/notes 写的），界面只负责显示。 */
+   便签的数据来自 .ensoul/state/notes/<面板 id>.json（plugins/notes 写的），界面只负责显示。 */
 
 /* ---------------------------------------------------------------- 便签与重点标记 */
 
@@ -34,8 +34,11 @@
   z-index: 6;
   display: flex;
   flex-direction: column;
-  /* **贴底排**：最新的一条永远在最下面，条数变了也不从中间往外挤 */
-  justify-content: flex-end;
+  /* **居中**：整条带子在消息区里上下居中，不贴底也不贴顶。
+     这不改排序 —— 格子照旧旧的在上、新的在下，越往下越新；变的只是带子整体的位置。
+     居中不会失控：格数有硬上限（NoteGauge 的 VISIBLE，超出的收进顶上那格「还有 N 条」），
+     带子最高就那么一截（一格 2px + 缝 3px × 30 来格 ≈ 150px）。 */
+  justify-content: center;
   /* 一格 2px + 缝 3px —— 一屏能摆下三十来格，而每一格仍是"细刻痕"的样子 */
   gap: 3px;
   width: 22px;

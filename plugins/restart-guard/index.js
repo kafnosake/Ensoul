@@ -137,11 +137,9 @@ function flatten(raw, base) {
 /** 每块面板、每一轮都摆在模型眼前的规矩 —— 不靠拦，靠它一开始就知道 */
 function restartRules() {
   return [
-    t('【重启 / 启动本应用，只有这几条路】'),
-    t('· 让改动生效：调 restart_project（它先构建，再在界面上摆一条确认请求，用户点头才真做）。'),
-    t('· 只是想把应用拉起来：start_project；想让它停下：stop_project。'),
-    t('· 不要用 run_command / job_start 去杀或拉起本应用本体（taskkill、Stop-Process、schtasks、start ensoul.exe、scripts/launch.js 都一样）—— 那些命令起的进程会被连坐收走，你看着像"发了"，实际一行日志都没有，用户只会看到"你没发"。'),
-    t('· 改了 src/main 必须真重启；只改界面（src/renderer、src/shared、插件里的 panel.tsx）不用重启，界面会自动重建上屏。'),
+    t('【生命周期管理】'),
+    t('· 改动主进程生效：调用 restart_project。'),
+    t('· 服务拉起与终止：调用 start_project / stop_project。'),
   ].join('\n');
 }
 

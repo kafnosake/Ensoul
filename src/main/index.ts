@@ -10,18 +10,18 @@ import * as path from 'path';
 import type { ChatMessage, ChatStats, DockTarget, FloatingWindow, LiveTask, ModelConfig, OutboxItem, Panel, PanelMode, PanelRevision, RetryView } from '../shared/types';
 import { MAIN_HOST } from '../shared/types';
 import { ChatResponseBuffer } from '../shared/chat-responses';
-import { expandChatResponses } from '../shared/chat-history';
+import { expandChatResponses, normalizeAnswerText } from '../shared/chat-history';
 import appIdentity from '../shared/app-identity.json';
 import { planPluginPack } from '../shared/ensoulpack';
 import { matchPanelAvatarFamily } from '../shared/panel-avatars';
 import { executeRunCode, getRunCodeToolSpec, renderToolFind, renderToolsSdk } from './ptc';
 import { commitPromptBaseline, consumePromptDeltas } from './prompt-composer';
-import { askOnce, buildPanelSnapshot, buildSystemPrompt, extractEditProposal, failLabel, modeSection, runAgent, summarizeSession, conversationForSummary, type SteerItem } from './chat-core';
-import { archiveToolResult, describeTool, runTool, runToolConfirmed, setExtensions, toolsForPanel } from './agent';
+import { askOnce, buildPanelSnapshot, buildSystemPrompt, buildTurnReferences, canonicalToolArgs, extractEditProposal, failLabel, modeSection, runAgent, shapeToolResult, splitPanelSnapshot, summarizeSession, conversationForSummary, type SteerItem } from './chat-core';
+import { describeTool, runTool, runToolConfirmed, setExtensions, toolsForPanel } from './agent';
 import { readSkill, scanSkills, skillRoots, skillsDir } from './skills';
 import { loadPlugins, preparePluginStorage, pluginsDir, runSettingsAction, setAskHandler, setChatClearer, setChatCompressor, setChatSender, setChatSteerer, setLiveSink, setRunningProbe, setChatEnqueuer, setModelAsker, setModelCatalog, setPluginParam, setProviderUpserter, setCredentialReader, setCredentialWriter, setRefresher, setToolLister, settingsSectionView, settingsSections, type AskSpec, type SlashCommandReg, type StatusItem } from './plugins';
 import type { PluginPrompt, ToolContext } from './plugins';
-import { emitReasoning } from './plugins';
+import { emitReasoning, setContextUsageSource } from './plugins';
 import { describeLayout } from './layout-report';
 import { store } from './store';
 import { migrateUserData, migrateWorkspaceState } from './migrate';
@@ -152,7 +152,7 @@ interface PendingAsk {
   /** 用户已经选了"等所有会话结束"——请求留在原地，核心替它盯着时机 */
   armed?: boolean;
   /**
-   * 一批结构化的问题（dsh 的 ask_user_question 同形）——给界面画问题表单用。
+   * 一批结构化的问题 —— 给界面画问题表单用。
    *
    * 有它 = 这是一条"阻塞式问答"：模型正卡在一次工具调用上等人回答，
    * 所以用户提交答案时这一轮**本来就还在跑** —— 底下那个 running 守卫要放行它。
@@ -343,13 +343,14 @@ const CACHE_IDLE_MS = 4 * 60 * 60_000;
  * 两个门槛都按**那一轮模型自己的窗口**算，见下面 compactAt 那几行。
  */
 
-/** 粗估 token：中文约一个字一个，代码/英文约四字符一个，取三折中；结构化工具存档（toolCalls）同样要计入 */
+/** 粗估 token：中文约一个字一个，代码/英文约四字符一个，取三折中；结构化工具存档（toolCalls）同样要计入。
+ *  带 `sent` 的消息（运行时快照、参考件那一类）模型看到的是 `sent` 那一份，按它算才准。 */
 const estimateTokens = (msgs: ChatMessage[]) =>
   Math.round(
     msgs.reduce(
       (n, m) =>
         n
-        + (m.content?.length ?? 0) / 3
+        + (m.sent ?? m.content)?.length / 3
         + (m.toolCalls?.reduce((t, c) => t + c.args.length + c.result.length, 0) ?? 0) / 3
         + (m.role === 'user' ? (m.images?.length ?? 0) : 0) * 800,
       0,
@@ -1483,13 +1484,13 @@ function registerIpc() {
     return store.panelMode(String(panelId || ''));
   });
   /** 换工作区：写进 store、换 fsapi 的根、把新状态推给所有窗口 */
-  const openWorkspace = (dir: string) => {
+  const openWorkspace = async (dir: string) => {
     if (running.size) throw new Error('请先结束当前任务，再切换工作区');
     const previousRoot = workspaceRoot();
     try {
       migrateWorkspaceState(dir);
       preparePluginStorage(dir);
-      const migration = migrateRuntimeData(dir);
+      const migration = await migrateRuntimeData(dir);
       if (migration.errors.length) throw new Error(`应用数据迁移失败：${migration.errors.map(item => `${item.source}: ${item.error}`).join('; ')}`);
     } catch (error) {
       preparePluginStorage(previousRoot);
@@ -1508,7 +1509,7 @@ function registerIpc() {
     return root;
   };
 
-  ipcMain.handle('settings:setWorkspace', (_e, dir: string) => openWorkspace(dir));
+  ipcMain.handle('settings:setWorkspace', async (_e, dir: string) => openWorkspace(dir));
 
   /** 弹系统目录选择器挑一个工作区 */
   ipcMain.handle('ws:pick', async () => {
@@ -1519,7 +1520,7 @@ function registerIpc() {
   });
 
   /** 切回最近开过的某个工作区 */
-  ipcMain.handle('ws:open', (_e, dir: string) => openWorkspace(dir));
+  ipcMain.handle('ws:open', async (_e, dir: string) => openWorkspace(dir));
   /**
    * **这份软件自己住在哪个目录** + 现在的工作区是哪条 —— 界面拿它两相一比，
    * 就能说清"为什么这一页是空的"（多半是工作区指着别处）。
@@ -1650,13 +1651,33 @@ function registerIpc() {
         notes,
       );
       // 原文整段挪进隐性存档，对话区清零 —— 下一轮只有摘要 + 新说的话，分支就是从这儿起的
+      const at = Date.now();
       commitPromptBaseline(p);
+      const wiped = p.chat.length;
       p.compact = {
         summary,
         upTo: 0,
-        at: Date.now(),
+        at,
         archive: [...(p.compact?.archive ?? []), ...p.chat],
+        // 这一压把对话区整个清空，没有"压缩点前面那条消息"可锚 —— 标记落在对话区最上面。
+        marks: [...(p.compact?.marks ?? []), { id: W.newId('cm'), at, count: wiped }].slice(-20),
       };
+      /**
+       * 时间戳一起挪到**压缩这一刻** —— 这一压等于这条路到这儿翻了篇、另起一条分支，
+       * 面板上"最近一次说话"就该是压缩的时间点。
+       *
+       * 不挪的话时间会停在压缩前：侧栏那一行只认"送信 / 回信"两条**真实消息**
+       * （见 SidebarMonitor 的 realAt，tool 记录不算数），而压缩之后对话区恰好
+       * 一条都不剩 —— replyAt / askingAt / newSessionAt 全是 0，只好回落到
+       * createdAt（面板创建那会儿），卡片看着就像"刚压缩完、时间却没动"。
+       * compact.at 记着压缩时刻也没用：面板递到界面上时它属于被削掉的正文。
+       *
+       * 这一组字段跟 histconv 的 /new、dispatch 与 eschat 的过期清空**完全同一个**，
+       * 别再各写各的。
+       */
+      p.createdAt = at;
+      (p as any).updatedAt = at;
+      (p as any).newSessionAt = at;
       p.chat = [];
       store.save();
       refresh();
@@ -1984,7 +2005,7 @@ function registerIpc() {
    * 它没在跑 → 队列摆上了也不会自己动，所以这里**顺手推它一把**：
    * 用户的意思很清楚（这句话要发出去），没必要让他再按一次。
    */
-  const enqueue = (panelId: string, text: string, images?: string[]) => {
+  const enqueue = (panelId: string, text: string, images?: string[], opts?: { noKick?: boolean }) => {
     const box = outboxOf(panelId);
     if (!box) return { ok: false, error: t('面板不存在') };
     const shots = (Array.isArray(images) ? images : []).map(keepShot).filter(Boolean);
@@ -2000,7 +2021,7 @@ function registerIpc() {
     // 没在跑：队首那条就是这一句，直接发出去（出队再发，理由同接力那处）。
     // **但挂着重启时不推这一下**：用户按下回车的那个时刻它的意思就是"这句等重启之后再说"，
     // 当场发出去等于把这句话塞进一个马上要被收掉的进程里。留着，等新进程开机接力。
-    if (!running.has(panelId) && !isRestartArmed()) {
+    if (!opts?.noKick && !running.has(panelId) && !isRestartArmed()) {
       const next = box.find((item) => !item.taskId || item.taskWorkspace === path.resolve(workspaceRoot()));
       if (next) {
         if (!next.taskId) box.splice(box.indexOf(next), 1);
@@ -2049,6 +2070,26 @@ function registerIpc() {
     if (!list.length) return [];
     steerBox.delete(panelId);
     steerPush(panelId);
+    return list;
+  };
+
+  /**
+   * **收摊**：这一轮的插话盒子里还有没领走的，统一处置 —— 一句话都不许丢。
+   *
+   * 以前这里分两套做法，结果用户的话被扔掉、只留一句「插话没能送进去」：
+   * 他明明已经说出口了，凭什么要他再打一遍？现在只有一个动作 —— **重投**。
+   * 系统报的状态变更（system）和用户插的话走同一条路，区别只在回执怎么写。
+   *
+   * 两个调用点都靠它兜底：
+   *   · 一轮结束（含被中止）：还留在盒子里的，说明它来不及读了 —— 重投。
+   *   · 下一轮开跑前：接住任何漏网的，而不是静默清空。
+   *
+   * 重投**不催它**（noKick）：用户刚按的「停止」得算数 —— 这句该乖乖排在队列里
+   * 等他按（或等下一轮接力时接上），不能当场又自己动起来。
+   */
+  const settleSteering = (panelId: string): SteerItem[] => {
+    const list = takeSteering(panelId);
+    for (const item of list) enqueue(panelId, item.text, item.images, { noKick: true });
     return list;
   };
 
@@ -3147,13 +3188,15 @@ function registerIpc() {
     // 上一轮要是留下个没收拾干净的容器，新的一轮从干净的开始
     liveClear(panelId);
     /**
-     * 上一轮要是还有没领走的插话，到这儿就作废了 —— 它针对的是上一轮那一次跑动。
-     * 不扔的话，新的一轮一开跑就会被上一轮的旧插话糊一脸。
+     * 上一轮要是还有没领走的插话，到这儿**收进队列**，而不是抹掉。
+     *
+     * 以前这里是 delete —— 中止之后再发一句新话，那句插话就被无声吃掉，
+     * 连「没能送进去」的回执都没有。现在走收摊那条统一的路：重投、不催。
+     *
+     * 为什么不直接塞进这一轮的上下文：它针对的是上一轮那一次跑动，糊到这一轮
+     * 脸上就是答非所问。当一句新的请求排在队里，语义才是对的。
      */
-    if (steerBox.has(panelId)) {
-      steerBox.delete(panelId);
-      steerPush(panelId);
-    }
+    settleSteering(panelId);
     panel.chat.push(userMsg);
     store.save();
     emit('chat:message', { panelId, message: userMsg });
@@ -3236,18 +3279,32 @@ function registerIpc() {
     /**
      * 上下文前缀与环境注入：
      * 面板此刻的实时事实（标题/种类/规格/外观）与插件每轮动态（如 todo 清单、git 状态、定时提醒等）
-     * 作为【运行时快照】附加在当前轮用户消息头部。
-     * 由于处于当前请求的最末尾，历史对话的 KV 前缀缓存不受任何影响。
-     * 工作模式（【工作模式：xx】）跟它同一段 —— 同理，切模式也只有这一小段要重算。
+     * 由 syncContext 追加进历史（只在内容变了的时候发一条）；**时钟那一行留在本轮消息里** ——
+     * 它是唯一真的每轮都变的东西，40 来个字，认了。
+     * 工作模式（【工作模式：xx】）也留在本轮：切模式只重算这一小段。
      */
     const promptDeltaNotice = consumePromptDeltas(panel);
     const extras = pluginExtras(ctx, extensions.prompts);
     const facts = buildPanelSnapshot(panel, describePlace(panelId));
-    const envBlock = [facts, extras].filter(Boolean).join('\n\n');
-    // 工作模式接在**本轮消息尾部**（跟快照同一段），不进系统提示 —— 它是会变的东西：
+    // 快照分三段走：**系统时间**（每轮都变）和**会话编号 ID**（每个新会话都变）留本轮消息里，
+    // 其余（标题/种类/位置/外观/规格 + 插件动态）是跨会话共享的，走 syncContext 追加进历史。
+    // 实测：ID 那行要是留在共享段里，新会话首轮要白漏 2,826 字节（命中率 ~77%，DSH 是 98%）。
+    const nl = facts.indexOf('\n');
+    const timeLine = nl >= 0 ? facts.slice(0, nl) : facts;
+    const { shared: factBody, unique: idLine } = splitPanelSnapshot(nl >= 0 ? facts.slice(nl + 1) : '');
+    /**
+     * 插件动态（便签、界面自动刷新、目标目录这类）**跟面板事实一起走 syncContext**。
+     *
+     * 为什么不放本轮尾巴：尾巴是"每轮都必然未命中"的位置，放那儿就是**每轮**替它付一次全价
+     * （这个工作区实测 2,600 字）。放 ctx 只在**它变的时候**付一次 —— 实测它大约隔一两轮才变，
+     * 稳的那几轮直接命中。两条路的代价：尾巴 = 每轮 2,600 字未命中；ctx = 每次变化 2,600 字未命中。
+     * 所以只有"每轮都在变"时才该放尾巴，而这几位是"时而变"。
+     */
+    const ctxBody = [factBody, extras].filter(Boolean).join('\n\n');
+    // 工作模式接在**本轮消息尾部**，不进系统提示 —— 它是会变的东西：
     // 进了系统提示，每切一次模式就要把整段历史重算一遍；拼在尾部就只重算这一小段。
     const modeSec = modeSection(panel.mode);
-    let userTurn = [modeSec, envBlock ? '【运行时快照】\n' + envBlock : '', forModel].filter(Boolean).join('\n\n');
+    let userTurn = [modeSec, timeLine, idLine, forModel].filter(Boolean).join('\n\n');
     if (promptDeltaNotice) {
       userTurn = `${promptDeltaNotice}\n\n${userTurn}`;
     }
@@ -3344,6 +3401,12 @@ function registerIpc() {
             // 手动压缩留下的隐性存档不许被自动压缩顺手抹掉 —— 那个字段不参与这里的计算，
             // 但它属于"面板的历史"，重建这个对象时得原样带上。
             archive: panel.compact?.archive,
+            // 压缩点留一枚标记：往前那一段已经被摘要顶替了，界面上得有个交代（见 Panel.compact.marks）。
+            // 锚在**最后一条被压掉的消息**后面 —— 那条一定还在 chat 里（原文一条没删）。
+            marks: [
+              ...(panel.compact?.marks ?? []),
+              { id: W.newId('cm'), afterId: older[older.length - 1]?.id, at: Date.now(), count: older.length },
+            ].slice(-20),
           };
           store.save();
         } catch (e: any) {
@@ -3364,18 +3427,56 @@ function registerIpc() {
     const baseTools = toolsForPanel(panel);
     const ptcSdkDoc = isPtc ? renderToolsSdk(baseTools) : undefined;
 
+    /**
+     * 会变的东西**进历史、按需追加**（工具/技能清单、面板与插件上下文）。
+     *
+     * 三条路都试过，只有这条对：
+     *   · 放系统提示里 → 一变就把后面整段历史缓存打光（改一次插件，下一回合命中率 8.5%）；
+     *   · 每轮拼在本轮消息尾部 → 尾部永远是"新内容"，等于每轮全价重发：参考件两万多字
+     *     曾把命中率从 95%+ 打到 53~79%，面板事实+插件动态那八百多字也在每轮白漏；
+     *   · 追加：内容变了才往后追一条（进历史、不上屏），前面整段照旧命中，不变一个字不发。
+     */
+    const turnRefs = buildTurnReferences(
+      panel,
+      disabledSkills,
+      // 插件自带的面板类型清单现取。停用的不算 —— 它的面板这会儿也真的不在。
+      extensions.info
+        .filter((p) => p.enabled && p.panel)
+        .map((p) => p.panel as { kind: string; label?: string; hint?: string }),
+      ptcSdkDoc,
+    );
+    const syncContext = (flag: 'refs' | 'ctx', text: string, label: string): void => {
+      if (!text) return;
+      const last = [...panel.chat].reverse().find((m) => m[flag]);
+      if (last?.sent === text) return;
+      const msg: ChatMessage = {
+        id: W.newId('m'),
+        role: 'user',
+        // 进历史的那段正文（模型看的）是 sent；content 只留一句给人看/给摘要看的说明
+        content: label,
+        sent: text,
+        createdAt: Date.now(),
+        silent: true,
+      };
+      msg[flag] = true;
+      // 插在本轮用户消息**之前**：模型先看到"有哪些工具/技能、面板什么样"，再看到用户要他干什么
+      const at = panel.chat.indexOf(userMsg);
+      if (at < 0) panel.chat.push(msg);
+      else panel.chat.splice(at, 0, msg);
+      store.save();
+    };
+    syncContext('refs', turnRefs, t('（本轮可用工具与技能清单）'));
+    syncContext('ctx', ctxBody, t('（面板与插件上下文）'));
+    // `sent` 记的是本轮**实发的开场正文**（模式 + 系统时间 + 用户原话），
+    // 参考件与面板上下文不在这里 —— 它们在上面那两条历史消息里。
+    userMsg.sent = userTurn;
+    store.save();
+
     const apiMessages: any[] = [
       {
         role: 'system',
-        content: buildSystemPrompt(
-          panel,
-          disabledSkills,
-          // 插件自带的面板类型清单现取。停用的不算 —— 它的面板这会儿也真的不在。
-          extensions.info
-            .filter((p) => p.enabled && p.panel)
-            .map((p) => p.panel as { kind: string; label?: string; hint?: string }),
-          ptcSdkDoc,
-        ),
+        // 稳定头：一个字节都不随插件/技能/工具的变化而变（见 chat-core 的缓存纪律）
+        content: buildSystemPrompt(panel),
       },
       // 摘要：每涨满一个窗口才会变一次，放在前面当稳定前缀的一部分
       ...(panel.compact?.summary ? [{ role: 'system', content: `【前情摘要】\n${panel.compact.summary}` }] : []),
@@ -3389,11 +3490,10 @@ function registerIpc() {
         .filter((m) => m.role !== 'tool')
         .flatMap((m): any[] => {
           // 正文里若混着手写的 [那一轮的动作]（早先模型用文字画的假记录），先刮掉 ——
-          // 留着就是给它继续模仿的样板。逐条消息确定性地刮，同一条每轮刮出一样的字，
-          // 前缀照旧只追加，缓存不受影响。
-          const text = (m.content ?? '')
-            .replace(/\n*\[那一轮的动作\][^\n]*(?:\n[-•][^\n]*)*/g, '')
-            .replace(/\n+$/, '');
+          // 留着就是给它继续模仿的样板。**实发那条走的是同一个函数**（runAgent 里
+          // normalizeAnswerText），所以两边同一个字节；从前只有这里刮，
+          // 实发用的是模型原样吐的字，回放出来的前缀就从这条起对不上。
+          const text = normalizeAnswerText(m.content ?? '');
           if (m.role === 'assistant' && m.toolCalls?.length) {
             return [
               {
@@ -3405,7 +3505,7 @@ function registerIpc() {
                   function: { name: c.name, arguments: c.args },
                 })),
               },
-              // 存的时候已截到前 1200 字，这里原样回灌（工具输出的完整正文不进历史）
+              // **原样回灌**：存档存的就是当时实发出去的那一份（见 types.ts 的 toolCalls 注释）
               ...m.toolCalls.map((c) => ({ role: 'tool', tool_call_id: c.id, content: c.result })),
               ...(!m.responseOf && text ? [{ role: 'assistant', content: text }] : []),
             ];
@@ -3413,12 +3513,17 @@ function registerIpc() {
           return [
             asApiMessage(
               m.role,
-              m.role === 'assistant' && m.actions?.length
-                ? `${text}\n\n[那一轮的动作] ${m.actions
-                    .slice(-6)
-                    .map((a) => (a.trim().length > 60 ? `- ${a.trim().slice(0, 60)}` : `- ${a}`))
-                    .join('\n')}`
-                : text,
+              // **用户那条用 sent**：当时真正发出去的是"运行时快照 + 插件动态 + 模式 + 原话"，
+              // content 只有原话。回放 content 就等于每回合替上一回合再全价读一遍
+              // （快照里还带秒级时间，回放它也永远对不上）。
+              m.role === 'user' && typeof m.sent === 'string'
+                ? m.sent
+                : m.role === 'assistant' && m.actions?.length
+                  ? `${text}\n\n[那一轮的动作] ${m.actions
+                      .slice(-6)
+                      .map((a) => (a.trim().length > 60 ? `- ${a.trim().slice(0, 60)}` : `- ${a}`))
+                      .join('\n')}`
+                  : text,
               // **只把用户发的图回灌给模型**。助手那条消息上的图是给它自己生的、或者
               // send_image 往外发的 —— 那是"给用户看的"，不是给模型看的输入：
               // 一张 1MB 的 PNG 转成 base64 就是几十万字符，每轮重发一遍能把上下文顶爆，
@@ -3453,27 +3558,40 @@ function registerIpc() {
      * 都跟着重发一遍；一轮里写五个文件就是十万字/轮的固定开销，而且界面看不出来 ——
      * 动作记录显示的是"写入了哪个文件"，不显示参数。
      *
-     * 截断只影响回放给模型的这一份：文件早写进工作区了，要原文用 read_file。
-     * 截法必须**确定性**（同一份 args 每轮截出一模一样的字），前缀照旧只追加，缓存不受伤。
+     * **口径只有一个**（见 chat-core 的 canonicalToolArgs / shapeToolResult）：
+     * 现在这里不再自己截，抄的是实发出去的那一份 —— 从前实发一套、存档另一套，
+     * 两边差着字节，下一回合回放时前缀就从那里断开、整段全价重算。
      */
-    const ARGS_MAX = 1_200;
-    const clipArgs = (a: unknown) => {
-      const s = typeof a === 'string' ? a : JSON.stringify(a ?? {});
-      if (s.length <= ARGS_MAX) return s;
-      return `${s.slice(0, ARGS_MAX)}…（这个参数共 ${s.length} 字，太长没全存 —— 别照着这里往下猜，要原文自己 read_file）`;
-    };
+    const clipArgs = (a: unknown) => canonicalToolArgs(a);
 
     /**
-     * result 同理，但留**头 + 尾**：报错、结论、最终输出几乎都在尾部，
-     * 只留前 1200 字常把 `build_project` 的报错整段切掉 —— 下一轮模型就"忘了"错在哪，
-     * 于是重跑一遍。头留 800 认住命令本身，尾留 400 接住结局。
+     * result 同理：**存的就是实发出去的那一份**。
+     *
+     * 从前这里走 archiveToolResult（头 800 + 尾 400 + 落盘说明），而实发走的是
+     * pruneToolText（头 4096 + 尾 1024）—— 同一份结果在两处被截成不同的字，
+     * 每个回合都要替上一回合的全部工具输出再付一次全价。现在两边同一份。
      */
-    const clipResult = (name: string, raw: string) => archiveToolResult(name, raw, ctx);
+    const clipResult = (name: string, raw: string) => shapeToolResult(name, raw);
 
     const responseBuffer = new ChatResponseBuffer(assistant);
 
-    /** agent 干活时，每调一次工具就在对话里留一条记录 */
-    const noteTool = (name: string, args: any, result: string) => {
+    /**
+     * agent 干活时，每调一次工具就在对话里留一条记录。
+     *
+     * `sent` 是**实发出去的那一份**（工具结果的规范化文本、参数的规范化串、模型给的
+     * tool_call_id）：结构化存档照它写，下一回合才回放得出一模一样的前缀。
+     *
+     * `structured: false` 给的是 **run_code 里的子调用**（`await tools.x()`）：
+     * 它们是"一次调用里的动作"，只在界面上露一行，**不进结构化存档** ——
+     * 记进去就成了"模型当时调了 4 个工具"的假历史：回放出来的消息条数、工具名、
+     * id 全都不是模型见过的样子，缓存和语义一起坏（一次 run_code 曾被回放成 4 条调用）。
+     */
+    const noteTool = (
+      name: string,
+      args: any,
+      result: string,
+      sent?: { id?: string; args?: string; text?: string; structured?: boolean },
+    ) => {
       const head = describeTool(name, args);
       // 崩了之后接手的人要知道「上一步在干什么」
       lastStep = head;
@@ -3481,16 +3599,16 @@ function registerIpc() {
       const first = String(result).split('\n').find((l) => l.trim()) ?? '';
       // 成功的步骤只留"做了什么"，出错的才带上结果的第一句 —— 这份记录每轮都要重发一遍
       actions.push(BAD_STEP.test(first.trim()) ? `${head} ⚠ ${first.trim().slice(0, 100)}` : head);
-      // 结构化存档（下一轮按真 tool_calls 回放）：args / result 都经 clipArgs / clipResult 封顶 ——
-      // 结果只留前 1200 字 —— 记住"干成了什么、seed/路径在哪"就够，别每轮回灌一整份工具输出。
-      const call = {
-        id: W.newId('c'),
-        name,
-        args: clipArgs(args),
-        result: clipResult(name, String(result)),
-      };
-      toolCalls.push(call);
-      if (responseBuffer.current) (responseBuffer.current.toolCalls ??= []).push(call);
+      if (sent?.structured !== false) {
+        const call = {
+          id: sent?.id || W.newId('c'),
+          name,
+          args: sent?.args ?? clipArgs(args),
+          result: sent?.text ?? clipResult(name, String(result)),
+        };
+        toolCalls.push(call);
+        if (responseBuffer.current) (responseBuffer.current.toolCalls ??= []).push(call);
+      }
       const note: ChatMessage = {
         id: W.newId('m'),
         role: 'tool',
@@ -3611,7 +3729,7 @@ function registerIpc() {
           const runRes = await executeRunCode(
             args?.code || '',
             (subName, subArgs, signal) => runOne(subName, subArgs, { ...ctx, signal }),
-            (subName, subArgs, subOut) => noteTool(subName, subArgs, subOut),
+            (subName, subArgs, subOut) => noteTool(subName, subArgs, subOut, { structured: false }),
             50,
             allowedTools,
             ctrl.signal,
@@ -3631,7 +3749,9 @@ function registerIpc() {
           onResponseStart: startResponse,
           onResponseEnd: ({ content, hasTools }) => {
             flushDelta();
-            responseBuffer.seal(content, hasTools);
+            // 存档存的和实发的是**同一份**（normalizeAnswerText：runAgent 那边 push 进
+            // msgs 的也是它），否则回放出来的前缀从这条起对不上
+            responseBuffer.seal(normalizeAnswerText(content), hasTools);
             if (hasTools) pushProgress();
           },
           onText: (d) => {
@@ -3703,7 +3823,7 @@ function registerIpc() {
            * 为什么非得落一条：不落的话，用户插的那句话在界面上就消失了 ——
            * 他只会看到模型回了一句莫名其妙调整过的答复，不知道自己的话生效了没有。
            */
-          onSteering: (it) => {
+          onSteering: (it, body) => {
             const note: ChatMessage = {
               id: W.newId('m'),
               role: 'user',
@@ -3711,6 +3831,9 @@ function registerIpc() {
               createdAt: Date.now(),
               images: it.images,
               steer: true,
+              // 实发的那段带一句"这是你干活中途插进来的话"的提示语 —— 回放要照它，
+              // 不然前缀从那一条起对不上（见 types.ts 的 sent）
+              sent: body,
             };
             store.panel(panelId)?.chat.push(note);
             store.save();
@@ -3778,6 +3901,9 @@ function registerIpc() {
     if (failCode) assistant.failCode = failCode;
 
     const { clean, proposal } = extractEditProposal(assistant.content);
+    if (proposal?.spec) {
+      delete proposal.spec.actions;
+    }
     assistant.content = clean || assistant.content;
     for (const response of responseBuffer.responses) {
       const parsed = extractEditProposal(response.content);
@@ -3787,6 +3913,17 @@ function registerIpc() {
       assistant.displayContent = responseBuffer.current.phase === 'progress' ? '' : responseBuffer.current.content;
     }
     assistant.edited = Boolean(proposal) && !failed;
+    // 正文里的标记已经剥掉了，这里留一份**账**：渲染层靠它画出"改了什么、为什么"。
+    // 不留的话用户只看见面板自己变了 —— 原因一个字都看不到。
+    if (proposal && !failed) {
+      assistant.panelEdit = {
+        title: typeof proposal.title === 'string' ? proposal.title : undefined,
+        kind: typeof proposal.kind === 'string' ? proposal.kind : undefined,
+        look: proposal.look,
+        spec: proposal.spec,
+        rationale: typeof proposal.rationale === 'string' ? proposal.rationale : undefined,
+      };
+    }
     assistant.actions = actions.length ? actions : undefined;
     assistant.toolCalls = toolCalls.length ? toolCalls : undefined;
 
@@ -3818,7 +3955,13 @@ function registerIpc() {
       if (typeof proposal.kind === 'string' && proposal.kind) live.kind = proposal.kind;
       if (typeof proposal.title === 'string' && proposal.title) live.title = proposal.title;
       if (proposal.look) live.look = { ...live.look, ...proposal.look };
-      if (proposal.spec) live.spec = proposal.spec;
+      if (proposal.spec) {
+        const { actions: _discarded, ...cleanSpec } = proposal.spec;
+        live.spec = { ...cleanSpec, actions: [] };
+      }
+      if (live.kind === 'chat' && live.spec?.actions?.length) {
+        live.spec.actions = [];
+      }
       if (proposal.chatSide === 'left' || proposal.chatSide === 'right' || proposal.chatSide === null) {
         if (proposal.chatSide === null) delete live.chatSide;
         else live.chatSide = proposal.chatSide;
@@ -3912,28 +4055,23 @@ function registerIpc() {
 
     /**
      * 这一轮还有没领走的插话吗 —— 有就说明它是**被中断**收场的（正常路径上
-     * 边界二号已经把插话都领走了）。它针对的是刚结束的这一轮，留着只会
-     * 糊到下一轮脸上，所以到这儿就作废，并且说一声，别让它无声消失。
+     * 边界二号已经把插话都领走了）。
+     *
+     * **一句话都不丢**：统统重投回队列。用户的话和系统报的状态变更走同一条路，
+     * 区别只在回执怎么写 —— 用户看得见的是「已接回队列」，而不是干巴巴一句
+     * 「没能送进去」（那句话的潜台词是要他再打一遍，凭什么）。
+     *
+     * 重投是不催的（见 settleSteering）：用户刚按的「停止」得算数，这一句老老实实
+     * 排在队里等他按、或者等下一轮接力时自动接上；真出错了也会在下一轮告诉他。
      */
-    const leftover = takeSteering(panelId);
-    /**
-     * 没领走的分两种，处理方式正好相反：
-     *   · 系统报的状态变更（system）—— 重投。它不是「说过就算了」的话，是事实，
-     *     而且正好落在「最后一次工具调用之后」这个常见位置，丢了就真丢了。
-     *   · 用户插的话 —— 保持原样作废并说一声（他明明说了，不能假装没看见）。
-     */
-    const sysDropped = leftover.filter((i) => i.system);
-    for (const it of sysDropped) {
-      // 重投走队列：这一轮已经关账了，等它当新的一轮发出去
-      enqueue(panelId, it.text);
-    }
+    const leftover = settleSteering(panelId);
     const userLeft = leftover.filter((i) => !i.system);
     if (userLeft.length) {
       const note: ChatMessage = {
         id: W.newId('m'),
         role: 'tool',
-        content: `**插话没能送进去**（这一轮已经结束了）：${userLeft.map((i) => `「${i.text.slice(0, 80)}」`).join('、')}`
-          + '\n\n想让它接着做，直接把这句话发出去就行。',
+        content: `**你插的话已经接回队列了**（这一轮跑完了才轮到它）：${userLeft.map((i) => `「${i.text.slice(0, 80)}」`).join('、')}`
+          + '\n\n它现在是「待发」那一条 —— 接着发出去就行，不用重新打。',
         createdAt: Date.now(),
       };
       store.panel(panelId)?.chat.push(note);
@@ -3973,6 +4111,9 @@ function registerIpc() {
     return outcome({ ok: !failed, content: assistant.content, edited: Boolean(proposal) && !failed,
       ...(failed ? { error: assistant.content, endReason } : {}) });
     } catch (error: any) {
+      // 兜底：**非正常路径也别丢话**。走到这儿说明不是"跑完/被中止"那种收场，
+      // 那两处各自都会收摊；这里是意外抛错 —— 盒子里的插话同样得重投回队列。
+      settleSteering(panelId);
       turnEnd(panelId, ctrl.signal.aborted ? 'stopped' : 'failed');
       store.setLiveStats(panelId, null);
       store.setLiveTurn(panelId, null);
@@ -4040,6 +4181,38 @@ function registerIpc() {
     const cfg = want ? { ...want, think: store.thinkFor(panelId) } : mine;
     return askOnce(cfg, spec.system || '', spec.user, { maxTokens: spec.maxTokens, signal: spec.signal });
   });
+  /**
+   * 一块面板**此刻的上下文占用**：要送出去的 token / 这个模型的窗口。
+   *
+   * 口径必须和**压缩判定**那条线是同一份：同一套 estimateTokens、同一个
+   * contextWindowOf。分开算两遍的话，界面上会显示"才 60%"，而实际上这一轮
+   * 已经开始压缩了 —— 那两个数一旦打架，用户就再也不信这个指示器。
+   *
+   * 已压掉的那一段不再送出去，所以从 upTo 往后数；摘要本身很短，一并按字数折进来。
+   */
+  const contextUsageOf = (panelId: string): { used: number; window: number } | null => {
+    const p = store.panel(panelId);
+    if (!p) return null;
+    const windowTokens = contextTokensOf(store.modelForPanel(panelId));
+    const upTo = p.compact?.upTo ?? 0;
+    /*
+     * `p.chat` 可能是 undefined —— 面板正文是**按需从磁盘读**的，读失败（文件被写坏、
+     * 或者那一块刚建出来还没落过盘）时 store 里只剩骨架，骨架里没有 chat。
+     *
+     * 这件事的后果比"少显示一个数字"大得多：这个函数挂在 store.publicState() 上，
+     * 而 publicState 是**每次广播和每条 ws:state** 都要走的路。它一抛，整块界面
+     * 就拿不到状态，插件日志里是一串 "Error occurred in handler for 'ws:state'"。
+     * 所以这里必须容错：没有正文就当空对话。
+     */
+    const pending = (p.chat ?? []).slice(upTo).filter((m) => m.role !== 'tool');
+    const used = estimateTokens(pending) + (p.compact?.summary ? Math.round(p.compact.summary.length / 3) : 0);
+    return { used, window: windowTokens };
+  };
+  // 两条出口：广播（界面自己画那一行）与插件 API（用量类插件也看得到）
+  store.setContextSource(contextUsageOf);
+  setContextUsageSource(contextUsageOf);
+
+
   // 给插件看的模型清单（脱敏）—— 画布那些"过 LLM 用哪个模型"的选择器照它画
   setModelCatalog(() => {
     /**
@@ -4053,7 +4226,7 @@ function registerIpc() {
         key: p.key,
         label: p.label,
         hasKey: p.hasKey,
-        models: (Array.isArray(p.models) ? p.models : []).map((m) => ({ id: m.id, name: m.name })),
+        models: (Array.isArray(p.models) ? p.models : []).map((m) => ({ id: m.id, name: m.name, contextWindow: m.contextWindow })),
       }));
     } catch (e) {
       console.error('[提供方] 清单发不出去：', e);
@@ -4368,7 +4541,7 @@ function dirAlive(dir: string): boolean {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (process.platform === 'darwin') app.dock?.setIcon(path.join(appDir(), 'assets', 'icon.png'));
   // 只在 mac 上装菜单：win 上是空操作，开机这一下完全没影响
   installAppMenu();
@@ -4395,11 +4568,42 @@ app.whenReady().then(() => {
   setFsRoot(store.state.workspace, { trust: true });
   // 工作区里的旧状态目录（.anycode → .ensoul）也顺手搬正
   migrateWorkspaceState(store.state.workspace);
+  /*
+   * ── 先把窗口立起来，再干那些重活 ─────────────────────────────────────
+   *
+   * 为什么顺序变成了这样（真踩出来的）：下面那段数据迁移要按文件比对工作区
+   * `.ensoul` —— 这个工作区是 4.7 万个文件、3.5 GB（语义搜索那套 Python 环境
+   * 加模型就占 3.1 GB）。它原来是**同步**跑在窗口之前，把主进程唯一的这条
+   * 事件循环钉死几十秒；渲染层在这期间拿不到任何 IPC，Chromium 又会把那次
+   * 还没提交的首帧导航掐掉 —— 界面上就是一块黑屏，而且掐掉之后没人重试，
+   * 手动 Ctrl+R 才活。Electron 33 年代这个卡顿还扛得住，44（Chromium 152）
+   * 就扛不住了，于是"升个内核就黑屏"。
+   *
+   * 渲染入口是**同步 root.render()**、不等状态（见 renderer/main.tsx），
+   * 所以窗口一立起来就有壳：面板稍后随状态到齐再长出来，比"什么都没有"强得多。
+   *
+   * 迁移照旧排在插件之前 —— 插件要读的就是迁移刚落下的那份状态，这个先后不能反。
+   */
+  setUnconfinedSource((panelId) => store.panelFullAccess(panelId));
+  registerIpc();
+  windows.onCloseRequest = (windowId) => {
+    // 关掉浮窗 = 它里面的面板归一化回主窗口，不是删除
+    store.attachWindow(windowId);
+    refresh();
+  };
+  // 关掉挂件窗口 = 取消挂件状态、面板摆回停靠树（面板本身不该因为关窗而消失）
+  windows.onWidgetClose = (panelId) => {
+    store.unwidget(panelId);
+    refresh();
+  };
+  windows.createMainWindow();
+  refresh();
+
   const migrationRoots = [...new Set([store.state.workspace, ...(store.state.recentWorkspaces ?? [])])].filter(dirAlive);
   for (const root of migrationRoots) {
     migrateWorkspaceState(root);
     preparePluginStorage(root);
-    const migration = migrateRuntimeData(root);
+    const migration = await migrateRuntimeData(root);
     if (migration.errors.length) {
       const detail = migration.errors.map(item => `${item.source}: ${item.error}`).join('; ');
       if (path.resolve(root) === path.resolve(store.state.workspace)) throw new Error(`应用数据迁移失败：${detail}`);
@@ -4415,14 +4619,12 @@ app.whenReady().then(() => {
   // 上次没选工作区时开过的文件，面板里冻着一句"读取失败" —— 根回来了就重读。
   // 少了这一步，重启之后看到的还是一句早就过期的错，正是"我明明选了工作区"
   store.refreshFailedFiles((rel) => readText(rel));
-  // 完全权限是**按会话**的持久设置：真源在 store（panel.fullAccess），
-  // 这儿只把"问谁"接上 —— fsapi 拿不到 store，也不该拿。
-  setUnconfinedSource((panelId) => store.panelFullAccess(panelId));
+  // 上面两步可能刚改过状态，窗口已经开着，得让界面看见（广播幂等）
+  refresh();
   // 开机就把插件的状态部件接上，不等用户先发一条消息 —— 否则重启后那一排是空的
   const bootExt = loadPlugins(store.disabledPlugins());
   wireStatus(bootExt.status);
   wireCommands(bootExt.commands);
-  registerIpc();
   dumpRpcTable();
   // 电话线：把这张表挂到本机一个端口上。
   //
@@ -4444,18 +4646,6 @@ app.whenReady().then(() => {
       console.error('[电话线] 落盘失败：', e?.message ?? e);
     }
   });
-  windows.onCloseRequest = (windowId) => {
-    // 关掉浮窗 = 它里面的面板归一化回主窗口，不是删除
-    store.attachWindow(windowId);
-    refresh();
-  };
-  // 关掉挂件窗口 = 取消挂件状态、面板摆回停靠树（面板本身不该因为关窗而消失）
-  windows.onWidgetClose = (panelId) => {
-    store.unwidget(panelId);
-    refresh();
-  };
-  windows.createMainWindow();
-  refresh();
 
   // 常驻 + 托盘。**必须放在主窗口建好之后** —— 托盘的「打开」要有个能叫回来的窗口，
   // 而且托盘菜单是这一层唯一的新入口，建不起来就整个退回老行为（见 daemonActive）。

@@ -72,6 +72,7 @@ work/
 .ensoul/library/components/panel-mumb1g7m-3f.json
 .ensoul/library/components/panel-muu5i197-2d.json
 .ensoul/library/components/panel-mv0f29ir-y9.json
+.ensoul/library/components/panel-ofmmain-1.json
 .ensoul/skills/i18n-t-shadowing/
 .ensoul/state/agents/emp-mugjx4z5-3o3e.json
 .ensoul/state/agents/emp-mugjx4z7-ee0e.json
@@ -187,3 +188,21 @@ docs/superpowers/
 
 
 fix-net.cmd
+
+/3d/
+/comfyui/
+/moss-test/
+/*.py
+/*.cjs
+/*.mjs
+/temp_*
+/tmp_*
+*.bak-*
+/x
+/ERR
+/nul'
+/'
+/{0
+/{`n
+
+

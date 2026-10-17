@@ -188,17 +188,41 @@ export function toAnthropicBody(opts: {
   stream?: boolean;
 }): any {
   const budget = Number((opts.think?.thinking as any)?.budget_tokens ?? 0);
+  /**
+   * messages 先浅拷一份：下面要往**最后一条**上打缓存断点，不能改调用方的数组/对象
+   * （那个数组同一轮里可能还要复用）。
+   */
+  const msgs = (opts.messages ?? []).map((m) => m);
   const body: any = {
     model: opts.model,
     max_tokens: Math.max(opts.maxTokens ?? 8192, budget + 4096),
-    messages: opts.messages,
+    messages: msgs,
     stream: opts.stream !== false,
   };
   // system 走**块数组**而不是裸字符串：只有块数组才挂得上 cache_control。
-  // 断点打在 system 上，等于把它前面的 tools + system 一起圈进缓存 ——
-  // 每轮都原样重发的那几万字符从此按缓存价算，而不是全价。
+  // 这个断点把 tools + system 圈进缓存。
   if (opts.system) {
     body.system = [{ type: 'text', text: opts.system, cache_control: { type: 'ephemeral' } }];
+  }
+  /**
+   * **第二个断点打在最后一条消息上** —— 少了它，Anthropic 的缓存里就只有 tools + system。
+   *
+   * Anthropic 的断点语义是"把它**前面**的全部内容圈进缓存"：只打 system 那一个断点，
+   * 缓存里就真的只有 system（实测某些线路每轮恒定命中 1,173 token），**整个会话正文
+   * 每轮都在按全价重读** —— 这正是 claude 系列命中率只有 6% 的原因。
+   * 打在最后一条上，下一轮请求的前缀（到同一个位置为止）就能整体命中；每轮往后滚一次。
+   *
+   * 上限 4 个断点，我们只用 2 个。写缓存贵 1.25 倍、读便宜 10 倍，一轮就回本。
+   */
+  const last = msgs[msgs.length - 1];
+  if (last) {
+    const mark = (b: any) => (b && typeof b === 'object' ? { ...b, cache_control: { type: 'ephemeral' } } : b);
+    const content = last.content;
+    if (Array.isArray(content) && content.length) {
+      msgs[msgs.length - 1] = { ...last, content: [...content.slice(0, -1), mark(content[content.length - 1])] };
+    } else if (typeof content === 'string' && content) {
+      msgs[msgs.length - 1] = { ...last, content: [{ type: 'text', text: content, cache_control: { type: 'ephemeral' } }] };
+    }
   }
   if (opts.think && Object.keys(opts.think).length) Object.assign(body, opts.think);
   if (opts.tools?.length) body.tools = toAnthropicTools(opts.tools);

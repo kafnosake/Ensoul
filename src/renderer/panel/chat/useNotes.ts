@@ -12,19 +12,24 @@ import { api } from '../../core/api';
  * 为什么是轮询而不是等插件通知：比"再加一套事件总线"便宜得多，也不会因为
  * 某次通知丢了就永远不刷新。便签是给人长期翻的记录，晚一秒出现无所谓。
  */
-const FILE = '.ensoul/state/notes.json';
+const DIR = '.ensoul/state/notes';
 const TICK_MS = 1500;
 
+/** 面板 id 变文件名 —— 跟插件（plugins/notes 的 fileOf）那条规则必须一模一样，对不上就是读不到 */
+function fileOf(panelId: string): string {
+  const safe = String(panelId || '').replace(/[^\w.-]+/g, '_');
+  return safe ? `${DIR}/${safe}.json` : '';
+}
+
 /**
- * 从整份 state 里挑出这个面板的那几条。文件坏了、结构不对就当没有，别把面板弄崩。
+ * 挑出这个面板文件里的那几条。文件坏了、结构不对就当没有，别把面板弄崩。
  *
  * 一条便签 = 用户那句话 + 它下一轮回答里标出来的几条（marks）。老结构（扁平的
  * user/assistant 两行）认不出来就跳过 —— 插件在头一回启动时已经把它迁成新结构了。
  */
-function pick(text: string, panelId: string): PanelNote[] {
+function pick(text: string): PanelNote[] {
   try {
-    const j = JSON.parse(text);
-    const list = j?.panels?.[panelId];
+    const list = JSON.parse(text);
     if (!Array.isArray(list)) return [];
     return list
       .filter((n: any) => n && typeof n.text === 'string' && n.text)
@@ -44,14 +49,16 @@ export function useNotes(panelId: string): PanelNote[] {
   useEffect(() => {
     let alive = true;
     let last = '';
+    const file = fileOf(panelId);
+    if (!file) return setNotes([]);
     const tick = async () => {
-      const text = await api.fs.read(FILE);
+      const text = await api.fs.read(file);
       if (!alive) return;
       // 内容没变就**不 setState** —— 否则每 1.5 秒白白重渲染一遍这块面板
       // （消息本身是 memo 的，但这一列的外壳和刻度都会跟着走）
       if (text === last) return;
       last = text;
-      setNotes(text ? pick(text, panelId) : []);
+      setNotes(text ? pick(text) : []);
     };
     void tick();
     const timer = setInterval(() => void tick(), TICK_MS);

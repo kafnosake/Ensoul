@@ -78,12 +78,81 @@ function guardKeys(win: BrowserWindow) {
   });
 }
 
-function load(win: BrowserWindow, query: Record<string, string>, retried = false) {
+/**
+ * 首帧看门狗：**没有任何事件会告诉我们"这次加载死了"**，只能自己盯。
+ *
+ * 真踩出来的那一次：开机时主进程被一件长活钉了几十秒（扫 .ensoul 那几 GB），
+ * Chromium 把这次首帧导航停在半路 —— 之后 `did-start-navigation` 就再没有下文，
+ * `did-navigate` / `did-finish-load` / `did-fail-load` 一个都不来，`isLoading()`
+ * 永远 true，渲染层停在一个空的 about:blank。表现就是一块**永远**的黑屏，
+ * 而手动 Ctrl+R 一按就好 —— 因为 reload 会把这次停住的加载原地重发。
+ *
+ * 判据分两档，因为"等了多久"本身不是好判据：
+ *   · 正常情况下 `did-navigate` 两三百毫秒就到，`getURL()` 立刻有值。
+ *     所以**过了 3 秒还没有任何文档提交**就认定这次导航卡死了，立刻重来（这就够快了）。
+ *   · 万一提交了却一直没画完，还有 15 秒那道兜底。
+ * 只在这个窗口**从没成功加载过**时动手 —— 已经画出来的那次不该被打断；
+ * 重来第一次用 reload（原地重发，实测能救活），之后改用显式 load。
+ */
+const FIRST_PAINT_STUCK_MS = 3_000;
+const FIRST_PAINT_DEADLINE_MS = 15_000;
+const FIRST_PAINT_TRIES = 3;
+
+function armFirstPaintWatchdog(
+  win: BrowserWindow,
+  query: Record<string, string>,
+  tries: number,
+  everLoaded: () => boolean,
+) {
+  const startedAt = Date.now();
+  const timer = setInterval(() => {
+    if (win.isDestroyed() || everLoaded()) {
+      clearInterval(timer);
+      return;
+    }
+    const waited = Date.now() - startedAt;
+    const committed = Boolean(win.webContents.getURL());
+    if (committed && waited < FIRST_PAINT_DEADLINE_MS) return;
+    if (!committed && waited < FIRST_PAINT_STUCK_MS) return;
+    clearInterval(timer);
+    if (tries >= FIRST_PAINT_TRIES) {
+      console.error('[窗口] 首帧始终没来，不再重来。');
+      return;
+    }
+    const how = tries === 0 ? 'reload' : 'load';
+    console.error(`[窗口] 首帧没来（${waited}ms，已提交=${committed}，第 ${tries + 1} 次重来，用 ${how}）`);
+    if (tries === 0) {
+      win.webContents.reload();
+      armFirstPaintWatchdog(win, query, tries + 1, everLoaded);
+    } else {
+      load(win, query, true, tries + 1);
+    }
+  }, 500);
+  win.once('closed', () => clearInterval(timer));
+}
+
+function load(win: BrowserWindow, query: Record<string, string>, retried = false, tries = 0) {
+  /** 这一次加载成过没有 —— 判断"中断要不要管"、看门狗要不要动手，都要靠它 */
+  let everLoaded = false;
+  win.webContents.once('did-finish-load', () => {
+    everLoaded = true;
+  });
   if (!retried) {
     win.webContents.on('did-fail-load', (_e, code, desc, _url, isMainFrame) => {
-      if (!isMainFrame || code === -3) return;
+      if (!isMainFrame) return;
+      /*
+       * -3 = ERR_ABORTED（被中断）。多数时候它的意思是"紧接着又发起了一次导航"，
+       * 这时候插手只会跟那次导航打架，所以原来一律放行。
+       *
+       * 但**一次都没加载成**的那种中断不能放过：掐掉之后没有任何人会再来一次，
+       * 窗口就停在背景色上。所以只在"从没成功过"时补一次。
+       * （还有一类连中断都不报的，由上面的首帧看门狗兜着。）
+       */
+      if (code === -3 && everLoaded) return;
       console.error('[窗口] 首次加载失败，重试一次：', code, desc);
-      setTimeout(() => load(win, query, true), 500);
+      setTimeout(() => {
+        if (!win.isDestroyed()) load(win, query, true, tries);
+      }, 500);
     });
   }
   if (DEV_URL) {
@@ -92,25 +161,33 @@ function load(win: BrowserWindow, query: Record<string, string>, retried = false
     void win.loadFile(RENDERER, { query });
   }
   /*
-   * 每换一次页面都要重新套一遍乘区。
+   * 换页面之后补一遍乘区（幂等）。
    *
-   * 原生缩放是**按文档**记的，loadFile / loadURL 一上来先给 1，晚一步才轮到我们设 ——
-   * 不补这一下，新开的浮窗会是 100%，而主窗口还是用户调的那个倍数。
-   * 幂等，重复设没有代价。
+   * **不在这一刻同步补** —— 原生缩放是按文档记的，但赶在导航提交之前 setZoomFactor
+   * 会被这次导航吞掉（设完立刻读是 1.25，页面一提交就变回 1）。真正的乘区在
+   * `webPreferences.zoomFactor` 里建窗口时就给了，这一句只是给"换页面 / 改倍数"收尾。
    */
   win.webContents.on('did-finish-load', () => applyTo(win));
-  applyTo(win);
   guardKeys(win);
+  armFirstPaintWatchdog(win, query, tries, () => everLoaded);
 }
 
-const webPreferences = {
-  preload: PRELOAD,
-  contextIsolation: true,
-  nodeIntegration: false,
-  webviewTag: true,
-  // 显式写出来：Electron 20 起这本来就是默认值，写明是为了不被人无心地关掉
-  sandbox: true,
-};
+/**
+ * 窗口的 webPreferences。缩放**必须在建窗口时给进来**（`zoomFactor`），不能在 load() 里补：
+ * 赶在导航提交之前的 setZoomFactor 会被那一次导航吞掉（Electron 33 和 44 都一样），
+ * 于是首帧永远以 100% 上屏、did-finish-load 之后才跳一下。挂件窗口一律 100%（见 zoom.ts）。
+ */
+function prefs(zoomFactor: number) {
+  return {
+    preload: PRELOAD,
+    contextIsolation: true,
+    nodeIntegration: false,
+    webviewTag: true,
+    // 显式写出来：Electron 20 起这本来就是默认值，写明是为了不被人无心地关掉
+    sandbox: true,
+    zoomFactor,
+  };
+}
 
 /**
  * 这个地址是不是我们自己的界面。
@@ -348,7 +425,7 @@ class Windows {
       frame: false,
       backgroundColor: '#0e1014',
       show: false,
-      webPreferences,
+      webPreferences: prefs(getZoom()),
     });
     win.on('ready-to-show', () => win.show());
     harden(win);
@@ -406,7 +483,7 @@ class Windows {
       resizable: true,
       backgroundColor: '#0e1014',
       show: false,
-      webPreferences,
+      webPreferences: prefs(getZoom()),
     });
 
     win.on('ready-to-show', () => {
@@ -538,7 +615,8 @@ class Windows {
       skipTaskbar: box.skipTaskbar !== false,
       alwaysOnTop: box.onTop !== false,
       show: false,
-      webPreferences,
+      // 挂件一律 100%（见 zoom.ts：它是贴在桌面上的东西，跟着界面缩放会失真）
+      webPreferences: prefs(1),
     });
 
     win.on('ready-to-show', () => {

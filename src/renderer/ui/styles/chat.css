@@ -331,6 +331,33 @@
   border-color: var(--accent);
 }
 
+/* 压缩分界（见 ChatDock 的 compact 条目）：嵌在对话流里的一条安静横线。
+   要一眼认出来「这上面那一段没在原文里了」，又不能盖过真正的消息 ——
+   所以是细线 + 小字，比 .dock-more 还轻。 */
+.dock-compact {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 4px 0 2px;
+  color: var(--faint);
+  font-size: 11px;
+  user-select: none;
+}
+
+.dock-compact-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--line), transparent);
+}
+
+.dock-compact-label {
+  flex: none;
+  padding: 0 4px;
+  cursor: default;
+}
+
 .dock-more-rest {
   color: var(--faint);
   font-size: 11px;

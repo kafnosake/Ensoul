@@ -28,18 +28,20 @@
   },
   "devDependencies": {
     "@electron/packager": "^18.4.4",
-    "sharp": "^0.34.5",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^4.3.4",
-    "electron": "^33.2.1",
+    "electron": "^44.7.0",
+    "sharp": "^0.34.5",
     "typescript": "^5.7.2",
     "vite": "^6.0.5"
   },
   "dependencies": {
     "koffi": "^3.3.2",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "three": "^0.186.1"
   }
 }

@@ -4,7 +4,7 @@ import type { AskViewQuestion } from '../../core/api';
 
 /**
  * 一道题当前答成什么样 —— 提交时原样发给主进程（见 api.chat.askConfirm）。
- * 跟 dsh 的 AskUserQuestionAnswerItem 同形：selected + custom。
+ * 形状就是 selected + custom：选了哪些标签 + 自由填的那一段。
  */
 export interface AskAnswerDraft {
   id: string;
@@ -14,7 +14,7 @@ export interface AskAnswerDraft {
 
 /**
  * 选项标签末尾的「(Recommended)」/「（推荐）」摘出来单独画成小徽标 ——
- * 布局学 dsh：标签后面跟一个蓝色小字「推荐」，不混在正文里。
+ * 标签末尾的「推荐」单独画成蓝色小徽标，不混在正文里。
  */
 const RECO = /[\s]*[（(]\s*(?:Recommended|推荐)\s*[)）][\s]*$/i;
 
@@ -58,11 +58,11 @@ function toAnswers(
 }
 
 /**
- * 问题卡片 —— **占掉输入框的位置**（dsh 的附着式卡片就是这么做的：
- * 「附着式卡片会暂时占用编辑器位置」，见它自己的 README）。
+ * 问题卡片 —— **占掉输入框的位置**：有题时它就是这一格的主人，
+ * Composer 让位，两者不会同时出现。
  *
  * 分工说清楚，免得下次又改歪：
- *   · **布局学 dsh**：眉题 + 题目、选项一行行（不是一摞小卡片）、序号方块、
+ *   · **布局**：眉题 + 题目、选项一行行（不是一摞小卡片）、序号方块、
  *     「推荐」小徽标、铅笔自定义、左下 ‹ 1/3 ›、右下「跳过 / 下一题」。
  *   · **材质用本软件自己的**：底色 / 边框 / 圆角 / 阴影 / 字号一律对齐
  *     `.composer`（见 composer.css）—— 它是这一格的原住民，卡片得像它。
@@ -105,7 +105,7 @@ export function AskBar(props: {
   /**
    * 选中一个选项。
    *
-   * 单选「点了就走」（dsh 的行为）：把选中和前进放进**同一个事件**里，
+   * 单选「点了就走」：把选中和前进放进**同一个事件**里，
    * React 会把这两个 setState 合批，这一帧直接就是下一题 —— 中间不会先渲染出
    * 一个「已选中」的实心按钮。从前这里挂了个 160ms 的 setTimeout，选中和切题
    * 就分成了两帧，用户会看见按钮闪一下再切走（那正是要消掉的）。

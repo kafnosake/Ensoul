@@ -51,6 +51,10 @@ export interface EvolveApi {
   /** 挂件窗口：它是**哪一块面板**的那扇窗（见 Panel.widget） */
   widgetPanel?: string;
   windowId?: string;
+  /** 拖进来的文件 → 磁盘绝对路径（sandbox 下只有 preload 拿得到，见 preload/index.ts） */
+  files?: {
+    pathFor(file: File): string;
+  };
 
   zoom?: {
     getFactor(): number;
@@ -438,7 +442,7 @@ export interface EvolveApi {
       text: string,
       /** 剪贴板粘进来的图，data URL */
       images?: string[],
-    ): Promise<{ ok: boolean; content?: string; edited?: boolean; error?: string }>;
+    ): Promise<{ ok: boolean; content?: string; edited?: boolean; error?: string; endReason?: 'done' | 'stopped' | 'failed' }>;
     stop(panelId: string): Promise<boolean>;
     /**
      * 排队：先摆着，这一整轮跑完自动接着发出去。
@@ -497,7 +501,7 @@ export interface AskViewOption {
   description?: string;
 }
 
-/** 一道题 —— 跟主进程下发的 AskQuestionItem 同形（dsh 的 ask_user_question 对齐） */
+/** 一道题 —— 跟主进程下发的 AskQuestionItem 同形 */
 export interface AskViewQuestion {
   id: string;
   question: string;

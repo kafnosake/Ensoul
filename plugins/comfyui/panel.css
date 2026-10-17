@@ -1,0 +1,330 @@
+/* ComfyUI 管理器 —— 脸在 plugins/comfyui/panel.tsx，类名以它为真源；变量走 base.css 那套 */
+.cm-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 320px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* ── 标签栏 ── */
+.cm-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+  flex: none;
+  align-items: center;
+}
+.cm-tab {
+  border: 1px solid transparent;
+  background: none;
+  color: var(--dim);
+  padding: 5px 14px;
+  border-radius: 7px 7px 0 0;
+  cursor: pointer;
+  font-size: 13px;
+  transition: color var(--ease), background var(--ease), border-color var(--ease);
+}
+.cm-tab:hover { color: var(--text-2); }
+.cm-tab.is-on {
+  color: var(--accent);
+  border-color: var(--line);
+  border-bottom-color: transparent;
+  background: var(--accent-soft);
+}
+
+/* ── 顶部一闪而过的提示 ── */
+.cm-tip {
+  font-size: 12px;
+  color: var(--ok);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 55%;
+}
+.cm-tip-warn { color: var(--warn); }
+
+/* ── 主体滚动区 ── */
+.cm-body { flex: 1; overflow: auto; padding: 8px 10px 14px; display: flex; flex-direction: column; min-height: 0; }
+/* 工作流页：左边一列列表、右边一块画布（右栏空着等选中） */
+.cm-body.cm-split { flex-direction: row; overflow: hidden; gap: 10px; padding: 8px 10px 12px; }
+.cm-pane-left { flex: none; width: 268px; min-width: 210px; overflow: auto; display: flex; flex-direction: column; }
+.cm-pane-right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cm-list { display: flex; flex-direction: column; }
+
+/* ── 通用条 ── */
+.cm-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.cm-title { font-weight: 600; font-size: 13px; }
+.cm-count { color: var(--faint); font-size: 12px; }
+.cm-gap { flex: 1; }
+.cm-note { color: var(--faint); font-size: 12px; line-height: 1.6; padding: 4px 2px; }
+.cm-ok { color: var(--ok); font-size: 12px; }
+.cm-warn { color: var(--warn); font-size: 12px; }
+.cm-cur { font-family: var(--font-code); font-weight: 600; }
+.cm-mono { font-family: var(--font-code); }
+
+/* 空状态：比普通 note 更醒目一点，给一句明确的下一步 */
+.cm-empty {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 14px 12px;
+  color: var(--dim);
+  font-size: 12px;
+  line-height: 1.7;
+  background: var(--tint-a);
+  margin-bottom: 6px;
+}
+
+/* ── 搜索框 ── */
+.cm-search { margin-bottom: 8px; }
+.cm-search input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 5px 9px;
+  font-size: 12px;
+  font-family: inherit;
+}
+.cm-search input:focus { outline: none; border-color: var(--accent); }
+
+/* ── 按钮 ── */
+.cm-btn {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text-2);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color var(--ease), color var(--ease), background var(--ease);
+}
+.cm-btn:hover { border-color: var(--accent); color: var(--accent); }
+.cm-btn.cm-primary { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+/* ── 列表卡片 ── */
+.cm-row {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  background: var(--panel-2);
+  position: relative;
+}
+.cm-row-main { display: flex; align-items: baseline; gap: 8px; padding-right: 22px; }
+.cm-row-name {
+  font-family: var(--font-code);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  word-break: break-all;
+}
+.cm-row-name:hover { color: var(--accent); }
+.cm-row-size { color: var(--faint); font-size: 11px; flex: none; }
+.cm-row-note { color: var(--dim); font-size: 12px; margin-top: 4px; line-height: 1.5; word-break: break-word; }
+.cm-row-note-muted { color: var(--faint); font-style: italic; }
+.cm-row-acts { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
+/* 整行可点：点哪儿都进接线图（动作组与编辑框各自 stopPropagation） */
+.cm-row-click { cursor: pointer; transition: border-color var(--ease), background var(--ease); }
+.cm-row-click:hover { border-color: var(--accent); background: var(--accent-soft); }
+.cm-row-click.is-sel { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.cm-row-go { margin-left: auto; color: var(--faint); font-size: 11px; flex: none; }
+.cm-row-click:hover .cm-row-go { color: var(--accent); }
+
+/* ── 行内编辑 ── */
+.cm-edit { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+.cm-edit-col { flex-direction: column; align-items: stretch; }
+.cm-edit-acts { display: flex; gap: 6px; justify-content: flex-end; }
+.cm-edit input,
+.cm-edit textarea {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.cm-edit input:focus,
+.cm-edit textarea:focus { outline: none; border-color: var(--accent); }
+.cm-edit textarea { resize: vertical; min-height: 44px; line-height: 1.5; }
+
+/* ── 右栏空态：没选工作流时的那块提示 ── */
+.cm-stage-empty {
+  flex: 1;
+  min-height: 380px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  padding: 20px;
+  background: var(--tint-a);
+}
+.cm-stage-empty-i { font-size: 34px; color: var(--faint); line-height: 1; }
+.cm-stage-empty-t { color: var(--dim); font-size: 13px; }
+.cm-stage-empty-s { color: var(--faint); font-size: 11px; }
+
+/* ── 接线图（SVG 节点图） ── */
+.cm-wiring { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+.cm-btn-xs { padding: 1px 8px; font-size: 11px; }
+.cm-sum { display: flex; flex-wrap: wrap; gap: 5px; }
+/* 画布：撑满剩余高度，深色底 + 细点阵，像 ComfyUI 原生的栅格 */
+.cm-graph {
+  position: relative;
+  flex: 1;
+  min-height: 380px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background-color: var(--code-bg);
+  background-image: radial-gradient(color-mix(in srgb, var(--faint) 30%, transparent) 1px, transparent 1px);
+  background-size: 18px 18px;
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+}
+.cm-graph:active { cursor: grabbing; }
+.cm-graph svg { display: block; }
+/* 连线：默认带一点点透明，高亮时实心发亮 */
+.cm-edge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 60%, var(--faint));
+  stroke-width: 1.6;
+  transition: opacity var(--ease), stroke var(--ease);
+}
+.cm-edge.is-on { stroke: var(--accent); stroke-width: 2.4; }
+/* 节点盒子 */
+.cm-gnode { cursor: pointer; }
+.cm-gbox {
+  fill: var(--panel-2);
+  stroke: var(--line);
+  stroke-width: 1;
+  transition: stroke var(--ease);
+}
+.cm-gbox.is-on { stroke: var(--accent); stroke-width: 2; }
+.cm-gid { font-family: var(--font-code); font-size: 10px; fill: rgba(255,255,255,0.82); }
+.cm-gcls { font-family: var(--font-code); font-size: 11px; font-weight: 600; fill: #fff; }
+.cm-gk { font-family: var(--font-code); font-size: 10px; fill: var(--faint); }
+.cm-gv { font-family: var(--font-code); font-size: 10px; fill: var(--text-2); }
+.cm-gv.is-ref { fill: var(--accent); }
+.cm-gv.is-ph { fill: var(--warn); font-weight: 600; }
+.cm-gmore { font-size: 10px; fill: var(--faint); }
+.cm-glabel { font-size: 10px; fill: var(--dim); }
+/* 右上角缩放条 / 左下角图例 */
+.cm-zoombar { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+.cm-zoombar .cm-btn {
+  min-width: 26px;
+  text-align: center;
+  background: var(--pop-a);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--edge);
+}
+.cm-legend {
+  position: absolute; left: 8px; bottom: 8px;
+  display: flex; flex-wrap: wrap; gap: 10px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--pop-a);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--edge);
+}
+.cm-legend-i { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--dim); }
+.cm-legend-i i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+
+/* 占位符 / 关键值高亮 */
+.cm-slot {
+  background: rgba(226, 185, 61, 0.16);
+  color: var(--warn);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-family: var(--font-code);
+  font-size: 11px;
+}
+
+/* ── 小胶囊 ── */
+.cm-chip {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text-2);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cm-chip.cm-mono { font-family: var(--font-code); }
+.cm-chip-k b { color: var(--faint); font-weight: 600; }
+
+/* ── 行内编辑（点名字改 / 点描述改） ── */
+.cm-name-in {
+  font-family: var(--font-code); font-weight: 600; font-size: 13px;
+  flex: 1; min-width: 0; background: var(--panel);
+  border: 1px solid var(--accent); border-radius: 5px;
+  color: var(--text); padding: 2px 6px;
+}
+.cm-name-in:focus { outline: none; }
+.cm-row-edit { cursor: text; border-radius: 5px; padding: 3px 5px; margin-top: 3px; }
+.cm-row-edit:hover { background: var(--accent-soft); }
+.cm-row-addnote { color: var(--faint); font-style: normal; opacity: 0.75; }
+.cm-row-addnote:hover { opacity: 1; color: var(--accent); }
+.cm-del {
+  position: absolute; top: 5px; right: 5px;
+  border: none; background: none;
+  color: var(--faint); cursor: pointer; font-size: 12px; line-height: 1;
+  border-radius: 5px; padding: 3px 6px; opacity: 0;
+  transition: opacity var(--ease), color var(--ease), background var(--ease);
+}
+.cm-row:hover .cm-del, .cm-row.is-sel .cm-del { opacity: 1; }
+.cm-del:hover { color: var(--danger); background: var(--tint-c); }
+.cm-confirm {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 7px; padding: 7px 9px;
+  border: 1px solid var(--danger); border-radius: 7px;
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  font-size: 12px; color: var(--text-2);
+}
+.cm-btn.cm-danger { border-color: var(--danger); color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.cm-btn.cm-danger:hover { border-color: var(--danger); color: #fff; background: var(--danger); }
+
+/* ── 出图规则（左栏底部，常驻） ── */
+.cm-rules { flex: none; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--line-soft); }
+.cm-params-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+.cm-rules-empty { color: var(--faint); font-size: 11px; line-height: 1.6; margin-bottom: 6px; }
+.cm-rule {
+  display: flex; align-items: baseline; gap: 7px;
+  padding: 4px 6px; border-radius: 6px; margin-bottom: 3px;
+  background: var(--panel-2); font-size: 12px;
+}
+.cm-rule-no { color: var(--accent); font-size: 11px; flex: none; font-weight: 600; }
+.cm-rule-tx { flex: 1; min-width: 0; color: var(--text-2); word-break: break-word; }
+.cm-rule-x {
+  flex: none; border: none; background: none; color: var(--faint);
+  cursor: pointer; font-size: 11px; padding: 0 4px; border-radius: 4px;
+}
+.cm-rule-x:hover { color: var(--danger); background: var(--tint-c); }
+.cm-rules-add { display: flex; gap: 5px; margin-top: 6px; }
+.cm-rules-add input {
+  flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; color: var(--text); padding: 4px 8px; font-size: 12px; font-family: inherit;
+}
+.cm-rules-add input:focus { outline: none; border-color: var(--accent); }
+
+/* ── 模型页分组 ── */
+.cm-group { margin-top: 8px; }
+.cm-group-title { font-size: 12px; color: var(--dim); margin-bottom: 5px; letter-spacing: 0.04em; }
+.cm-group-body { display: flex; flex-wrap: wrap; gap: 5px; }

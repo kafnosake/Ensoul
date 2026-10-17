@@ -107,7 +107,7 @@ function Surface({ panel, hostKey }: { panel: Panel; hostKey?: string }) {
         data-panel-id={panel.id}
         style={{ ['--accent' as any]: panel.look.accent }}
       >
-        {actionsRow && <div className='panel-actions-dock'>{actionsRow}</div>}
+
         <ChatDock panel={panel} hostKey={hostKey} full />
         {viewer}
       </div>

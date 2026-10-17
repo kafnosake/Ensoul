@@ -87,11 +87,40 @@ export function onBeforeRelaunch(fn: () => void) {
   cleanups.push(fn);
 }
 
+/**
+ * 当前 stamp 算出来的应用壳路径 —— 只算不建：stamp 变了但新壳还没打包时
+ * 它指向的 exe 不存在，调用方按「没有更优壳」处理，照旧 relaunch 当前这个。
+ *
+ * 取的是 scripts/brand-runtime.js 的 brandExecutable()，跟启动器 launch.js、
+ * 安装脚本 install-shortcuts.ps1 用的是同一份 plan() —— 三处口径一致，
+ * 不会出现「启动器选新壳、重启选旧壳」这种各选各的怪。
+ */
+function preferredShellExe(): string | null {
+  try {
+    const script = path.join(appDir(), 'scripts', 'brand-runtime.js');
+    if (!fs.existsSync(script)) return null;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const exe = require(script).brandExecutable?.();
+    return typeof exe === 'string' && exe && fs.existsSync(exe) ? exe : null;
+  } catch {
+    return null; // 算不出来就退回「按原样重启」，不比现在差
+  }
+}
+
 export function relaunchApp(): boolean {
   if (restarting) return true;
   if (process.env.ENSOUL_NO_RELAUNCH === "1") return false;
   try {
-    app.relaunch();
+    // 壳已经换代过（electron 升级、stamp 变了）时，按 process.execPath 原样复制
+    // 一份再拉起 = 永远回到旧壳，重启一万次也换不掉 —— 2026-10-12 的免费模型面板
+    // 空白就是这么卡住的。启动器（launch.js）算得出新壳，relaunch 这条路自己也算一遍。
+    const exe = preferredShellExe();
+    if (exe && exe.toLowerCase() !== process.execPath.toLowerCase()) {
+      console.log(`[relaunch] 换壳：${process.execPath} -> ${exe}`);
+      app.relaunch({ execPath: exe, args: process.argv.slice(1) });
+    } else {
+      app.relaunch();
+    }
   } catch (e) {
     console.error("[relaunch]", (e as Error)?.message ?? e);
     return false;

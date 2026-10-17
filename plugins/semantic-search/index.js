@@ -439,7 +439,7 @@ module.exports = {
     tool('recipe_search', '技能不能解决或重复失败时，按含义查找以前的做法。默认查角色卡 learned 与 work 文档；includeHistory 才加入已启用的历史会话。返回有来源的短片段，默认最多 3 条、正文合计 3000 字符；须验证原文，失败则用关键词检索。', 'recipes', {
       query: { type: 'string' }, includeHistory: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 8 }, maxChars: { type: 'integer', minimum: 500, maximum: 8000 }
     }, ['query']);
-    api.addPrompt(() => state.enabled && state.features.agentSearch ? t('技能不能解决、同一步骤连续失败或需要以前案例时，先 use_skill({name:"find-recipe"}) 查找做法；本轮有 recipe_search 就按需检索，先角色经验和 work 文档，再按需加历史。正文已限制长度，不全量读会话；工具不可用时按该技能的关键词路径查找。') : '');
+    api.addPrompt(() => state.enabled && state.features.agentSearch ? t('【经验检索】如需参考既往工程案例与角色沉淀，可按需调用 recipe_search 检索经验与文档。') : '');
     tool('semantic_index_update', '增量更新已启用范围的本地语义索引，可取消。', 'update', { force: { type: 'boolean' } });
     tool('semantic_similarity', '比较多项文字或本地素材的相似度，分数不是概率。', 'similarity', { inputs: { type: 'array', items: mediaSchema, minItems: 1, maxItems: 100 } }, ['inputs']);
     tool('semantic_classify', '将内容匹配到提供的类别，返回各类别相似度。', 'classify', { inputs: { type: 'array', items: mediaSchema }, labels: { type: 'array', items: { type: 'string' } } }, ['inputs', 'labels']);

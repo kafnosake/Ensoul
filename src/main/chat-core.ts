@@ -5,6 +5,7 @@ import { BUILTIN_KINDS } from '../shared/types';
 import { skillDigest } from './skills';
 import { getLang } from './lang';
 import { localeTag, t } from '../shared/i18n';
+import { normalizeAnswerText } from '../shared/chat-history';
 import {
   isAnthropicApi,
   anthropicEndpoint,
@@ -116,71 +117,86 @@ export interface PanelKindDecl {
  * 手写过一次：插件新加的面板类型漏在外面，还不报错，模型为了知道有哪些面板
  * 只能去翻源码 —— 正好是这一版要消灭的成本。
  */
-export function buildSystemPrompt(
+/**
+ * **稳定头**的系统提示 —— 只有"这个面板是谁、怎么干活"这些不变的东西。
+ *
+ * 三条纪律（改动前先说清，不然很容易好心改坏）：
+ *   1. 它位于整段请求的**第 0 个字节**，是 KV 缓存前缀的起点：它变一个字，从那儿往后的
+ *      全部缓存当场作废。所以**任何会变的东西都不许进来**。
+ *   2. 会变的三样——插件自带的面板类型清单、工具 SDK 声明、技能清单——全部搬去了
+ *      `buildTurnReferences`，由调用点拼在**本轮消息尾部**：它们变只让这一小段重算。
+ *      从前它们在这儿：用户让 ensoul 改一次自己的插件，下一回合整个前缀就全废了
+ *      （实测：改插件的下一回合命中率 8.5%，改技能的下一回合 0%）。
+ *   3. 语言指令仍放第一位（越靠前越不容易被后面的大段规矩淹掉）。
+ */
+export function buildSystemPrompt(panel: Panel): string {
+  // 员工工作面（dispatch 开的）走 agent 底座 —— 见下面的 buildAgentSystemPrompt。
+  if (panel.noWorkspacePrompt) return buildAgentSystemPrompt(panel);
+  return [
+    langDirective(),
+    '',
+    t('你运行在 Ensoul Agent 交互工作台中。当前面板是独立的功能单元，状态见每轮头部的【运行时快照】。'),
+    ...(panel.spec.systemPrompt ? ['', t('【本面板专属要求】'), panel.spec.systemPrompt] : []),
+    '',
+    t('【工作原则】'),
+    t('1. 行动导向：提问直接解答；任务直接调用工具执行，实事求是呈现工具结果。关键结论用 ==两个等号== 强调。'),
+    t('2. 验证流：修改后按范围验证；主进程/preload/shared 构建后申请重启；纯界面构建后刷新；插件后端保存后下轮生效。'),
+    t('3. 精准改动：优先局部查找与替换；新功能优先插件实现，持久状态存至 api.dataPath，核心 src/ 保持精简。'),
+    '',
+    t('【交互与面板演进】'),
+    t('· 工具与技能：本轮可用工具以请求里附的工具声明为准（可能是原生 tools，也可能是文末的 SDK 声明）；各领域扩展专业知识通过 use_skill 按需拉取。'),
+    t('· 界面与排版：改界面前通过 describe_layout 感知停靠树；回复全面使用结构化 Markdown 排版。'),
+    t('· 闲聊与寒暄：一两句答完，不要列表、不要报状态、**不要为此去翻工作区或调工具**；等用户给出具体任务再动手。'),
+    t('· 面板改写：仅在用户明确要求调整面板（重命名、改类型、重塑）时，在回答末尾附带改写提案：'),
+    EDIT_OPEN,
+    t('{"kind":"可选：面板类型","title":"可选：新标题","keywords":["2到3个主题关键词"],"look":{"accent":"#5b8cff","density":"compact|normal|roomy","showChat":true},"spec":{"body":"messages|code|table|form|web","text":"内容","systemPrompt":"..."},"rationale":"改动理由"}'),
+    EDIT_CLOSE,
+    t('现有面板类型（内置）：') + BUILTIN_KINDS.join('、'),
+  ].join('\n');
+}
+
+/**
+ * **每轮现拼的参考件** —— 进本轮消息尾部，不进系统提示。
+ *
+ * 这里面三样都会变，而且全都由"用户自己的动作"触发：
+ *   · 插件自带的面板类型清单 —— 装/停/改一个插件就变；
+ *   · 工具 SDK 声明（PTC 模式下模型的全部工具签名）—— 插件的工具增删就变；
+ *   · 技能清单 —— 新建/改一个技能就变。
+ *
+ * 它们待在请求最前面时，每变一次就把后面整段缓存（长任务里几十万字）打成全价；
+ * 待在尾部时，只让这一小段重算。**内容一个字没少**，只是换了个位置。
+ */
+export function buildTurnReferences(
   panel: Panel,
   disabledSkills: string[] = [],
   pluginPanels: PanelKindDecl[] = [],
   extraSection?: string,
 ): string {
-  // 员工工作面（dispatch 开的）走 agent 底座 —— 见下面的 buildAgentSystemPrompt。
-  // 普通面板走原路：下面这个数组一个字节不动，前缀不变，缓存才留得住。
-  if (panel.noWorkspacePrompt) return buildAgentSystemPrompt(panel, disabledSkills, extraSection);
-  return [
-    /**
-     * 第一行就是语言硬指令。
-     *
-     * 这一行曾经**漏接**：langDirective() 定义在上面却没人调用，于是切到英文也不会有人
-     * 告诉模型「说英文」—— 而下面整段规矩又都是中文（英文词典只覆盖了一部分），模型看到
-     * 满屏中文，很自然就用中文回话。越靠前越不容易被后面的大段规矩淹掉，所以放第一位。
-     */
-    langDirective(),
-    '',
-    t('你运行在一个组件化、可自我进化的 Agent 编辑器运行时（Ensoul）中。'),
-    t('你所在的面板本身既是交互工作台，也是一个可被重构的功能组件单元。'),
-    t('面板此刻的实时状态每轮作为【运行时快照】附加在用户消息头部，动手操作前请先查阅快照。'),
-    ...(panel.spec.systemPrompt ? ['', t('【本面板专属要求】'), panel.spec.systemPrompt] : []),
-    '',
-    t('【核心工作准则】'),
-    t('1. 提问直接解答；具体操作任务直接调用工具执行，不进行推诿或空谈。'),
-    t('2. 按变更范围验证：同一批改动只请求一次必要构建；主进程、preload、shared 改动构建后重启；纯界面改动构建后刷新；插件入口改动在下一轮重新加载，先做针对性检查。构建通过和运行时已生效分开报告。'),
-    t('3. 精准高效读写：避免全盘扫描或全文倾倒，读文件使用 read_file（按需设置 offset/limit），搜索文件限定 path 子路径；改动代码优先使用 edit 局部替换。'),
-    t('4. 结果实事求是：执行状态、数据、生成文件与图样一律以本轮工具的真实成功调用为唯一真源，严禁捏造虚假进度。'),
-    t('5. 关键重点突出：结论、核心决定或用户硬性要求，输出时用 ==两个等号== 标注强调。'),
-    t('6. 架构解耦与插件优先：新功能优先通过插件机制实现（plugins/<名>/），持久状态默认保存到固定应用数据目录（用 api.dataPath 定位）；只有明确的项目文件保存在工作区。核心 src/ 仅保留基础调度与视图渲染。'),
-    '',
-    t('【系统体系与工具纪律】'),
-    t('· 面板即功能单位：面板由类型（kind）与规格（spec）定义，能用现有类型表达的，无需重复开发渲染。'),
-    extraSection
-      ? t('· 工具与技能：本轮可用工具以附后的 SDK 声明为准，通过 run_code 调用；原生 tools 列表仅有 run_code 不代表缺少 SDK 中的工具。各领域扩展专业知识通过 use_skill 按需拉取。')
-      : t('· 工具与技能：可用工具以请求上下文中的 tools 列表为准；各领域扩展专业知识通过 use_skill 按需拉取。'),
-    t('· 界面与环境感知：改动界面或定位窗口前，先调用 describe_layout 获取实际停靠树；项目事实参见 AGENTS.md / CLAUDE.md。'),
-    t('· 排版呈现：全面使用 Markdown 标题、列表、表格清晰排版，禁止退化为难以阅读的纯文本。'),
-    '',
-    t('【面板改写与演进协议】'),
-    t('当需要调整或重塑当前面板（包括标题、外观、正文形态、操作按钮、功能类型）时，在回答末尾附带合法 JSON 格式的改写提案：'),
-    EDIT_OPEN,
-    t('{"kind":"可选：换一种面板类型","title":"可选的新标题","keywords":["2到3个主题关键词"],"look":{"accent":"#5b8cff","density":"compact|normal|roomy","showChat":true},"spec":{"body":"messages|code|table|form|web","text":"具体内容","systemPrompt":"...","actions":[{"id":"a1","label":"按钮名","prompt":"点击后注入的指令"}],"fields":[{"key":"k","label":"字段名","type":"text|number|bool"}]},"rationale":"改动理由"}'),
-    EDIT_CLOSE,
-    t('· 命名规则：若当前面板快照中标题仍为「新面板」，首轮对话请在回答末尾附带提案更新 title（仅改名只需形如 {"title":"简明贴切的标题","keywords":["插件","调试"]}）。'),
-    t('· 关键词：随首轮标题一并给出 **2~3 个中文主题词**（每个 2~4 字，说清"这块面板在干什么"，如 ["头像","出图"]、【"派单","调度"】），系统会拿它挑面板头像。**只说主题，不要写颜色/风格/形容词**；想不到就不给，留空即可，不会因此报错。'),
-    t('· 功能重塑：若要将面板转变为特定功能，必须显式声明 kind。'),
-    t('现有面板类型（内置）：') + BUILTIN_KINDS.join('、'),
-    ...(pluginPanels.length
-      ? [
-          t('现有面板类型（插件自带）：') + `${pluginPanels
-            .map((p) => (p.label && p.label !== p.kind ? `${p.kind}（${p.label}）` : p.kind))
-            .join('、')}`,
-        ]
-      : []),
-    ...(skillDigest(disabledSkills)
-      ? [
-          '',
-          t('【技能清单】（按需使用 use_skill 拉取正文）：'),
-          skillDigest(disabledSkills),
-        ]
-      : []),
-    ...(extraSection ? ['', extraSection] : []),
-  ].join('\n');
+  const dig = skillDigest(disabledSkills);
+  const parts: string[] = [];
+  if (panel.noWorkspacePrompt) {
+    if (extraSection) parts.push(extraSection);
+    if (dig) {
+      parts.push(
+        t('【技能】下面这些是按需取用的说明，正文不在提示里。需要哪一条就用 use_skill 取出来，不要凭名字猜内容：'),
+        t('接活再久也照样先取技能再动手 —— 凭记忆写的工作流名、命令参数多半是错的。'),
+        dig,
+      );
+    }
+    return parts.join('\n');
+  }
+  if (pluginPanels.length) {
+    parts.push(
+      t('现有面板类型（插件自带）：') + `${pluginPanels
+        .map((p) => (p.label && p.label !== p.kind ? `${p.kind}（${p.label}）` : p.kind))
+        .join('、')}`,
+    );
+  }
+  if (dig) {
+    parts.push('', t('【技能清单】（按需使用 use_skill 拉取正文）：'), dig);
+  }
+  if (extraSection) parts.push('', extraSection);
+  return parts.join('\n');
 }
 
 /**
@@ -201,33 +217,38 @@ export function buildSystemPrompt(
  * 缓存纪律（prompt-protocol）：普通面板走原数组一字未动；员工面板这份前缀
  * 对同一块面板每轮恒定，可缓存。分流只在函数开头一次 if，不做运行时拼接。
  */
-function buildAgentSystemPrompt(panel: Panel, disabledSkills: string[], extraSection?: string): string {
+function buildAgentSystemPrompt(panel: Panel): string {
   // 提示词正文是**调度中心合成好的**（基础+部门简介+部门提示词+简介+职位提示词，
-  // 见 dispatch 的 composePrompt），落在 spec.systemPrompt 里 —— 这里一个字都不再加工，
-  // 只补技能目录（动态清单按 prompt-protocol 由运行时从真源列，不写死）。
+  // 见 dispatch 的 composePrompt），落在 spec.systemPrompt 里 —— 这里一个字都不再加工。
+  // 技能目录是**会变的**（新建/改一个技能就变），它和工具声明一起搬去了
+  // buildTurnReferences（拼在消息尾部），不在这儿 —— 理由见上面那段缓存纪律。
   const own = String(panel.spec.systemPrompt || '').trim();
-  const dig = skillDigest(disabledSkills);
   if (!own)
     return [
       langDirective(),
       '',
       t('你是这家 AI 游戏公司的一名员工，这块面板是你的工作面。'),
-      ...(dig ? ['', t('【技能】'), dig] : []),
     ].join('\n');
-  return [
-    langDirective(),
-    '',
-    own,
-    ...(extraSection ? ['', extraSection] : []),
-    ...(dig
-      ? [
-          '',
-          t('【技能】下面这些是按需取用的说明，正文不在提示里。需要哪一条就用 use_skill 取出来，不要凭名字猜内容：'),
-          t('接活再久也照样先取技能再动手 —— 凭记忆写的工作流名、命令参数多半是错的。'),
-          dig,
-        ]
-      : []),
-  ].join('\n');
+  return [langDirective(), '', own].join('\n');
+}
+
+/**
+ * 把面板事实拆成"**跨会话共享的那部分**"和"**只有这个会话独有**的那一行"。
+ *
+ * 为什么要拆：这份事实会被 syncContext 追加进历史，位置在**用户消息之前**。
+ * 而 `ID: panel-xxxx` 每开一个新会话都不一样 —— 它一变，从它往后的全部内容
+ * （面板标题/规格、插件动态、以及本轮用户消息）在服务商那边全都算未命中。
+ * 实测：两个新会话的首轮请求共 26,417 字节，公共前缀只有 23,591 —— 差的
+ * 2,826 字节全从这行 ID 开始（新会话首轮命中率因此只有 ~77%，DSH 是 98%）。
+ *
+ * 所以 ID 拆出去拼在**本轮消息**里（那里本来就有每轮都会变的时间），
+ * 共享的那段就能被上一次会话的缓存接住。
+ */
+export function splitPanelSnapshot(facts: string): { shared: string; unique: string } {
+  const lines = String(facts ?? '').split('\n');
+  const unique = lines.filter((l) => l.startsWith('ID: '));
+  const shared = lines.filter((l) => !l.startsWith('ID: ')).join('\n');
+  return { shared, unique: unique.join('\n') };
 }
 
 /**
@@ -394,6 +415,19 @@ export interface SteerItem {
   system?: boolean;
 }
 
+/**
+ * 一次工具调用里"**实发的那一份**" —— 存档照着它写，回放就照它拼。
+ * 三个字段都是原样发出去的东西，一个字节都不许再加工。
+ */
+export interface SentToolCall {
+  /** 模型给的 tool_call_id（回放时 assistant 和 tool 两条要对得上） */
+  id: string;
+  /** 实发出去的参数串（见 canonicalToolArgs） */
+  args: string;
+  /** 实发出去的结果串（见 shapeToolResult） */
+  text: string;
+}
+
 export interface AgentEvents {
   onText(delta: string): void;
   /** 一次模型回复开始；内部重试仍属于同一条回复。 */
@@ -407,8 +441,8 @@ export interface AgentEvents {
    *      用户说的"结束单次任务、但还没结束会话"那个缝。
    */
   takeSteering?(): SteerItem[];
-  /** 一条插话已经喂进这一轮了：落进对话，让用户看见它真被接住了 */
-  onSteering?(item: SteerItem): void;
+  /** 一条插话已经喂进这一轮了：落进对话，让用户看见它真被接住了。`body` 是**实发的那段**（含提示语），历史要按它回放 */
+  onSteering?(item: SteerItem, body: string): void;
   /**
    * 思维链。DeepSeek 这类模型在吐正文之前会先吐 `reasoning_content`。
    *
@@ -425,7 +459,13 @@ export interface AgentEvents {
    * 所以上层要按 discardText / discardThink 把已经显示的那段撤回去。
    */
   onRetry?(info: RetryInfo): void;
-  onTool(name: string, args: any, result: string): void;
+  /**
+   * 一次工具调用收工了。
+   *
+   * `result` 是给界面看的那份（可能更长，比如附带说明）；`sent` 是**真正发给模型
+   * 的那一份**，存档必须用它 —— 见下面 shapeToolResult / canonicalToolArgs 的理由。
+   */
+  onTool(name: string, args: any, result: string, sent?: SentToolCall): void;
   /**
    * 每完成一次模型调用就报一次**这一轮到目前为止的累计**用量。
    *
@@ -520,6 +560,61 @@ export function pruneToolText(text: string): string {
   const s = String(text ?? '');
   if (s.length <= PRUNE_AT) return s;
   return s.slice(0, PRUNE_HEAD) + PRUNE_MARK + s.slice(-PRUNE_TAIL);
+}
+
+/**
+ * 工具结果交给模型的那一份 —— **实发与存档共用同一份**。
+ *
+ * 为什么必须共用：这条 tool 消息下一回合会被原样回放，它和当时实发的差一个字节，
+ * 服务商的前缀缓存就从这里断开，之后整段按全价重算。从前实发过 pruneToolText
+ * （8192 口径），存档走 agent.ts 的 archiveToolResult（1200 口径）—— 同一份结果
+ * 在两处被截成不同的字，于是**每个回合都要替上一回合的全部工具输出再付一次全价**。
+ *
+ * 现在只有一个口径：这一份既进当前请求，也进历史。KEEP_WHOLE 那几种（技能正文、
+ * 目录、布局）整份给，理由见上面。
+ */
+export function shapeToolResult(name: string, text: string): string {
+  return KEEP_WHOLE.has(name) ? String(text ?? '') : pruneToolText(text);
+}
+
+/**
+ * 工具调用的**规范参数** —— 实发与存档共用同一份。
+ *
+ * 为什么不直接用模型原文的截断：assistant 那条 tool_calls 下一回合要原样回放，
+ * 参数差一个字节缓存就断。而从前实发用模型原文、存档用 JSON.parse 再 stringify
+ * 的结果，还可能被截成**不是合法 JSON** 的半截 —— 两边永远对不上。
+ *
+ * 这里超长时不是硬截，而是把最长的那些字符串字段换成一句说明：结果仍然是合法
+ * JSON，接口和解析都不会炸，而且顺带省 token（write_file 的正文不必每一步重发）。
+ * 执行用的仍是解析后的完整参数，一个字都没少跑。
+ */
+const ARGS_MAX = 1_200;
+
+export function canonicalToolArgs(raw: unknown): string {
+  const s = typeof raw === 'string' ? raw : JSON.stringify(raw ?? {});
+  if (s.length <= ARGS_MAX) return s;
+  let obj: any = null;
+  try {
+    obj = JSON.parse(s);
+  } catch {
+    obj = null;
+  }
+  if (obj && typeof obj === 'object') {
+    const trim = (o: any): void => {
+      for (const k of Object.keys(o)) {
+        const v = o[k];
+        if (typeof v === 'string') {
+          if (v.length > 80) o[k] = t('…（原 {n} 字，太长没回灌；要原文自己 read_file 看磁盘上的那份）', { n: v.length });
+        } else if (v && typeof v === 'object') {
+          trim(v);
+        }
+      }
+    };
+    trim(obj);
+    const out = JSON.stringify(obj);
+    if (out.length < s.length) return out;
+  }
+  return JSON.stringify({ __note: t('原始参数 {n} 字，太长没回灌（不是合法 JSON，原样留着没有用）', { n: s.length }) });
 }
 
 /**
@@ -1248,7 +1343,7 @@ export async function runAgent(
           ? { role: 'user', content: [{ type: 'text', text: body }, ...shots] }
           : { role: 'user', content: body },
       );
-      events.onSteering?.(it);
+      events.onSteering?.(it, body);
     }
     return items.length;
   };
@@ -1280,12 +1375,15 @@ export async function runAgent(
     // 同一次运行的下一次请求就是 400（tool_calls[n] is missing a function name），
     // 整轮任务当场死掉。没名字的丢掉；没 id 的现在补上（下面 tool 回执按它配对）。
     const valid: any[] = [];
+    /** tool_call_id → 实发出去的参数串。存档照抄它，回放才和实发逐字节一致 */
+    const sentArgs = new Map<string, string>();
     let dropped = 0;
     let seq = 0;
     for (const tc of r.toolCalls) {
       if (!String(tc?.function?.name ?? '').trim()) { dropped += 1; continue; }
       seq += 1;
       if (!tc.id) tc.id = `call_${round}_${seq}`;
+      sentArgs.set(tc.id, canonicalToolArgs(String(tc?.function?.arguments ?? '')));
       valid.push(tc);
     }
     events.onResponseEnd?.({ content: r.content, hasTools: valid.length > 0 });
@@ -1307,7 +1405,21 @@ export async function runAgent(
       break;
     }
 
-    msgs.push({ role: 'assistant', content: r.content || null, tool_calls: valid });
+    /**
+     * assistant 那条：**参数用实发的那一份**（sentArgs），正文过 normalizeAnswerText。
+     *
+     * 为什么这里要另造一份 tool_calls 而不是就地改 `valid`：`valid` 还要拿去**执行**
+     * （下面按 tc.function.arguments 解析参数），规范化后的参数是被省略过的，
+     * 拿它去执行就等于少跑了内容。所以执行用原文、发出去和存档用规范化那份。
+     */
+    msgs.push({
+      role: 'assistant',
+      content: normalizeAnswerText(r.content) || null,
+      tool_calls: valid.map((tc) => ({
+        ...tc,
+        function: { ...tc.function, arguments: sentArgs.get(tc.id) ?? String(tc.function?.arguments ?? '') },
+      })),
+    });
     let n = 0;
     for (const tc of valid) {
       signal?.throwIfAborted();
@@ -1316,6 +1428,7 @@ export async function runAgent(
       // 接口会直接 400 —— 整个任务在第二步就死掉，而且报错很难看懂。
       const callId = tc.id || `call_${round}_${n}`;
       const name = String(tc.function?.name ?? '');
+      const sentArgsStr = sentArgs.get(callId) ?? canonicalToolArgs(String(tc.function?.arguments ?? ''));
       let args: any = {};
       let bad = '';
       try {
@@ -1330,7 +1443,7 @@ export async function runAgent(
           ? t('这次回复是被输出长度上限截断的，参数 JSON 只写了一半')
           : t('参数不是合法 JSON');
         const msg = `工具 ${name} 没有执行：${why}（${bad}）。把要写的内容拆小一点、分几次发，或者换一个更小的改动再来一次。`;
-        events.onTool(name, {}, msg);
+        events.onTool(name, {}, msg, { id: callId, args: sentArgsStr, text: msg });
         msgs.push({ role: 'tool', tool_call_id: callId, content: msg });
         continue;
       }
@@ -1340,16 +1453,15 @@ export async function runAgent(
       // 工具结果里可能夹着一行 `[[see: 路径]]`（出图那类工具用它把成品递给模型看一眼）：
       // 先摘出来 —— 给人看的那条记录和交给模型的正文里都不该留那行标记。
       const seen = takeSeePaths(String(out));
-      events.onTool(name, args, seen.missing.length ? `${seen.text}\n（附带的图没能附上：${seen.missing.join('、')}）` : seen.text);
-      // 单个工具结果最多带这么多回去。这是 agent 循环里**每一轮都要重发**的部分，
-      // 上限开大了，一次消息的输入量就会成倍滚起来
-      // "整份看"的那几种不修剪（见 KEEP_WHOLE）；其余的都过修剪 —— 不过经过落地闸之后，
-      // 还长到需要修剪的已经没有了，这道修剪是兜底
-      msgs.push({
-        role: 'tool',
-        tool_call_id: callId,
-        content: KEEP_WHOLE.has(name) ? seen.text : pruneToolText(seen.text),
-      });
+      // 交给模型的那一份**只算一次**：同一份既进当前请求，也交给存档（见 shapeToolResult）。
+      const modelText = shapeToolResult(name, seen.text);
+      events.onTool(
+        name,
+        args,
+        seen.missing.length ? `${seen.text}\n（附带的图没能附上：${seen.missing.join('、')}）` : seen.text,
+        { id: callId, args: sentArgsStr, text: modelText },
+      );
+      msgs.push({ role: 'tool', tool_call_id: callId, content: modelText });
       // 附给模型的图**单独走一条 user 消息**，不塞进 tool 那条的 content 数组：tool 消息
       // 带图片块不是每个兼容接口都认，而"user 消息带图"这条路是现成的（用户自己贴的截图
       // 就是这么发出去的）。它只活在当前这一轮的 msgs 里 —— 下一轮不会重发。

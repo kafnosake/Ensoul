@@ -1,12 +1,14 @@
 /**
  * 目标目录 —— 「这会儿在哪个项目里干活」这件事的唯一一份账。
  *
- * 四件事：
+ * 五件事：
  *   1. 记住当前目标项目。**全局一份**，不按面板分槽 —— 目标项目是整个工作区的处境，
  *      不存在"A 面板的目标项目"和"B 面板的目标项目"。
  *   2. 每轮把两条规矩摆到模型眼前：现在做的是哪个项目、临时文件该放哪。
  *   3. 模型伸手去动**别的**已登记项目时，在工具结果后面附一句提醒 —— 只提醒，不拦。
  *   4. 顺带一个 target_dir 工具，让助手一句话就能切。
+ *   5. 随时切回「全局」（不锁定子项目、整个工作区干活）；状态按工作区隔离，
+ *      换一个工作区各是各的账，不把上一个工作区的目标带过来。
  *
  * 用户点得着的入口只有一个：**会话框顶上那颗「项目 xx ▾」**。
  * 点开只列**人选过的那几个** —— 点一下切过去；想加新的用底下那行「打开文件夹…」。
@@ -51,6 +53,13 @@ function collectPaths(v, out, depth) {
 module.exports = {
   name: 'target-dir',
   description: t('目标目录：记住当前在哪个项目里干活，改到别的项目时提醒一句，临时文件不往项目里放'),
+
+  /**
+   * 状态按工作区隔离 —— 不声明这行，state 就落在应用数据根的**全局**目录里，
+   * 所有工作区共读一份：换个工作区还显示上一个工作区的目标项目（真踩过）。
+   * 声明后 state 落到 projects/<工作区哈希>/ 下，换工作区各是各的。
+   */
+  storage: { project: ['.ensoul/state/target-dir.json'] },
 
   setup(api) {
     const root = api.workspace || '';
@@ -145,7 +154,7 @@ module.exports = {
       if (!res || res.canceled || !res.filePaths || !res.filePaths.length) return t('没选目录。');
 
       const abs = path.resolve(res.filePaths[0]);
-      if (abs === rootAbs) throw new Error(t('这就是工作区根目录，要选它里面的子目录。'));
+      if (abs === rootAbs) throw new Error(t('这就是工作区根目录 —— 整个工作区不用登记，点列表第一项「全局 · 整个工作区」就是它。'));
       const rel = path.relative(rootAbs, abs).replace(/\\/g, '/');
       if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
         throw new Error(t('只能选工作区里的目录；{p} 在外面 —— 想在那儿干活，先用左上角把它作为工作区打开。', { p: abs }));
@@ -155,6 +164,8 @@ module.exports = {
 
     function useProject(raw) {
       const p = norm(raw);
+      // use 传 '.' = 回全局（工具侧另有显式 clear 动作，这里是给模型的顺手写法）
+      if (p === '.') return clearProject();
       const hit = state.projects.find((x) => x.path === p || x.name === p);
       if (!hit) throw new Error(t('表里没有「{p}」', { p: String(raw) }));
       state.current = hit.path;
@@ -173,10 +184,21 @@ module.exports = {
       return t('已从表里去掉「{n}」（磁盘上的目录没动）', { n: was.name });
     }
 
+    /**
+     * 回到全局：**取消选择** —— 不锁定任何子项目，就在整个工作区干活。
+     * 登记表一个字不动：只清「当前是谁」，不删任何项目。
+     */
+    function clearProject() {
+      if (!state.current) return t('本来就是全局（整个工作区），没有锁定子项目。');
+      state.current = '';
+      save();
+      return t('已回到全局：不再锁定子项目，登记表没动');
+    }
+
     function listText() {
       const cur = project();
       const lines = [
-        cur ? t('当前项目：{n}（{p}）', { n: cur.name, p: cur.path }) : t('当前项目：还没选'),
+        cur ? t('当前项目：{n}（{p}）', { n: cur.name, p: cur.path }) : t('当前：全局（整个工作区，未锁定子项目）'),
       ];
       if (!state.projects.length) {
         lines.push(t('表里还没有任何项目。用 target_dir add 登记一个目录。'));
@@ -196,12 +218,12 @@ module.exports = {
         name: 'target_dir',
         level: 'write',
         description:
-          t('管「这会儿在哪个项目里干活」：list 看当前项目和已登记的项目，add 登记一个目录（工作区里的相对路径，不存在就建出来），use 切到某个项目，remove 从表里去掉。')
+          t('管「这会儿在哪个项目里干活」：list 看当前项目和已登记的项目，add 登记一个目录（工作区里的相对路径，不存在就建出来），use 切到某个项目，clear 取消选定（回到全局、整个工作区），remove 从表里去掉。')
           + t('目录由人指定，不靠扫盘猜。'),
         parameters: {
           type: 'object',
           properties: {
-            action: { type: 'string', enum: ['list', 'add', 'use', 'remove'], description: t('要做什么') },
+            action: { type: 'string', enum: ['list', 'add', 'use', 'clear', 'remove'], description: t('要做什么') },
             path: { type: 'string', description: t('工作区里的相对路径，例如 my-game') },
           },
           required: ['action'],
@@ -214,6 +236,7 @@ module.exports = {
           if (action === 'list') return listText();
           if (action === 'add') return addProject(p);
           if (action === 'use') return useProject(p);
+          if (action === 'clear') return clearProject();
           if (action === 'remove') return removeProject(p);
           return t('action 只能是 list / add / use / remove。');
         } catch (e) {
@@ -280,11 +303,11 @@ module.exports = {
       // 没选也露脸：这块本来就是"点它去选"，空着等于把入口藏了
       text() {
         const cur = project();
-        return cur ? t('项目 {n}', { n: cur.name }) : t('未选项目');
+        return cur ? t('项目 {n}', { n: cur.name }) : t('全局 · 整个工作区');
       },
       title() {
         const cur = project();
-        if (!cur) return t('还没选目标项目，点一下挑一个');
+        if (!cur) return t('当前是全局：不锁定子项目，在整个工作区干活。\n要锁定某个子项目，点下面列表里那一个');
         const others = state.projects.filter((x) => x.path !== cur.path).map((x) => x.name);
         const lines = [t('当前目标项目：{n}', { n: cur.name }), cur.path];
         if (others.length) lines.push(t('已登记的其它项目：{l}', { l: others.join('、') }));
@@ -301,6 +324,8 @@ module.exports = {
           plugin: 'target-dir',
           section: 'target-dir',
           items: [
+            // 第一项永远是「全局」—— 取消选择的入口（on 跟着当前状态打勾）
+            { label: t('全局 · 整个工作区'), desc: t('取消选定，不锁定子项目'), on: !state.current, action: 'global', row: '' },
             ...state.projects.map((p) => ({
               label: p.name,
               desc: p.path,
@@ -346,6 +371,10 @@ module.exports = {
           }
           if (rid === '__add') {
             lastReply = addProject(act.startsWith('add:') ? act.slice(4) : '');
+            return lastReply;
+          }
+          if (act === 'global') {
+            lastReply = clearProject();
             return lastReply;
           }
           if (act === 'use') {

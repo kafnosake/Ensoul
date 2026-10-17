@@ -2182,7 +2182,7 @@ module.exports = {
       const line = companies
         .map((c) => `${c.name}${depts.filter((d) => d.company === c.id).map((d) => `\n  · ${d.name}${introOf(api, c.id, d.name)}`).join('') || '（暂无部门）'}`)
         .join('；');
-      const org = `【组织（实时）】${line}\n当前为普通对话面板。只有在用户明确主动要求发包/派单给指定部门或员工，或员工接到上游流转命令时，才调用 dispatch 派单；提问、闲聊、方案探讨与新建面板场景一律由你自己直接回答，严禁擅自派单。`;
+      const org = `【组织结构】${line}\n模式说明：普通对话面板直接自主答复；在用户明确指定转交特定部门或承接上游任务时，使用 dispatch 协同。\n`;
       return [org, wait, kitAsk].filter(Boolean).join('\n\n');
     });
 

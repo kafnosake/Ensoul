@@ -759,6 +759,17 @@ class Store {
       workspace: this.ws.workspace,
       recentWorkspaces: this.ws.recentWorkspaces ?? [],
       status: Object.fromEntries(Object.keys(this.ws.panels).map((id) => [id, this.statusOf(id)])),
+      // 上下文占用跟着广播走：每块面板两个数（几十字节），渲染层拿来画输入框下面那一行。
+      // 后台面板也算 —— 它跑着的时候一样在烧上下文，后台那条状态条不该是瞎的。
+      context: (() => {
+        const out: Record<string, { used: number; window: number }> = {};
+        for (const id of Object.keys(this.ws.panels)) {
+          // null = 这块面板还没选模型 / 已经没了 —— 不放进去，界面就不画那一条
+          const cu = this.contextOf(id);
+          if (cu) out[id] = cu;
+        }
+        return out;
+      })(),
       commands: this.commandsOf(),
       componentRefs: this.componentRefs(),
       componentBarMax: this.componentBarMax(),
@@ -1053,6 +1064,18 @@ class Store {
 
   setStatusSource(fn: (panelId: string) => { id: string; slot: 'composer' | 'head'; text: string; title?: string; menu?: PluginStatusMenu }[]) {
     this.statusOf = fn;
+  }
+
+  /**
+   * **上下文占用**（已用 / 窗口）—— 和状态部件同一个路子：核心算好，这里只负责发出去。
+   *
+   * 为什么不让界面自己算：窗口是逐条模型的事，已用走的是压缩判定那份估算，
+   * 两边都住在主进程。界面凭手上的对话再估一遍，只会和「什么时候真压缩」这条线漂开。
+   */
+  private contextOf: (panelId: string) => { used: number; window: number } | null = () => null;
+
+  setContextSource(fn: (panelId: string) => { used: number; window: number } | null) {
+    this.contextOf = fn;
   }
 
   /**

@@ -269,7 +269,7 @@ export interface SettingsSectionReg extends SettingsSectionSpec {
  * 渲染进程那边，函数过不去。跑的时候**不再过 onBeforeTool** —— 请求本来就是它提的，
  * 回头再问一遍就是个死循环。
  */
-/** 一个可选答案 —— 跟 dsh 的 AskUserQuestionOption 同形 */
+/** 一个可选答案 —— 选项标签 + 一句代价说明 */
 export interface AskQuestionOption {
   /** 给人看的标签 */
   label: string;
@@ -278,7 +278,7 @@ export interface AskQuestionOption {
 }
 
 /**
- * 一道题。跟 dsh 的 AskUserQuestionItem 同形（字段名对齐，多选叫 multiSelect）。
+ * 一道题：稳定题号 + 题干 + 可选项（可选多选）。
  *
  * 提一批题、拿一批结构化的答案 —— 这是问用户的一般形态；
  * 下面那条 confirm/cancel 的老路只是它的一个退化情形（两个按钮、没有选项）。
@@ -298,7 +298,7 @@ export interface AskQuestionItem {
   multiSelect?: boolean;
 }
 
-/** 一道题的答案：跟 dsh 的 AskUserQuestionAnswerItem 同形 */
+/** 一道题的答案：选中了哪些标签 + 自由填的那一段 */
 export interface AskAnswerItem {
   /** 对应哪道题 */
   id: string;
@@ -323,7 +323,7 @@ export interface AskSpec {
    */
   defer?: { label?: string };
   /**
-   * 一批结构化的问题（dsh 的 ask_user_question 同形）。
+   * 一批结构化的问题 —— 给界面画问题表单用。
    *
    * 给了它，界面上画的就是问题表单（翻页 / 单选多选 / 自定义答案 / 跳过），
    * 用户提交之后答案从 then 那条路回到插件手里；不给就还是底下那两个按钮的老样子。
@@ -616,6 +616,14 @@ export interface PluginHost {
   setModel(panelId: string, pick: string): boolean;
   modelPick(panelId: string): string;
   /**
+   * 一块面板**此刻的上下文占用**：已用 token / 这个模型的窗口。
+   *
+   * 为什么要有它：窗口逐条模型不同、已用要走压缩判定那份估算，两样都住在核心。
+   * 插件（用量那条状态就是它画的）自己凭 chat 再估一遍，只会和真正触发压缩的那条线漂开。
+   * 面板不存在、或者还没选模型时返回 null。
+   */
+  contextUsage(panelId: string): { used: number; window: number } | null;
+  /**
    * 设一块面板的**思考水平**：`'off' | 'low' | 'medium' | 'high'`，空串 = 恢复默认。
    *
    * 员工面板靠它把思考关掉 —— 派单、转述、回话这类活不需要想，想只是白等（经理尤其）。
@@ -829,13 +837,20 @@ export interface PluginModel {
   key: string;
   label: string;
   hasKey: boolean;
-  models: { id: string; name: string }[];
+  models: { id: string; name: string; contextWindow?: number }[];
 }
 
 let modelCatalog: () => PluginModel[] = () => [];
 
 export function setModelCatalog(fn: () => PluginModel[]) {
   modelCatalog = fn;
+}
+
+/** 上面那个 contextUsage 的口子 —— 核心把算法塞进来，插件只管喊 */
+let contextUsageSource: (panelId: string) => { used: number; window: number } | null = () => null;
+
+export function setContextUsageSource(fn: (panelId: string) => { used: number; window: number } | null) {
+  contextUsageSource = fn;
 }
 
 /**
@@ -1654,6 +1669,7 @@ function makeHost(inst: Instance): PluginHost {
         pick: spec?.pick ? String(spec.pick) : '',
       }),
     models: () => modelCatalog(),
+    contextUsage: (panelId) => contextUsageSource(String(panelId || '')),
     upsertProvider: (p) => providerUpserter(p),
     credential: (providerKey) => credentialReader(String(providerKey || '')),
     saveCredential: (slot, value) => credentialWriter(String(slot || ''), String(value ?? '')),
@@ -2036,9 +2052,20 @@ export function loadPlugins(disabled: string[] = []): LoadedPlugins {
   const nextWorkspace = workspaceRoot();
   preparePluginStorage(nextWorkspace);
   if (!migratedWorkspaces.has(nextWorkspace)) {
-    const migration = migrateRuntimeData(nextWorkspace);
-    if (migration.errors.length) console.error('[数据迁移] 部分文件未复制：', migration.errors);
-    else migratedWorkspaces.add(nextWorkspace);
+    /*
+     * 迁移是**异步**的（见 storage.ts：它要按文件比对几万个文件，同步跑一趟就是把
+     * 主进程唯一的这条事件循环钉死几十秒，窗口在这期间画不出首帧）。
+     *
+     * 这里只**踢一脚**、不等它：这个函数每轮对话都要调一次，绝不能挂在上面。
+     * 真正需要"迁移完再读状态"的两条路（开机、换工作区）自己 await 同一趟
+     * —— 同一个工作区只会真跑一趟（storage.ts 里做了去重）。
+     */
+    void migrateRuntimeData(nextWorkspace)
+      .then((migration) => {
+        if (migration.errors.length) console.error('[数据迁移] 部分文件未复制：', migration.errors);
+        else migratedWorkspaces.add(nextWorkspace);
+      })
+      .catch((error) => console.error('[数据迁移] 失败：', error?.message ?? error));
   }
   if (nextWorkspace !== workspaceStamp) {
     for (const inst of instances.values()) dispose(inst);
